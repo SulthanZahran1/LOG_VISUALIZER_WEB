@@ -47,6 +47,14 @@ None.
 
 ---
 
+## Notes
+
+- File upload and manager are implemented and verified.
+- Fixed 204 No Content handling in API client.
+- Fixed signal update race condition in app.tsx.
+
+---
+
 ## Ideas / Future Considerations
 
 - Consider WebGL if Canvas performance insufficient for large signal counts

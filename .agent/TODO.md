@@ -14,11 +14,11 @@
 - [ ] Set up Echo/Chi router with CORS
 
 ### File Management API
-- [ ] `POST /api/files/upload` — accept multipart, 1GB max
-- [ ] `GET /api/files/recent` — list 20 most recent
-- [ ] `GET /api/files/:id` — file info
-- [ ] `DELETE /api/files/:id` — remove from tracking
-- [ ] Store file metadata (filename, size, date, status)
+- [x] `POST /api/files/upload` — accept multipart, 1GB max
+- [x] `GET /api/files/recent` — list 20 most recent
+- [x] `GET /api/files/:id` — file info
+- [x] `DELETE /api/files/:id` — remove from tracking
+- [x] Store file metadata (filename, size, date, status)
 
 ### Parser Implementation
 - [ ] Define Parser interface (`Parse`, `CanParse`)
@@ -43,18 +43,18 @@
 - [ ] Create status bar component
 
 ### File Upload Component
-- [ ] Drag-drop zone with visual feedback
-- [ ] Click to browse file picker
-- [ ] Upload progress indicator (percentage)
-- [ ] File size validation (reject >1GB)
-- [ ] Error message display
+- [x] Drag-drop zone with visual feedback
+- [x] Click to browse file picker
+- [x] Upload progress indicator (percentage)
+- [x] File size validation (reject >1GB)
+- [x] Error message display
 
 ### Recent Files Panel
-- [ ] List of 20 most recent files
-- [ ] Show: filename, size, date, parse status
-- [ ] Click to load/parse file
-- [ ] Delete button per file
-- [ ] Persist list across page refresh
+- [x] List of 20 most recent files
+- [x] Show: filename, size, date, parse status
+- [x] Click to load/parse file
+- [x] Delete button per file
+- [x] Persist list across page refresh
 
 ### Session Persistence  
 - [ ] Set up IndexedDB for storing parsed session references

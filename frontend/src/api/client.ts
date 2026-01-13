@@ -32,6 +32,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
         throw new ApiError(response.status, error.error || `Request failed: ${response.status}`);
     }
 
+    // Handle 204 No Content or empty bodies
+    if (response.status === 204 || response.headers.get('content-length') === '0') {
+        return undefined as T;
+    }
+
     return response.json();
 }
 

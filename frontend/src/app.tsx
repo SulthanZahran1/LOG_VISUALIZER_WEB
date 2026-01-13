@@ -1,6 +1,9 @@
 import { useSignal } from '@preact/signals'
 import { useEffect } from 'preact/hooks'
-import { checkHealth } from './api/client'
+import { checkHealth, getRecentFiles, deleteFile } from './api/client'
+import { FileUpload } from './components/file/FileUpload'
+import { RecentFiles } from './components/file/RecentFiles'
+import type { FileInfo } from './models/types'
 
 /**
  * Main App Shell
@@ -9,17 +12,47 @@ import { checkHealth } from './api/client'
 export function App() {
   const status = useSignal<'checking' | 'connected' | 'error'>('checking')
   const errorMessage = useSignal<string | null>(null)
+  const recentFiles = useSignal<FileInfo[]>([])
+
+  const fetchFiles = async () => {
+    try {
+      const files = await getRecentFiles()
+      recentFiles.value = files
+    } catch (err) {
+      console.error('Failed to fetch recent files', err)
+    }
+  }
 
   useEffect(() => {
     checkHealth()
       .then(() => {
         status.value = 'connected'
+        fetchFiles()
       })
       .catch((err) => {
         status.value = 'error'
         errorMessage.value = err.message || 'Failed to connect to backend'
       })
   }, [])
+
+  const handleUploadSuccess = (file: FileInfo) => {
+    const current = Array.isArray(recentFiles.value) ? recentFiles.value : []
+    recentFiles.value = [file, ...current]
+  }
+
+  const handleFileSelect = (file: FileInfo) => {
+    console.log('Selected file:', file)
+    // TODO: Start parsing or switch to table view
+  }
+
+  const handleFileDelete = async (id: string) => {
+    try {
+      await deleteFile(id)
+      recentFiles.value = recentFiles.value.filter(f => f.id !== id)
+    } catch (err) {
+      console.error('Failed to delete file', err)
+    }
+  }
 
   return (
     <div class="app-container">
@@ -39,19 +72,14 @@ export function App() {
       </header>
 
       <main class="app-main">
-        <div class="welcome-panel">
-          <h2>Welcome to PLC Log Visualizer</h2>
-          <p>Upload a PLC log file to get started.</p>
+        <FileUpload onUploadSuccess={handleUploadSuccess} />
 
-          <div class="drop-zone">
-            <div class="drop-zone-content">
-              <span class="drop-icon">📁</span>
-              <p>Drag & drop a log file here</p>
-              <p class="drop-hint">or click to browse</p>
-            </div>
-          </div>
-        </div>
-      </main>
+        <RecentFiles
+          files={recentFiles.value}
+          onFileSelect={handleFileSelect}
+          onFileDelete={handleFileDelete}
+        />
+      </main >
 
       <footer class="app-footer">
         <span>PLC Log Visualizer v0.1.0</span>
@@ -161,6 +189,6 @@ export function App() {
           margin: 0 var(--spacing-sm);
         }
       `}</style>
-    </div>
+    </div >
   )
 }

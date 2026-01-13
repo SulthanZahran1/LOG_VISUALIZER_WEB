@@ -74,6 +74,9 @@ Scaffold complete. Next: File upload, parser, log table.
 - [x] Backend scaffolded (Go module, Echo server, models)
 - [x] Frontend scaffolded (Vite+Preact, theme, types, API client)
 - [x] Makefile created
+- [x] Backend storage manager implemented
+- [x] File upload and management API implemented
+- [x] File upload and recent files UI components implemented
 
 ---
 
@@ -90,7 +93,7 @@ Scaffold complete. Next: File upload, parser, log table.
 
 | Phase | Features | Status |
 |:-----:|----------|:------:|
-| 1 | File upload, recent files, Log Table, session persistence | Not started |
+| 1 | File upload, recent files, Log Table, session persistence | In Progress |
 | 2 | Waveform/Timing Diagram, Signal Filtering | Not started |
 | 3 | Multi-View Split Panes, Tab management | Not started |
 | 4 | Map Viewer, Carrier Tracking | Not started |

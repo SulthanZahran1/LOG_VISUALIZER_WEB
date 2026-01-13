@@ -2,13 +2,25 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/plc-visualizer/backend/internal/storage"
 )
 
+var fileStore storage.Store
+
 func main() {
+	// Initialize storage
+	var err error
+	fileStore, err = storage.NewLocalStore("./data/uploads")
+	if err != nil {
+		fmt.Printf("failed to initialize storage: %v\n", err)
+		return
+	}
+
 	e := echo.New()
 
 	// Middleware
@@ -56,26 +68,54 @@ func handleHealth(c echo.Context) error {
 	})
 }
 
-// Placeholder handlers - to be implemented in Phase 1
-
+// handleUploadFile accepts a multipart file upload and saves it to storage.
 func handleUploadFile(c echo.Context) error {
-	// TODO: Implement file upload
-	return c.JSON(http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing file in request"})
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to open uploaded file"})
+	}
+	defer src.Close()
+
+	info, err := fileStore.Save(file.Filename, src)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save file: %v", err)})
+	}
+
+	return c.JSON(http.StatusCreated, info)
 }
 
+// handleRecentFiles returns a list of recently uploaded files.
 func handleRecentFiles(c echo.Context) error {
-	// TODO: Implement recent files list
-	return c.JSON(http.StatusOK, []interface{}{})
+	files, err := fileStore.List(20)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list files"})
+	}
+	return c.JSON(http.StatusOK, files)
 }
 
+// handleGetFile returns metadata for a specific file.
 func handleGetFile(c echo.Context) error {
-	// TODO: Implement get file info
-	return c.JSON(http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+	id := c.Param("id")
+	info, err := fileStore.Get(id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "file not found"})
+	}
+	return c.JSON(http.StatusOK, info)
 }
 
+// handleDeleteFile removes a file from storage.
 func handleDeleteFile(c echo.Context) error {
-	// TODO: Implement file deletion
-	return c.JSON(http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+	id := c.Param("id")
+	err := fileStore.Delete(id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "file not found or could not be deleted"})
+	}
+	return c.NoContent(http.StatusNoContent)
 }
 
 func handleStartParse(c echo.Context) error {
