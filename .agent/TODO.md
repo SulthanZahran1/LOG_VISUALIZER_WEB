@@ -5,76 +5,30 @@
 
 ---
 
-## Phase 1: Foundation + Log Table
+## Phase 1: Foundation + Log Table [COMPLETED]
 
-### Backend Setup
-- [ ] Initialize Go module (`go mod init`)
-- [ ] Create `/cmd/server/main.go` entry point
-- [ ] Create `/internal/models/` with core types (LogEntry, ParsedLog, Session)
-- [ ] Set up Echo/Chi router with CORS
+### User Interface & Layout (UX Polish)
+- [x] Flexible Layout Engine (Tabs + Split Panes)
+- [x] Drag-to-split interaction (Left, Right, Top, Bottom)
+- [x] Universal Header with: Sync, Clear, Help, Status
+- [x] Theme: Industrial Dark (consistent with #003D82 primary blue)
+- [x] Breadcrumbs or Navigation Bar for active sessions
 
-### File Management API
-- [x] `POST /api/files/upload` — accept multipart, 1GB max
-- [x] `GET /api/files/recent` — list 20 most recent
-- [x] `GET /api/files/:id` — file info
-- [x] `DELETE /api/files/:id` — remove from tracking
-- [x] Store file metadata (filename, size, date, status)
-
-### Parser Implementation
-- [ ] Define Parser interface (`Parse`, `CanParse`)
-- [ ] Implement parser registry with auto-detection
-- [ ] Port PLC Debug Parser from Python
-- [ ] Port MCS/AMHS Parser from Python  
-- [ ] Port CSV Parser from Python
-- [ ] Implement chunked parsing for large files (500MB+)
-- [ ] Progress tracking during parse
-
-### Parse API
-- [ ] `POST /api/parse` — start parsing, return sessionId
-- [ ] `GET /api/parse/:sessionId/status` — progress %, entry count
-- [ ] `GET /api/parse/:sessionId/entries` — paginated (page, pageSize)
-- [ ] `GET /api/parse/:sessionId/chunk` — time-window query
-
-### Frontend Setup
-- [ ] Initialize Vite + TypeScript (`npm create vite@latest`)
-- [ ] Configure Preact + @preact/signals-core
-- [ ] Create industrial dark theme (`theme.css`)
-- [ ] Create API client with fetch wrapper
-- [ ] Create status bar component
-
-### File Upload Component
-- [x] Drag-drop zone with visual feedback
-- [x] Click to browse file picker
-- [x] Upload progress indicator (percentage)
-- [x] File size validation (reject >1GB)
-- [x] Error message display
-
-### Recent Files Panel
-- [x] List of 20 most recent files
-- [x] Show: filename, size, date, parse status
-- [x] Click to load/parse file
-- [x] Delete button per file
-- [x] Persist list across page refresh
-
-### Session Persistence  
-- [ ] Set up IndexedDB for storing parsed session references
-- [ ] Restore session on page refresh
-- [ ] LRU cleanup (max 5 sessions)
-
-### Log Table View
-- [ ] Create VirtualScroll component (fixed row height)
-- [ ] Render only visible rows + buffer
-- [ ] Columns: Timestamp, Device ID, Signal Name, Value, Type
-- [ ] Sort by timestamp (asc/desc)
-- [ ] Sort by device ID
-- [ ] Sort by signal name
-- [ ] Column resizing (drag borders)
-- [ ] Single row selection (click)
-- [ ] Multi-row selection (Shift+click, Ctrl+click)
-- [ ] Copy selected rows (Ctrl+C → clipboard)
-- [ ] Right-click context menu
-- [ ] Time range filter
-- [ ] Search/filter bar (real-time)
+### Log Table View (Refined)
+- [x] VirtualScroll component (fixed row height)
+- [x] Columns: Timestamp, Device ID, Signal Name, Value, Type
+- [x] Sorting (Multi-column support)
+- [x] Column resizing (drag borders)
+- [x] Multi-row selection + Copy (Ctrl+C)
+- [x] Advanced Filter Bar:
+  - [x] Regex Toggle
+  - [x] Case-sensitive Toggle
+  - [x] "Show Changed Only" (diff between consecutive lines)
+  - [x] Pin current scroll/selection during sync
+- [x] Advanced filter popup (integrated in toolbar)
+- [x] Signal type filter (boolean/string/integer)
+- [x] "Show changed" filter (signals with changes in view)
+- [x] Copy selected rows (clipboard formatting: TS \t DEV \t SIG \t VAL)
 
 ---
 
@@ -139,40 +93,21 @@
 - [ ] Show Device::SignalName format
 - [ ] Color coding by device
 - [ ] Click label to focus signal
+- [ ] "Show changed only" toggle in toolbar
+- [ ] Sync waveform cursor with Log Table selection
 - [ ] Right-click context menu (hide, show only, etc.)
 
 ---
 
 ## Phase 3: Multi-View / Split Panes
 
-### Split Pane Operations
-- [ ] Drag tab to top edge → horizontal split
-- [ ] Drag tab to bottom edge → horizontal split
-- [ ] Drag tab to left edge → vertical split
-- [ ] Drag tab to right edge → vertical split
-- [ ] Maximum 4 panes enforced (show warning)
-- [ ] Drag splitter to resize
-- [ ] Smooth resize
-
-### Tab System
-- [ ] New tabs appear in current pane
-- [ ] Click between tabs to switch
-- [ ] Drag tab between panes
-- [ ] Tab context menu: Close Tab
-- [ ] Tab context menu: Close Other Tabs
-- [ ] Tab context menu: Close All Tabs
-- [ ] Close all tabs → pane merges back
-
-### View Types
-- [ ] Open Timing Diagram (Ctrl+T)
-- [ ] Open Log Table (Ctrl+L)
-- [ ] Multiple instances of same type
-- [ ] Independent operation per view
-
-### Layout Persistence
-- [ ] Save layout to localStorage on change
-- [ ] Restore layout on page refresh
-- [ ] Reset layout option
+### Split Pane Operations (UX Focus)
+- [ ] Tabbed interface for multi-view (Home, Log, Timing, Map)
+- [ ] Drag-to-split interaction (blue drop zone feedback)
+- [ ] Save/Restore split layout configuration
+- [ ] Maximum 4 panes restriction (with warning dialog)
+- [ ] Pane context menu (Split Horizontal/Vertical, Close)
+- [ ] Tabs: Drag between panes, context menu (Close Others, Close All)
 
 ---
 
@@ -185,10 +120,13 @@
 - [ ] Display labels
 - [ ] Pan and zoom controls
 
-### State Visualization
-- [ ] State-to-color mapping from config
-- [ ] Colors update during playback
-- [ ] Apply color rules from YAML
+### Waveform Canvas (UX Focus)
+- [ ] Create WaveformCanvas component (HTML Canvas 2D)
+- [ ] High-DPI (retina) support via scaling
+- [ ] Virtual viewport (render only visible time range + buffer)
+- [ ] Smooth pan (drag) and zoom (scroll)
+- [ ] Signal labels (sticky sidebar)
+- [ ] Tooltip/Cursor readout for values at time
 
 ### Carrier Tracking
 - [ ] Display carriers on units
@@ -256,13 +194,13 @@
 - [ ] Wrap at ends
 - [ ] Bookmark markers on time axis
 
-### Time Synchronization
-- [ ] Sync Views button in toolbar
+### Time Synchronization (UX Focus)
+- [ ] Sync Views button in toolbar (Master/Slave sync)
 - [ ] Disabled when no data loaded
-- [ ] Click syncs all views to active view's time
-- [ ] Timing Diagram syncs time range
-- [ ] Log Table scrolls to matching rows
-- [ ] Map Viewer updates state
+- [ ] Dynamic scroll-to-timestamp in Log Table
+- [ ] Viewport state synchronization (shared SignalStore)
+- [ ] Jump to time from axis click
+- [ ] Global "active view" time tracking
 
 ---
 

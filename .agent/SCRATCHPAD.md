@@ -52,6 +52,7 @@ None.
 - File upload and manager are implemented and verified.
 - Fixed 204 No Content handling in API client.
 - Fixed signal update race condition in app.tsx.
+- **Log parsers (PLC, MCS, CSV) ported and verified with unit tests.**
 
 ---
 

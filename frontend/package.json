@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@preact/signals": "^2.5.1",
+    "idb": "^8.0.3",
     "preact": "^10.27.2"
   },
   "devDependencies": {

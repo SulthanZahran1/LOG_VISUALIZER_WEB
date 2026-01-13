@@ -5,6 +5,20 @@
 
 ---
 
+## 2026-01-13: Log Parsers Implementation (Python -> Go)
+
+- Implemented `Parser` interface and common utilities in `backend/internal/parser/parser.go`.
+- Ported four major log parsers from the reference desktop application:
+  - `PLCDebugParser`: Bracket-delimited PLC logs.
+  - `PLCTabParser`: Tab-delimited PLC logs.
+  - `MCSLogParser`: AMHS/MCS logs with dual-ID support and multi-entry lines.
+  - `CSVSignalParser`: Simple CSV-formatted signal logs.
+- Implemented `Registry` in `backend/internal/parser/registry.go` for auto-detection and sniffing of log formats.
+- Verified all parsers with a comprehensive test suite (`backend/internal/parser/parser_test.go`).
+- Optimized parsers with fast-path string splitting where applicable.
+
+---
+
 ## 2026-01-13: Phase 1 Scaffold Complete
 
 - Scaffolded Go backend (`backend/`)

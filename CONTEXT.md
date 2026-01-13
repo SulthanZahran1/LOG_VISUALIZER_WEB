@@ -77,13 +77,15 @@ Scaffold complete. Next: File upload, parser, log table.
 - [x] Backend storage manager implemented
 - [x] File upload and management API implemented
 - [x] File upload and recent files UI components implemented
+- [x] Log parsers ported from Python to Go (PLC, MCS, CSV)
+- [x] Parser auto-detection/registry implemented
 
 ---
 
 ## What's Next
 
 1. Implement file upload endpoint and component
-2. Port log parsers from Python (PLC, MCS, CSV)
+2. Build Log Table with virtual scrolling
 3. Implement Log Table with virtual scrolling
 4. Add session persistence with IndexedDB
 
