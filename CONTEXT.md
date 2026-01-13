@@ -58,9 +58,9 @@
 
 ## Current Phase
 
-**Phase: 0 — Project Setup**
+**Phase: 1 — Foundation + Log Table (In Progress)**
 
-Not started yet. Next step is scaffolding the project structure.
+Scaffold complete. Next: File upload, parser, log table.
 
 ---
 
@@ -71,16 +71,18 @@ Not started yet. Next step is scaffolding the project structure.
 - [x] Context defined (`CONTEXT.md`)
 - [x] Testing checklist created (`TESTING_CHECKLIST.md`)
 - [x] Agent scratchpad structure defined (`/.agent/`)
+- [x] Backend scaffolded (Go module, Echo server, models)
+- [x] Frontend scaffolded (Vite+Preact, theme, types, API client)
+- [x] Makefile created
 
 ---
 
 ## What's Next
 
-1. Initialize Go module (`backend/`)
-2. Initialize Vite + TypeScript project (`frontend/`)
-3. Create type definition files (Go and TS)
-4. Create sample log files in `testdata/`
-5. Begin Phase 1: File Upload + Log Table
+1. Implement file upload endpoint and component
+2. Port log parsers from Python (PLC, MCS, CSV)
+3. Implement Log Table with virtual scrolling
+4. Add session persistence with IndexedDB
 
 ---
 
