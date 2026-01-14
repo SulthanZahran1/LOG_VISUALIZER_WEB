@@ -35,6 +35,8 @@ export interface ParseSession {
     entryCount?: number;
     signalCount?: number;
     processingTimeMs?: number;
+    startTime?: number;
+    endTime?: number;
     errors?: ParseError[];
 }
 

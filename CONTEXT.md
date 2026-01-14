@@ -1,7 +1,7 @@
 # CONTEXT.md — Session Context
 
 > Paste this into each AI session. Update after each work session.
-> Last updated: 2026-01-13
+> Last updated: 2026-01-14
 
 ---
 
@@ -17,6 +17,7 @@
 | Frontend | TypeScript + Preact + Signals + Vite |
 | State | @preact/signals-core |
 | Styling | CSS Variables (industrial dark theme) |
+| Testing | Vitest + Playwright + ESLint |
 | Communication | REST API |
 | Browser | Chrome only |
 
@@ -24,10 +25,10 @@
 
 ```
 /web_version
-├── AGENTS.md              ← AI guidelines (read this)
 ├── CONTEXT.md             ← You are here
-├── TESTING_CHECKLIST.md   ← Manual test cases
+├── TESTING_CHECKLIST.md   ← Automated + manual test cases
 ├── .agent/
+│   ├── workflows/         ← Agent workflows (e.g., /testing)
 │   ├── SCRATCHPAD.md      ← Current thinking, blockers
 │   ├── CHANGELOG.md       ← What's been done
 │   └── TODO.md            ← Task tracking
@@ -47,8 +48,12 @@
 │   │   ├── stores/        ← Signal-based stores
 │   │   ├── api/           ← API client
 │   │   ├── models/        ← TypeScript types
-│   │   ├── styles/        ← CSS files
+│   │   ├── test/          ← Test setup
 │   │   └── utils/         ← Utilities
+│   ├── e2e/               ← Playwright E2E tests
+│   ├── vitest.config.ts   ← Unit test config
+│   ├── playwright.config.ts ← E2E test config
+│   ├── eslint.config.js   ← Linting config
 │   ├── package.json
 │   └── vite.config.ts
 └── Makefile
@@ -56,31 +61,52 @@
 
 ---
 
-## Current Phase
+## Testing Infrastructure
+
+**Always run automated tests before browser agent testing!**
+
+### Test Commands (from `frontend/`)
+
+| Command | Purpose | Speed |
+|---------|---------|-------|
+| `npm run typecheck` | TypeScript type checking | instant |
+| `npm run lint` | ESLint code quality | ~2s |
+| `npm run test` | Vitest unit tests | ~2s |
+| `npm run test:e2e` | Playwright E2E tests | ~8s |
+| `npm run test:all` | All of the above | ~15s |
+
+### When to Use Each
+
+1. **Unit Tests** → Pure functions, component logic, stores
+2. **E2E Tests** → Page load, navigation, form submission
+3. **Browser Agent** → Visual bugs, complex interactions (last resort)
+
+Use `/testing` workflow before agentic browser testing.
+
+---
 
 ## Current Phase
 
 **Phase: 2 — Waveform/Timing Diagram + Filtering (In Progress)**
 
-Core Waveform Canvas and signal rendering are implemented. Next: Advanced interaction (time axis labels, precise cursor) and filtering.
+Core Waveform Canvas and signal rendering are implemented. UI/UX overhauled with unified dark theme. Testing infrastructure added.
 
 ---
 
 ## What's Done
 
-- [x] Migration spec created (see `/.gemini/.../web_migration_spec.md`)
-- [x] AI guidelines defined (`AGENTS.md`)
-- [x] Context defined (`CONTEXT.md`)
-- [x] Testing checklist created (`TESTING_CHECKLIST.md`)
-- [x] Agent scratchpad structure defined (`/.agent/`)
+- [x] Migration spec created
+- [x] Context and testing documentation
 - [x] Backend scaffolded (Go module, Echo server, models)
-- [x] Frontend scaffolded (Vite+Preact, theme, types, API client)
-- [x] Makefile created
-- [x] Backend storage manager implemented
-- [x] File upload and management API implemented
-- [x] File upload and recent files UI components implemented
+- [x] Frontend scaffolded (Vite+Preact, types, API client)
 - [x] Log parsers ported from Python to Go (PLC, MCS, CSV)
-- [x] Parser auto-detection/registry implemented
+- [x] File upload/management API and UI
+- [x] Log Table with virtual scroll, filtering, sorting
+- [x] Waveform Canvas with signal rendering
+- [x] UI/UX overhaul (unified dark industrial theme)
+- [x] Testing infrastructure (Vitest, Playwright, ESLint)
+- [x] Waveform Toolbar (Zoom, Pan, Fit, Presets)
+- [x] Waveform Cursor (Hover line, Readout)
 
 ---
 
@@ -111,11 +137,11 @@ Core Waveform Canvas and signal rendering are implemented. Next: Advanced intera
 ## Key Files to Reference
 
 | When working on... | Reference... |
-|--------------------|--------------| 
-| Any task | `AGENTS.md` (conventions) |
-| Architecture/types | `AGENTS.md` "Key Types Reference" section |
-| Testing | `TESTING_CHECKLIST.md` |
-| Current tasks | `/.agent/TODO.md` |
+|--------------------|--------------|
+| Starting work | Run `/testing` workflow first |
+| Architecture/types | `CONTEXT.md` types section |
+| Testing | `TESTING_CHECKLIST.md`, `.agent/workflows/testing.md` |
+| Current tasks | `.agent/TODO.md` |
 | Desktop reference | `../plc_to_wavedrom/CONTEXT.md` |
 
 ---
@@ -132,21 +158,6 @@ Core Waveform Canvas and signal rendering are implemented. Next: Advanced intera
 | GET | `/api/parse/:sessionId/status` | Parse progress |
 | GET | `/api/parse/:sessionId/entries` | Paginated entries |
 | GET | `/api/parse/:sessionId/chunk` | Time-window chunk |
-| GET | `/api/config/map` | Map YAML config |
-| GET | `/api/config/validation-rules` | Validation rules |
-| PUT | `/api/config/validation-rules` | Update rules |
-
----
-
-## Resolved Decisions
-
-| Decision | Resolution |
-|----------|------------|
-| Playback feature? | ✅ Yes, after Map Viewer (Phase 4.5) |
-| Export features? | ❌ Not now, future consideration |
-| WebSocket vs polling? | Polling (simpler for single-user) |
-| Session persistence? | ✅ Yes, use IndexedDB |
-| Multi-file merge? | ✅ Yes, after Playback (Phase 5.5) |
 
 ---
 
@@ -154,10 +165,10 @@ Core Waveform Canvas and signal rendering are implemented. Next: Advanced intera
 
 When starting a session:
 
-1. Read `AGENTS.md` for project rules
-2. Check `/.agent/TODO.md` for current tasks
-3. Check `/.agent/SCRATCHPAD.md` for any blockers or notes from last session
+1. **Run tests first**: `cd frontend && npm run test:all`
+2. Check `.agent/TODO.md` for current tasks
+3. Check `.agent/SCRATCHPAD.md` for blockers
 4. Work on the next task
-5. Update `/.agent/CHANGELOG.md` with what you did
-6. Update `/.agent/TODO.md` to reflect progress
-7. Update this file's "What's Done" and "What's Next" sections
+5. Update `.agent/CHANGELOG.md` with what you did
+6. Update `.agent/TODO.md` to reflect progress
+7. Update this file's "What's Done" section

@@ -1,11 +1,76 @@
-import { useEffect, useRef } from 'preact/hooks';
-import { viewRange, waveformEntries, selectedSignals, viewportWidth } from '../../stores/waveformStore';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import {
+    viewRange,
+    waveformEntries,
+    selectedSignals,
+    viewportWidth,
+    zoomAt,
+    pan,
+    isDragging,
+    zoomLevel,
+    hoverTime
+} from '../../stores/waveformStore';
 import type { LogEntry } from '../../models/types';
+import { formatTimestamp, getTickIntervals } from '../../utils/TimeAxisUtils';
 
-const ROW_HEIGHT = 48;
+const ROW_HEIGHT = 60;
+const AXIS_HEIGHT = 32;
+
+// Dark theme colors
+const COLORS = {
+    // Canvas backgrounds
+    canvasBg: '#0d1117',
+    axisBg: '#161b22',
+    rowEven: 'rgba(33, 38, 45, 0.5)',
+    rowOdd: 'transparent',
+
+    // Grid and axis
+    axisText: '#8b949e',
+    axisTextBold: '#e6edf3',
+    gridMajor: 'rgba(48, 54, 61, 0.8)',
+    gridMinor: 'rgba(48, 54, 61, 0.4)',
+
+    // Signal colors
+    booleanHigh: '#3fb950',       // Green for HIGH
+    booleanLow: '#21262d',        // Dark for LOW fill
+    booleanLine: '#58d68d',       // Bright green line
+    booleanFill: 'rgba(63, 185, 80, 0.2)',
+
+    transition: '#f0883e',        // Orange for transitions
+
+    // State signal colors
+    stateColors: [
+        'rgba(88, 166, 255, 0.3)',   // Blue
+        'rgba(163, 113, 247, 0.3)',  // Purple
+        'rgba(210, 153, 34, 0.3)',   // Yellow
+        'rgba(240, 136, 62, 0.3)',   // Orange
+    ],
+    stateText: '#e6edf3',
+    stateBorder: 'rgba(139, 148, 158, 0.3)',
+};
 
 export function WaveformCanvas() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [isMouseDown, setIsMouseDown] = useState(false);
+    const [hoverX, setHoverX] = useState<number | null>(null);
+    const lastMouseX = useRef(0);
+
+    // Resize Observer to update viewportWidth
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const observer = new ResizeObserver(entries => {
+            const entry = entries[0];
+            if (entry) {
+                viewportWidth.value = entry.contentRect.width;
+            }
+        });
+
+        observer.observe(container);
+        return () => observer.disconnect();
+    }, []);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -15,117 +80,312 @@ export function WaveformCanvas() {
         if (!ctx) return;
 
         const render = () => {
-            const width = canvas.width;
-            const height = canvas.height;
+            const dpr = window.devicePixelRatio || 1;
+            const width = viewportWidth.value;
+            const height = selectedSignals.value.length * ROW_HEIGHT + AXIS_HEIGHT;
+
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            ctx.scale(dpr, dpr);
+
+            // Clear with dark background
+            ctx.fillStyle = COLORS.canvasBg;
+            ctx.fillRect(0, 0, width, height);
+
             const range = viewRange.value;
-
-            // Clear
-            ctx.clearRect(0, 0, width, height);
-
             if (!range) return;
 
-            const duration = range.end - range.start;
-            const pixelsPerMs = width / duration;
+            const pixelsPerMs = zoomLevel.value;
 
-            // Draw background rows
+            // Draw row backgrounds
             selectedSignals.value.forEach((_, i) => {
-                ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent';
-                ctx.fillRect(0, i * ROW_HEIGHT, width, ROW_HEIGHT);
+                const y = AXIS_HEIGHT + (i * ROW_HEIGHT);
+                ctx.fillStyle = i % 2 === 0 ? COLORS.rowEven : COLORS.rowOdd;
+                ctx.fillRect(0, y, width, ROW_HEIGHT);
 
                 // Row separator
-                ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+                ctx.strokeStyle = COLORS.gridMinor;
+                ctx.lineWidth = 1;
                 ctx.beginPath();
-                ctx.moveTo(0, (i + 1) * ROW_HEIGHT);
-                ctx.lineTo(width, (i + 1) * ROW_HEIGHT);
+                ctx.moveTo(0, y + ROW_HEIGHT);
+                ctx.lineTo(width, y + ROW_HEIGHT);
                 ctx.stroke();
             });
+
+            // Draw Time Axis
+            drawTimeAxis(ctx, range.start, range.end, pixelsPerMs, width, height);
 
             // Draw Signals
             selectedSignals.value.forEach((key, rowIndex) => {
                 const entries = waveformEntries.value[key] || [];
-                if (entries.length === 0) return;
-
-                const yBase = rowIndex * ROW_HEIGHT;
+                const yBase = AXIS_HEIGHT + (rowIndex * ROW_HEIGHT);
                 const yPadding = 8;
                 const plotHeight = ROW_HEIGHT - (yPadding * 2);
 
                 ctx.save();
                 ctx.translate(0, yBase + yPadding);
 
-                // Detect Signal Type (simplified for now)
-                const firstEntry = entries[0];
-                if (firstEntry.signalType === 'boolean' || typeof firstEntry.value === 'boolean') {
-                    drawBooleanSignal(ctx, entries, range.start, pixelsPerMs, plotHeight);
-                } else {
-                    drawStateSignal(ctx, entries, range.start, pixelsPerMs, plotHeight);
+                if (entries.length > 0) {
+                    const firstEntry = entries[0];
+                    if (firstEntry.signalType === 'boolean' || typeof firstEntry.value === 'boolean') {
+                        drawBooleanSignal(ctx, entries, range.start, pixelsPerMs, plotHeight, width);
+                    } else {
+                        drawStateSignal(ctx, entries, range.start, pixelsPerMs, plotHeight, width, rowIndex);
+                    }
                 }
 
                 ctx.restore();
             });
+
+            // Draw cursor line if hovering
+            if (hoverX !== null && hoverX >= 0 && hoverX <= width) {
+                ctx.strokeStyle = 'rgba(77, 182, 226, 0.8)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.moveTo(hoverX, AXIS_HEIGHT);
+                ctx.lineTo(hoverX, height);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
         };
 
-        render();
-    }, [viewRange.value, waveformEntries.value, selectedSignals.value, viewportWidth.value]);
+        requestAnimationFrame(render);
+    }, [viewRange.value, waveformEntries.value, selectedSignals.value, viewportWidth.value, zoomLevel.value, hoverX]);
+
+    const handleWheel = (e: WheelEvent) => {
+        if (e.ctrlKey) {
+            e.preventDefault();
+            const rect = canvasRef.current?.getBoundingClientRect();
+            if (!rect) return;
+            const x = e.clientX - rect.left;
+            zoomAt(e.deltaY, x);
+        } else {
+            // Normal scroll for vertical navigation if canvas gets tall
+            // But for now we pan horizontally with shift or just deltaX
+            if (e.deltaX !== 0) {
+                e.preventDefault();
+                pan(-e.deltaX);
+            }
+        }
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+        if (e.button === 0) { // Left click
+            setIsMouseDown(true);
+            isDragging.value = true;
+            lastMouseX.current = e.clientX;
+        }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (rect) {
+            const x = e.clientX - rect.left;
+            setHoverX(x);
+
+            // Update hover time for toolbar readout
+            const range = viewRange.value;
+            if (range) {
+                const time = range.start + (x / zoomLevel.value);
+                hoverTime.value = time;
+            }
+        }
+
+        if (!isMouseDown) return;
+        const deltaX = e.clientX - lastMouseX.current;
+        lastMouseX.current = e.clientX;
+        pan(deltaX);
+    };
+
+    const handleMouseLeave = () => {
+        setHoverX(null);
+        hoverTime.value = null;
+        if (isMouseDown) {
+            setIsMouseDown(false);
+            isDragging.value = false;
+        }
+    };
+
+    const handleMouseUp = () => {
+        setIsMouseDown(false);
+        isDragging.value = false;
+    };
 
     return (
-        <canvas
-            ref={canvasRef}
-            class="waveform-canvas"
-            width={viewportWidth.value}
-            height={selectedSignals.value.length * ROW_HEIGHT}
-        />
+        <div ref={containerRef} class="waveform-canvas-wrapper">
+            <canvas
+                ref={canvasRef}
+                class="waveform-canvas"
+                style={{
+                    width: '100%',
+                    height: 'auto',
+                    display: 'block',
+                    cursor: isMouseDown ? 'grabbing' : 'crosshair'
+                }}
+                onWheel={handleWheel}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseLeave}
+            />
+            <style>{`
+                .waveform-canvas-wrapper {
+                    width: 100%;
+                    height: 100%;
+                    overflow: hidden;
+                    background: ${COLORS.canvasBg};
+                }
+            `}</style>
+        </div>
     );
 }
 
-function drawBooleanSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], startTime: number, pixelsPerMs: number, height: number) {
-    ctx.strokeStyle = '#4CAF50';
-    ctx.lineWidth = 1.5;
+function drawTimeAxis(ctx: CanvasRenderingContext2D, start: number, end: number, pixelsPerMs: number, width: number, totalHeight: number) {
+    const [major] = getTickIntervals(pixelsPerMs);
+
+    // Axis background
+    ctx.fillStyle = COLORS.axisBg;
+    ctx.fillRect(0, 0, width, AXIS_HEIGHT);
+
+    // Major ticks and labels
+    const startTick = Math.floor(start / major) * major;
+    for (let t = startTick; t <= end + major; t += major) {
+        const x = (t - start) * pixelsPerMs;
+        if (x < -100 || x > width + 100) continue;
+
+        // Tick mark
+        ctx.strokeStyle = COLORS.axisText;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, AXIS_HEIGHT - 8);
+        ctx.lineTo(x, AXIS_HEIGHT);
+        ctx.stroke();
+
+        // Label
+        ctx.fillStyle = COLORS.axisTextBold;
+        ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(formatTimestamp(t), x, AXIS_HEIGHT - 12);
+
+        // Vertical grid line
+        ctx.strokeStyle = COLORS.gridMajor;
+        ctx.beginPath();
+        ctx.moveTo(x, AXIS_HEIGHT);
+        ctx.lineTo(x, totalHeight);
+        ctx.stroke();
+    }
+
+    // Bottom border of axis
+    ctx.strokeStyle = COLORS.gridMajor;
+    ctx.lineWidth = 1;
     ctx.beginPath();
-
-    entries.forEach((entry, i) => {
-        const x = (entry.timestamp - startTime) * pixelsPerMs;
-        const val = entry.value === true || entry.value === "true";
-        const y = val ? 0 : height;
-
-        if (i === 0) {
-            ctx.moveTo(x, y);
-        } else {
-            // Horizontal line from prev entry's state
-            const prevVal = entries[i - 1].value === true || entries[i - 1].value === "true";
-            const prevY = prevVal ? 0 : height;
-
-            ctx.lineTo(x, prevY);
-            ctx.lineTo(x, y);
-        }
-    });
-
+    ctx.moveTo(0, AXIS_HEIGHT);
+    ctx.lineTo(width, AXIS_HEIGHT);
     ctx.stroke();
 }
 
-function drawStateSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], startTime: number, pixelsPerMs: number, height: number) {
+function drawBooleanSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], startTime: number, pixelsPerMs: number, height: number, width: number) {
+    const PADDING = 8;
+    const highY = PADDING;
+    const lowY = height - PADDING;
+
+    // Draw high state fill (green glow effect)
+    ctx.fillStyle = COLORS.booleanFill;
+    entries.forEach((entry, i) => {
+        const val = entry.value === true || entry.value === "true" || entry.value === 1 || entry.value === "1";
+        if (val) {
+            const x_start = (entry.timestamp - startTime) * pixelsPerMs;
+            const nextEntry = entries[i + 1];
+            const x_end = nextEntry ? (nextEntry.timestamp - startTime) * pixelsPerMs : width + 100;
+
+            if (x_end > 0 && x_start < width) {
+                ctx.fillRect(x_start, highY - 4, x_end - x_start, lowY - highY + 8);
+            }
+        }
+    });
+
+    // Draw waveform line (bright green)
+    ctx.strokeStyle = COLORS.booleanLine;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+
+    let started = false;
+    let lastY = lowY;
+
+    entries.forEach((entry) => {
+        const x = (entry.timestamp - startTime) * pixelsPerMs;
+        const val = entry.value === true || entry.value === "true" || entry.value === 1 || entry.value === "1";
+        const y = val ? highY : lowY;
+
+        if (!started) {
+            ctx.moveTo(x, y);
+            started = true;
+        } else {
+            ctx.lineTo(x, lastY);
+            ctx.lineTo(x, y);
+        }
+        lastY = y;
+    });
+
+    if (entries.length > 0) {
+        ctx.lineTo(width + 100, lastY);
+    }
+    ctx.stroke();
+
+    // Draw transition markers (orange dots)
+    entries.forEach((entry, i) => {
+        if (i === 0) return;
+        const val = entry.value === true || entry.value === "true" || entry.value === 1 || entry.value === "1";
+        const prevEntry = entries[i - 1];
+        const prevVal = prevEntry.value === true || prevEntry.value === "true" || prevEntry.value === 1 || prevEntry.value === "1";
+
+        if (val !== prevVal) {
+            const x = (entry.timestamp - startTime) * pixelsPerMs;
+            if (x > 0 && x < width) {
+                ctx.fillStyle = COLORS.transition;
+                ctx.beginPath();
+                ctx.arc(x, height / 2, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+    });
+}
+
+function drawStateSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], startTime: number, pixelsPerMs: number, height: number, width: number, _rowIndex: number) {
     ctx.lineWidth = 1;
 
     entries.forEach((entry, i) => {
         const x = (entry.timestamp - startTime) * pixelsPerMs;
         const nextX = (i < entries.length - 1)
             ? (entries[i + 1].timestamp - startTime) * pixelsPerMs
-            : ctx.canvas.width;
+            : width + 100;
+
+        if (nextX < 0 || x > width) return;
 
         const valStr = String(entry.value);
+        const colorIndex = i % COLORS.stateColors.length;
 
-        // Background box
-        ctx.fillStyle = i % 2 === 0 ? 'rgba(66, 133, 244, 0.2)' : 'rgba(77, 182, 226, 0.2)';
+        // Background box with colored fill
+        ctx.fillStyle = COLORS.stateColors[colorIndex];
         ctx.fillRect(x, 0, nextX - x, height);
 
         // Border
-        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.strokeStyle = COLORS.stateBorder;
         ctx.strokeRect(x, 0, nextX - x, height);
 
         // Text
-        if (nextX - x > 20) {
-            ctx.fillStyle = '#E0E0E0';
-            ctx.font = '10px Roboto, sans-serif';
-            ctx.fillText(valStr, x + 4, height / 2 + 4, nextX - x - 8);
+        if (nextX - x > 30) {
+            ctx.fillStyle = COLORS.stateText;
+            ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            const textWidth = ctx.measureText(valStr).width;
+            if (textWidth < (nextX - x - 12)) {
+                ctx.fillText(valStr, x + 6, height / 2);
+            }
         }
     });
 }

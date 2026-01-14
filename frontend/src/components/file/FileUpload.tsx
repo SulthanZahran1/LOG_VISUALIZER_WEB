@@ -23,8 +23,6 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
         progress.value = 0;
 
         try {
-            // Note: Actual progress tracking would require XHR or fetch with streams
-            // For now we just show a spinner/indeterminate progress
             const info = await uploadFile(file);
             onUploadSuccess(info);
         } catch (err: any) {
@@ -75,47 +73,130 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
             <div class="drop-zone-content">
                 {isUploading.value ? (
                     <>
-                        <span class="drop-icon spinning">🔄</span>
-                        <p>Uploading {progress.value}%</p>
+                        <div class="upload-spinner"></div>
+                        <p class="drop-text">Uploading...</p>
                     </>
                 ) : (
                     <>
-                        <span class="drop-icon">📁</span>
-                        <p>Drag & drop a log file here</p>
+                        <div class="drop-icon">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="17,8 12,3 7,8" />
+                                <line x1="12" y1="3" x2="12" y2="15" />
+                            </svg>
+                        </div>
+                        <p class="drop-text">Drag & drop a log file here</p>
                         <p class="drop-hint">or click to browse</p>
+                        <div class="drop-formats">Supports .log, .txt, .csv files up to 1GB</div>
                     </>
                 )}
             </div>
 
-            {error.value && <div class="upload-error">{error.value}</div>}
+            {error.value && (
+                <div class="upload-error">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    {error.value}
+                </div>
+            )}
 
             <style>{`
-        .drop-zone.dragging {
-          border-color: var(--accent-primary);
-          background: var(--bg-hover);
-        }
-        
-        .drop-zone.uploading {
-          cursor: wait;
-          opacity: 0.7;
-        }
+                .drop-zone {
+                    width: 100%;
+                    max-width: 320px;
+                    padding: var(--spacing-xl);
+                    border: 2px dashed var(--border-color);
+                    border-radius: var(--card-radius);
+                    background: var(--bg-secondary);
+                    cursor: pointer;
+                    transition: all var(--transition-fast);
+                    text-align: center;
+                }
 
-        .upload-error {
-          color: var(--accent-error);
-          font-size: 13px;
-          margin-top: var(--spacing-md);
-        }
+                .drop-zone:hover {
+                    border-color: var(--primary-accent);
+                    background: var(--bg-tertiary);
+                }
 
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
+                .drop-zone.dragging {
+                    border-color: var(--primary-accent);
+                    background: rgba(77, 182, 226, 0.1);
+                    border-style: solid;
+                }
 
-        .spinning {
-          animation: spin 1s linear infinite;
-          display: inline-block;
-        }
-      `}</style>
+                .drop-zone.uploading {
+                    cursor: wait;
+                    pointer-events: none;
+                }
+
+                .drop-zone-content {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                }
+
+                .drop-icon {
+                    color: var(--text-muted);
+                    transition: all var(--transition-fast);
+                }
+
+                .drop-zone:hover .drop-icon {
+                    color: var(--primary-accent);
+                    transform: translateY(-2px);
+                }
+
+                .drop-text {
+                    font-size: 14px;
+                    font-weight: 500;
+                    color: var(--text-primary);
+                    margin: 0;
+                }
+
+                .drop-hint {
+                    font-size: 12px;
+                    color: var(--text-muted);
+                    margin: 0;
+                }
+
+                .drop-formats {
+                    font-size: 10px;
+                    color: var(--text-muted);
+                    margin-top: var(--spacing-sm);
+                    padding: var(--spacing-xs) var(--spacing-sm);
+                    background: var(--bg-primary);
+                    border-radius: 4px;
+                }
+
+                .upload-spinner {
+                    width: 40px;
+                    height: 40px;
+                    border: 3px solid var(--border-color);
+                    border-top-color: var(--primary-accent);
+                    border-radius: 50%;
+                    animation: spin 0.8s linear infinite;
+                }
+
+                .upload-error {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-xs);
+                    color: var(--accent-error);
+                    font-size: 12px;
+                    margin-top: var(--spacing-md);
+                    padding: var(--spacing-sm);
+                    background: rgba(248, 81, 73, 0.1);
+                    border-radius: 4px;
+                }
+
+                @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+            `}</style>
         </div>
     );
 }

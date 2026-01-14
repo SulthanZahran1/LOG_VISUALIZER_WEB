@@ -5,6 +5,24 @@
 
 ---
 
+## Testing Infrastructure [COMPLETED]
+
+- [x] Install Vitest + Testing Library
+- [x] Install Playwright
+- [x] Install ESLint + TypeScript plugins
+- [x] Create `vitest.config.ts`
+- [x] Create `playwright.config.ts`
+- [x] Create `eslint.config.js`
+- [x] Create test setup file
+- [x] Write example unit tests (TimeAxisUtils, NavButton)
+- [x] Write example E2E tests (home, log-viewer)
+- [x] Create `/testing` workflow for agents
+- [x] Update TESTING_CHECKLIST.md
+- [x] Update CONTEXT.md
+- [x] Update CHANGELOG.md
+
+---
+
 ## Phase 1: Foundation + Log Table [COMPLETED]
 
 ### User Interface & Layout (UX Polish)
@@ -37,6 +55,7 @@
 ### Waveform Canvas
 - [x] Create WaveformCanvas component (HTML Canvas)
 - [x] High-DPI (retina) support
+- [x] Visual highlight on selection (cursor line)
 - [/] Virtual viewport (render visible time range only)
 
 ### Signal Renderers
@@ -47,25 +66,25 @@
 
 ### Time Axis
 - [/] Time labels (HH:MM:SS.mmm format)
-- [ ] Dynamic tick spacing based on zoom
+- [x] Dynamic tick spacing based on zoom
 - [ ] Click axis to jump to time
-- [ ] Cursor position readout
+- [x] Cursor position readout
 
 ### Grid Lines
 - [ ] Vertical grid lines (time intervals)
 - [ ] Alternating row backgrounds
 
 ### Zoom Controls
-- [ ] Zoom in/out buttons
-- [ ] Mouse wheel zoom (centered on cursor)
+- [x] Zoom in/out buttons
+- [x] Mouse wheel zoom (centered on cursor)
 - [ ] Zoom slider
-- [ ] Fit to window button
-- [ ] Zoom presets (1s, 10s, 1min, 10min, 1hr)
+- [x] Fit to window button
+- [x] Zoom presets (1s, 10s, 1min, 10min, 1hr)
 
 ### Pan Controls
-- [ ] Click and drag to pan
+- [ ] Click and drag to pan (mouse move)
 - [ ] Arrow keys navigation
-- [ ] Go to start/end buttons
+- [x] Go to start/end buttons
 - [ ] Smooth panning (no jank)
 
 ### Time Range Selection

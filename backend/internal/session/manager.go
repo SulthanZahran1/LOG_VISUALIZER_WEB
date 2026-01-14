@@ -90,6 +90,11 @@ func (m *Manager) runParse(sessionID, filePath string) {
 	state.Session.SignalCount = len(result.Signals)
 	state.Session.ProcessingTimeMs = elapsed
 
+	if result.TimeRange != nil {
+		state.Session.StartTime = result.TimeRange.Start.UnixMilli()
+		state.Session.EndTime = result.TimeRange.End.UnixMilli()
+	}
+
 	// Convert models.ParseError to non-pointer for the slice if needed
 	// (Check models/session.go:22 says []ParseError, but parser returns []*ParseError)
 	// Wait, internal/models/session.go:22: Errors []ParseError

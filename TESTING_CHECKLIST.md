@@ -1,6 +1,45 @@
 # PLC Log Visualizer Web - Testing Checklist
 
-This checklist covers manual testing for the web version features.
+This checklist covers testing for the web version features.
+
+---
+
+## Automated Testing (Run First!)
+
+**Always run automated tests before manual testing or browser agent testing.**
+
+### Test Hierarchy
+```
+1. TypeCheck   → npm run typecheck
+2. Lint        → npm run lint  
+3. Unit Tests  → npm run test
+4. E2E Tests   → npm run test:e2e
+5. Manual/Agent → Only for edge cases
+```
+
+### Quick Commands (run from `frontend/` directory)
+
+| Command | Purpose |
+|---------|---------|
+| `npm run typecheck` | Check TypeScript types |
+| `npm run lint` | Check code quality |
+| `npm run test` | Run unit tests |
+| `npm run test:watch` | Run tests in watch mode |
+| `npm run test:e2e` | Run Playwright E2E tests |
+| `npm run test:all` | Run all tests (typecheck + lint + unit + e2e) |
+
+### Test Files Location
+- **Unit tests**: `src/**/*.test.{ts,tsx}`
+- **E2E tests**: `e2e/*.spec.ts`
+- **Test setup**: `src/test/setup.ts`
+
+### When to Use Each Test Type
+
+| Test Type | Use For | Speed |
+|-----------|---------|-------|
+| Unit Tests | Pure functions, component logic, stores | ~1s |
+| E2E Tests | Page load, navigation, form submission | ~10s |
+| Browser Agent | Visual bugs, complex interactions, edge cases | ~30s+ token-intensive |
 
 ---
 

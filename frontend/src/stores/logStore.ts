@@ -1,4 +1,4 @@
-import { signal, computed, effect } from '@preact/signals-core';
+import { signal, computed, effect } from '@preact/signals';
 import { startParse, getParseStatus, getParseEntries } from '../api/client';
 import type { LogEntry, ParseSession } from '../models/types';
 import { saveSession, getSessions } from '../utils/persistence';
@@ -20,6 +20,7 @@ export const showChangedOnly = signal(false);
 // Layout
 export const isSplitHorizontal = signal(false);
 export const isSplitVertical = signal(false);
+export const activeTab = signal<'home' | 'log'>('home');
 export const signalTypeFilter = signal<string | null>(null);
 
 // Sync
@@ -189,4 +190,19 @@ export async function fetchEntries(page: number, pageSize: number) {
     } finally {
         isLoadingLog.value = false;
     }
+}
+
+// Debugging
+if (typeof window !== 'undefined') {
+    (window as any).logStore = {
+        currentSession,
+        logEntries,
+        totalEntries,
+        isLoadingLog,
+        searchQuery,
+        searchRegex,
+        searchCaseSensitive,
+        showChangedOnly,
+        isSyncEnabled
+    };
 }

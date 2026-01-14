@@ -19,6 +19,8 @@ type ParseSession struct {
 	EntryCount       int           `json:"entryCount,omitempty"`
 	SignalCount      int           `json:"signalCount,omitempty"`
 	ProcessingTimeMs int64         `json:"processingTimeMs,omitempty"`
+	StartTime        int64         `json:"startTime,omitempty"` // Unix ms
+	EndTime          int64         `json:"endTime,omitempty"`   // Unix ms
 	Errors           []ParseError  `json:"errors,omitempty"`
 }
 

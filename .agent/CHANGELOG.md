@@ -3,6 +3,64 @@
 > Append-only log. Add entries at the top as work is completed.
 > Format: `## YYYY-MM-DD: Summary`
 
+## 2026-01-14: Phase 2 — Waveform Toolbar & Cursor (Session 2)
+
+### Waveform Toolbar
+- Created `WaveformToolbar.tsx` with:
+  - Zoom controls (+/- buttons, fit to window)
+  - Zoom presets (1s, 10s, 1min, 10min, 1hr)
+  - Navigation (go to start/end buttons)
+  - Cursor time readout display
+- Integrated toolbar into `WaveformView.tsx`
+- Restructured view layout: Toolbar → Main (Sidebar + Canvas)
+
+### Cursor Enhancements
+- Added hover cursor line (dashed blue vertical line)
+- Added `hoverTime` signal for cursor position tracking
+- Cursor time displayed in toolbar readout
+
+### Bug Fixes
+- Fixed ESLint `RequestInit` and `FormData` not defined errors
+- Fixed Waveform Toolbar buttons being incorrectly disabled without data
+- Added missing browser globals to `eslint.config.js`
+- Fixed unused parameter warnings
+
+### Test Data
+- Created `test_sample.log` generation script (1200 entries)
+- verified zoom/pan functionality with larger dataset
+
+---
+
+## 2026-01-14: Testing Infrastructure + UI/UX Overhaul
+
+### Testing Infrastructure
+- Installed Vitest + Testing Library for unit testing
+- Installed Playwright for E2E testing
+- Installed ESLint with TypeScript + React Hooks plugins
+- Created configuration files:
+  - `vitest.config.ts` - Unit test config with happy-dom
+  - `playwright.config.ts` - E2E config for Chromium
+  - `eslint.config.js` - Flat config with TypeScript
+  - `src/test/setup.ts` - Test setup with mocks
+- Added example tests:
+  - `TimeAxisUtils.test.ts` - 9 unit tests
+  - `NavButton.test.tsx` - 6 component tests
+  - `e2e/home.spec.ts` - 5 E2E tests
+  - `e2e/log-viewer.spec.ts` - 4 E2E tests
+- Updated `package.json` with test scripts
+- Created `.agent/workflows/testing.md` workflow
+
+### UI/UX Overhaul
+- Consolidated conflicting CSS themes into unified dark industrial theme
+- Updated all major components to use consistent dark styling:
+  - `app.tsx`, `WaveformCanvas.tsx`, `SignalSidebar.tsx`
+  - `LogTable.css`, `HomeView.tsx`, `NavButton.tsx`
+  - `FileUpload.tsx`, `RecentFiles.tsx`
+- Fixed waveform canvas to use dark background with bright green signals
+- Replaced emoji icons with SVG icons throughout
+
+---
+
 ## 2026-01-14: Phase 2 — Waveform Canvas Implementation
 
 - Implemented `WaveformCanvas` using HTML5 Canvas for high-performance signal visualization.
@@ -34,9 +92,8 @@
   - `PLCTabParser`: Tab-delimited PLC logs.
   - `MCSLogParser`: AMHS/MCS logs with dual-ID support and multi-entry lines.
   - `CSVSignalParser`: Simple CSV-formatted signal logs.
-- Implemented `Registry` in `backend/internal/parser/registry.go` for auto-detection and sniffing of log formats.
-- Verified all parsers with a comprehensive test suite (`backend/internal/parser/parser_test.go`).
-- Optimized parsers with fast-path string splitting where applicable.
+- Implemented `Registry` in `backend/internal/parser/registry.go` for auto-detection.
+- Verified all parsers with a comprehensive test suite.
 
 ---
 
@@ -55,15 +112,12 @@
 - Created root Makefile (`make dev`)
 - Verified both servers work and communicate
 
-**Next**: Implement file upload and parser
-
 ---
 
 ## 2026-01-13: Project Documentation Setup
 
-- Created `AGENTS.md` with AI assistant guidelines
 - Created `CONTEXT.md` with session context and architecture
-- Created `TESTING_CHECKLIST.md` with manual test cases
+- Created `TESTING_CHECKLIST.md` with test cases
 - Created `.agent/` folder structure:
   - `TODO.md` - Task tracking
   - `CHANGELOG.md` - This file
@@ -71,5 +125,3 @@
 - Defined 6-phase development roadmap
 - Documented key types (Go and TypeScript)
 - Established code conventions
-
-**Next**: Begin Phase 1 - Initialize Go module and frontend project
