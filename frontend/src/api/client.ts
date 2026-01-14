@@ -3,7 +3,7 @@
  * Base URL configured for dev server proxy
  */
 
-import type { FileInfo, ParseSession, HealthResponse } from '../models/types';
+import type { FileInfo, ParseSession, HealthResponse, LogEntry } from '../models/types';
 
 const API_BASE = '/api';
 
@@ -88,10 +88,17 @@ export async function getParseStatus(sessionId: string): Promise<ParseSession> {
 }
 
 export interface PaginatedEntries {
-    entries: unknown[]; // Will be typed later
+    entries: LogEntry[];
     total: number;
     page: number;
     pageSize: number;
+}
+
+function transformEntry(e: any): LogEntry {
+    return {
+        ...e,
+        timestamp: new Date(e.timestamp).getTime()
+    };
 }
 
 export async function getParseEntries(
@@ -99,17 +106,22 @@ export async function getParseEntries(
     page: number = 1,
     pageSize: number = 100
 ): Promise<PaginatedEntries> {
-    return request<PaginatedEntries>(
+    const res = await request<any>(
         `/parse/${sessionId}/entries?page=${page}&pageSize=${pageSize}`
     );
+    return {
+        ...res,
+        entries: res.entries.map(transformEntry)
+    };
 }
 
 export async function getParseChunk(
     sessionId: string,
     start: number,
     end: number
-): Promise<unknown> {
-    return request<unknown>(
+): Promise<LogEntry[]> {
+    const res = await request<any[]>(
         `/parse/${sessionId}/chunk?start=${start}&end=${end}`
     );
+    return res.map(transformEntry);
 }

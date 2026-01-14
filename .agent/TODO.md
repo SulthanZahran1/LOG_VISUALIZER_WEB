@@ -35,18 +35,18 @@
 ## Phase 2: Waveform/Timing Diagram + Filtering
 
 ### Waveform Canvas
-- [ ] Create WaveformCanvas component (HTML Canvas)
-- [ ] High-DPI (retina) support
-- [ ] Virtual viewport (render visible time range only)
+- [x] Create WaveformCanvas component (HTML Canvas)
+- [x] High-DPI (retina) support
+- [/] Virtual viewport (render visible time range only)
 
 ### Signal Renderers
-- [ ] BooleanRenderer (high/low waveform)
-- [ ] StateRenderer (boxes with value text)
+- [x] BooleanRenderer (high/low waveform)
+- [x] StateRenderer (boxes with value text)
 - [ ] Transition markers at state changes
 - [ ] Color coding per unique value
 
 ### Time Axis
-- [ ] Time labels (HH:MM:SS.mmm format)
+- [/] Time labels (HH:MM:SS.mmm format)
 - [ ] Dynamic tick spacing based on zoom
 - [ ] Click axis to jump to time
 - [ ] Cursor position readout
@@ -94,7 +94,7 @@
 - [ ] Color coding by device
 - [ ] Click label to focus signal
 - [ ] "Show changed only" toggle in toolbar
-- [ ] Sync waveform cursor with Log Table selection
+- [x] Sync waveform cursor with Log Table selection
 - [ ] Right-click context menu (hide, show only, etc.)
 
 ---

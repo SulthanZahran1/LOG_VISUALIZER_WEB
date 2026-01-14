@@ -14,6 +14,7 @@ import {
     signalTypeFilter,
     fetchEntries
 } from '../../stores/logStore';
+import { toggleSignal } from '../../stores/waveformStore';
 import type { LogEntry } from '../../models/types';
 import './LogTable.css';
 
@@ -107,6 +108,23 @@ export function LogTable() {
             .join('\n');
 
         navigator.clipboard.writeText(text);
+        contextMenu.value = { ...contextMenu.value, visible: false };
+    };
+
+    const handleAddToWaveform = () => {
+        const entries = filteredEntries.value;
+        const processed = new Set<string>();
+
+        Array.from(selectedRows.value).forEach(idx => {
+            const e = entries[idx];
+            if (e) {
+                const key = `${e.deviceId}::${e.signalName}`;
+                if (!processed.has(key)) {
+                    toggleSignal(e.deviceId, e.signalName);
+                    processed.add(key);
+                }
+            }
+        });
         contextMenu.value = { ...contextMenu.value, visible: false };
     };
 
@@ -246,6 +264,7 @@ export function LogTable() {
 
             {contextMenu.value.visible && (
                 <div className="context-menu" style={{ top: contextMenu.value.y, left: contextMenu.value.x }}>
+                    <div className="menu-item" onClick={handleAddToWaveform}>Add to Waveform</div>
                     <div className="menu-item" onClick={handleCopy}>Copy Selected Rows</div>
                     <div className="menu-item" onClick={() => { selectedRows.value = new Set(); contextMenu.value = { ...contextMenu.value, visible: false }; }}>Clear Selection</div>
                 </div>

@@ -58,9 +58,11 @@
 
 ## Current Phase
 
-**Phase: 1 — Foundation + Log Table (In Progress)**
+## Current Phase
 
-Scaffold complete. Next: File upload, parser, log table.
+**Phase: 2 — Waveform/Timing Diagram + Filtering (In Progress)**
+
+Core Waveform Canvas and signal rendering are implemented. Next: Advanced interaction (time axis labels, precise cursor) and filtering.
 
 ---
 
@@ -84,10 +86,10 @@ Scaffold complete. Next: File upload, parser, log table.
 
 ## What's Next
 
-1. Implement file upload endpoint and component
-2. Build Log Table with virtual scrolling
-3. Implement Log Table with virtual scrolling
-4. Add session persistence with IndexedDB
+1. Implement Time Axis labels and ticks
+2. Refine Waveform interaction (cursor readout, sticky selection)
+3. Implement Signal Filtering (regex, type) for Waveform
+4. Add "Jump to Time" controls
 
 ---
 
@@ -95,8 +97,8 @@ Scaffold complete. Next: File upload, parser, log table.
 
 | Phase | Features | Status |
 |:-----:|----------|:------:|
-| 1 | File upload, recent files, Log Table, session persistence | In Progress |
-| 2 | Waveform/Timing Diagram, Signal Filtering | Not started |
+| 1 | File upload, recent files, Log Table, session persistence | Completed ✅ |
+| 2 | Waveform/Timing Diagram, Signal Filtering | In Progress |
 | 3 | Multi-View Split Panes, Tab management | Not started |
 | 4 | Map Viewer, Carrier Tracking | Not started |
 | 4.5 | Playback Feature (time scrubbing, play/pause) | Not started |

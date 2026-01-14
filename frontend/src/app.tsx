@@ -2,8 +2,9 @@ import { useSignal } from '@preact/signals'
 import { useEffect } from 'preact/hooks'
 import { checkHealth, getRecentFiles, deleteFile } from './api/client'
 import { LogTable } from './components/log/LogTable'
+import { WaveformView } from './components/waveform/WaveformView'
 import { SplitPane } from './components/layout/SplitPane'
-import { currentSession, startParsing, logError, initLogStore, isSplitHorizontal, isSplitVertical, isSyncEnabled, syncScrollTop } from './stores/logStore'
+import { currentSession, startParsing, logError, initLogStore, isSplitHorizontal, isSplitVertical, isSyncEnabled } from './stores/logStore'
 import { HomeView } from './views/HomeView'
 import type { FileInfo } from './models/types'
 
@@ -144,7 +145,7 @@ export function App() {
             return (
               <SplitPane direction={isSplitHorizontal.value ? 'horizontal' : 'vertical'} minSize={200}>
                 {content}
-                <LogTable />
+                <WaveformView />
               </SplitPane>
             );
           }

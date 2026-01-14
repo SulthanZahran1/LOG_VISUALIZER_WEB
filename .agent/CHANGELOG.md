@@ -3,6 +3,27 @@
 > Append-only log. Add entries at the top as work is completed.
 > Format: `## YYYY-MM-DD: Summary`
 
+## 2026-01-14: Phase 2 — Waveform Canvas Implementation
+
+- Implemented `WaveformCanvas` using HTML5 Canvas for high-performance signal visualization.
+- Created `waveformStore` to manage viewport state (zoom, pan, time range) and signal selection.
+- Added `SignalSidebar` for managing displayed signals.
+- Integrated Waveform View into the `SplitPane` layout system.
+- Added "Add to Waveform" context menu action in the Log Table.
+- Implemented `BooleanRenderer` and `StateRenderer` for different signal types.
+- Fixed backend API timestamp compatibility (ISO 8601 -> Unix ms) in frontend client.
+
+---
+
+## 2026-01-13: Phase 1 — Foundation + Log Table Complete ✅
+
+- Finalized Log Table with virtual scrolling and fixed row heights.
+- Implemented regex search, case-sensitivity, and "Show Changed Only" filters.
+- Integrated flexible layout engine (Split Panes) and session-based tab navigation.
+- Added IndexedDB persistence for log sessions and layout configuration.
+- Verified all core log parsers (PLC Debug, PLC Tab, MCS, CSV) in Go.
+- Implemented Help overlay and universal header.
+
 ---
 
 ## 2026-01-13: Log Parsers Implementation (Python -> Go)
