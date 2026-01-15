@@ -30,6 +30,7 @@ func main() {
 	// Middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	e.Use(middleware.BodyLimit("1G"))
 
 	// CORS configuration for frontend dev server
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
@@ -46,9 +47,12 @@ func main() {
 
 	// File management
 	apiGroup.POST("/files/upload", h.HandleUploadFile)
+	apiGroup.POST("/files/upload/chunk", h.HandleUploadChunk)
+	apiGroup.POST("/files/upload/complete", h.HandleCompleteUpload)
 	apiGroup.GET("/files/recent", h.HandleRecentFiles)
 	apiGroup.GET("/files/:id", h.HandleGetFile)
 	apiGroup.DELETE("/files/:id", h.HandleDeleteFile)
+	apiGroup.PUT("/files/:id", h.HandleRenameFile)
 
 	// Parse management
 	apiGroup.POST("/parse", h.HandleStartParse)

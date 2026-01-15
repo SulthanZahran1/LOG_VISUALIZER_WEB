@@ -19,6 +19,8 @@ export interface MapObject {
 export interface MapLayout {
     version: string;
     objects: Record<string, MapObject>;
+    id?: string;
+    name?: string;
 }
 
 // State

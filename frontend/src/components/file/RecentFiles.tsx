@@ -1,12 +1,37 @@
+
 import type { FileInfo } from '../../models/types';
+import { useState } from 'preact/hooks';
 
 interface RecentFilesProps {
   files: FileInfo[];
   onFileSelect: (file: FileInfo) => void;
   onFileDelete: (id: string) => void;
+  onFileRename?: (id: string, newName: string) => Promise<void>;
 }
 
-export function RecentFiles({ files, onFileSelect, onFileDelete }: RecentFilesProps) {
+export function RecentFiles({ files, onFileSelect, onFileDelete, onFileRename }: RecentFilesProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+
+  const handleStartEdit = (e: Event, file: FileInfo) => {
+    e.stopPropagation();
+    setEditingId(file.id);
+    setEditName(file.name);
+  };
+
+  const handleSaveEdit = async (e: Event) => {
+    e.stopPropagation();
+    if (editingId && onFileRename && editName.trim()) {
+      await onFileRename(editingId, editName.trim());
+      setEditingId(null);
+    }
+  };
+
+  const handleCancelEdit = (e: Event) => {
+    e.stopPropagation();
+    setEditingId(null);
+  };
+
   const formatSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -46,7 +71,7 @@ export function RecentFiles({ files, onFileSelect, onFileDelete }: RecentFilesPr
           </div>
         ) : (
           files.map((file) => (
-            <div key={file.id} class="file-item" onClick={() => onFileSelect(file)}>
+            <div key={file.id} class={`file-item ${editingId === file.id ? 'editing' : ''}`} onClick={() => !editingId && onFileSelect(file)}>
               <div class="file-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -54,21 +79,65 @@ export function RecentFiles({ files, onFileSelect, onFileDelete }: RecentFilesPr
                 </svg>
               </div>
               <div class="file-info">
-                <span class="file-name">{file.name}</span>
-                <span class="file-meta">
-                  {formatSize(file.size)} • {formatDate(file.uploadedAt)}
-                </span>
+                {editingId === file.id ? (
+                  <div class="edit-mode" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="text"
+                      value={editName}
+                      onInput={(e) => setEditName((e.target as HTMLInputElement).value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveEdit(e);
+                        if (e.key === 'Escape') handleCancelEdit(e);
+                      }}
+                      autoFocus
+                    />
+                    <button class="btn-icon btn-save" onClick={handleSaveEdit} title="Save">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </button>
+                    <button class="btn-icon btn-cancel" onClick={handleCancelEdit} title="Cancel">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <span class="file-name">{file.name}</span>
+                    <span class="file-meta">
+                      {formatSize(file.size)} • {formatDate(file.uploadedAt)}
+                    </span>
+                  </>
+                )}
               </div>
-              <button
-                class="btn-delete"
-                onClick={(e) => { e.stopPropagation(); onFileDelete(file.id); }}
-                title="Delete file"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
+              {!editingId && (
+                <div class="file-actions">
+                  {onFileRename && (
+                    <button
+                      class="btn-action"
+                      onClick={(e) => handleStartEdit(e, file)}
+                      title="Rename file"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                  )}
+                  <button
+                    class="btn-action btn-delete"
+                    onClick={(e) => { e.stopPropagation(); onFileDelete(file.id); }}
+                    title="Delete file"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
           ))
         )}
@@ -124,13 +193,14 @@ export function RecentFiles({ files, onFileSelect, onFileDelete }: RecentFilesPr
                     border-bottom: 1px solid var(--border-color);
                     cursor: pointer;
                     transition: background var(--transition-fast);
+                    height: 48px;
                 }
 
                 .file-item:last-child {
                     border-bottom: none;
                 }
 
-                .file-item:hover {
+                .file-item:hover, .file-item.editing {
                     background: var(--bg-hover);
                 }
 
@@ -149,6 +219,7 @@ export function RecentFiles({ files, onFileSelect, onFileDelete }: RecentFilesPr
                     gap: 2px;
                     min-width: 0;
                     flex: 1;
+                    justify-content: center;
                 }
 
                 .file-name {
@@ -165,27 +236,82 @@ export function RecentFiles({ files, onFileSelect, onFileDelete }: RecentFilesPr
                     color: var(--text-muted);
                 }
 
-                .btn-delete {
+                .file-actions {
+                    display: flex;
+                    gap: 4px;
+                    opacity: 0;
+                    transition: opacity var(--transition-fast);
+                }
+
+                .file-item:hover .file-actions {
+                    opacity: 1;
+                }
+
+                .btn-action {
                     background: transparent;
                     border: none;
                     color: var(--text-muted);
                     cursor: pointer;
                     padding: 6px;
                     border-radius: 4px;
-                    transition: all var(--transition-fast);
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    opacity: 0;
+                    transition: all var(--transition-fast);
                 }
 
-                .file-item:hover .btn-delete {
-                    opacity: 1;
+                .btn-action:hover {
+                    color: var(--text-primary);
+                    background: var(--bg-tertiary);
                 }
 
-                .btn-delete:hover {
+                .btn-action.btn-delete:hover {
                     color: var(--accent-error);
                     background: rgba(248, 81, 73, 0.15);
+                }
+
+                .edit-mode {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    width: 100%;
+                }
+
+                .edit-mode input {
+                    flex: 1;
+                    min-width: 0;
+                    background: var(--bg-primary);
+                    border: 1px solid var(--primary-accent);
+                    border-radius: 2px;
+                    padding: 2px 4px;
+                    color: var(--text-primary);
+                    font-size: 13px;
+                }
+
+                .btn-icon {
+                    background: transparent;
+                    border: none;
+                    cursor: pointer;
+                    padding: 4px;
+                    border-radius: 2px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+
+                .btn-save {
+                    color: var(--accent-success);
+                }
+                .btn-save:hover {
+                    background: rgba(46, 160, 67, 0.15);
+                }
+
+                .btn-cancel {
+                    color: var(--text-muted);
+                }
+                .btn-cancel:hover {
+                    background: var(--bg-tertiary);
+                    color: var(--text-primary);
                 }
             `}</style>
     </div>

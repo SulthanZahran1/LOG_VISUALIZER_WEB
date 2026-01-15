@@ -19,7 +19,10 @@ type Store interface {
 	Get(id string) (*models.FileInfo, error)
 	List(limit int) ([]*models.FileInfo, error)
 	Delete(id string) error
+	Rename(id string, newName string) (*models.FileInfo, error)
 	GetFilePath(id string) (string, error)
+	SaveChunk(uploadID string, chunkIndex int, r io.Reader) error
+	CompleteChunkedUpload(uploadID string, name string, totalChunks int) (*models.FileInfo, error)
 }
 
 // LocalStore implements Store using the local filesystem.
@@ -129,6 +132,20 @@ func (s *LocalStore) Delete(id string) error {
 	return nil
 }
 
+// Rename updates the display name of a file.
+func (s *LocalStore) Rename(id string, newName string) (*models.FileInfo, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	info, ok := s.files[id]
+	if !ok {
+		return nil, fmt.Errorf("file not found: %s", id)
+	}
+
+	info.Name = newName
+	return info, nil
+}
+
 // GetFilePath returns the absolute path to a file.
 func (s *LocalStore) GetFilePath(id string) (string, error) {
 	s.mu.RLock()
@@ -139,4 +156,73 @@ func (s *LocalStore) GetFilePath(id string) (string, error) {
 	}
 
 	return filepath.Join(s.uploadDir, id), nil
+}
+
+// SaveChunk saves a single chunk to a temporary location.
+func (s *LocalStore) SaveChunk(uploadID string, chunkIndex int, r io.Reader) error {
+	chunkDir := filepath.Join(s.uploadDir, "chunks", uploadID)
+	if err := os.MkdirAll(chunkDir, 0755); err != nil {
+		return fmt.Errorf("creating chunk directory: %w", err)
+	}
+
+	path := filepath.Join(chunkDir, fmt.Sprintf("chunk_%d", chunkIndex))
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("creating chunk file: %w", err)
+	}
+	defer f.Close()
+
+	_, err = io.Copy(f, r)
+	if err != nil {
+		return fmt.Errorf("writing chunk: %w", err)
+	}
+
+	return nil
+}
+
+// CompleteChunkedUpload assembles all chunks into a final file.
+func (s *LocalStore) CompleteChunkedUpload(uploadID string, name string, totalChunks int) (*models.FileInfo, error) {
+	id := uuid.New().String()
+	finalPath := filepath.Join(s.uploadDir, id)
+	chunkDir := filepath.Join(s.uploadDir, "chunks", uploadID)
+
+	out, err := os.Create(finalPath)
+	if err != nil {
+		return nil, fmt.Errorf("creating final file: %w", err)
+	}
+	defer out.Close()
+
+	var totalSize int64
+	for i := 0; i < totalChunks; i++ {
+		chunkPath := filepath.Join(chunkDir, fmt.Sprintf("chunk_%d", i))
+		in, err := os.Open(chunkPath)
+		if err != nil {
+			return nil, fmt.Errorf("opening chunk %d: %w", i, err)
+		}
+
+		n, err := io.Copy(out, in)
+		in.Close()
+		if err != nil {
+			return nil, fmt.Errorf("copying chunk %d: %w", i, err)
+		}
+		totalSize += n
+	}
+
+	// Metadata
+	info := &models.FileInfo{
+		ID:         id,
+		Name:       name,
+		Size:       totalSize,
+		UploadedAt: time.Now(),
+		Status:     "uploaded",
+	}
+
+	s.mu.Lock()
+	s.files[id] = info
+	s.mu.Unlock()
+
+	// Cleanup chunks
+	os.RemoveAll(chunkDir)
+
+	return info, nil
 }

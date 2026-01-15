@@ -1,31 +1,44 @@
 import { useSignal } from '@preact/signals';
-import { uploadFile } from '../../api/client';
+import { uploadFile, uploadFileChunked } from '../../api/client';
 import type { FileInfo } from '../../models/types';
 
 interface FileUploadProps {
     onUploadSuccess: (file: FileInfo) => void;
+    uploadFn?: (file: File) => Promise<FileInfo>;
+    accept?: string;
+    maxSize?: number; // in bytes
 }
 
-export function FileUpload({ onUploadSuccess }: FileUploadProps) {
+export function FileUpload({
+    onUploadSuccess,
+    uploadFn = uploadFile,
+    accept,
+    maxSize = 1024 * 1024 * 1024 // 1GB default
+}: FileUploadProps) {
     const isDragging = useSignal(false);
     const isUploading = useSignal(false);
+    const uploadProgress = useSignal(0);
     const error = useSignal<string | null>(null);
-    const progress = useSignal(0);
     const showPaste = useSignal(false);
     const pasteContent = useSignal('');
 
     const handleFile = async (file: File) => {
-        if (file.size > 1024 * 1024 * 1024) {
-            error.value = 'File is too large (max 1GB)';
+        if (file.size > maxSize) {
+            error.value = `File is too large (max ${Math.floor(maxSize / (1024 * 1024 * 1024))}GB)`;
             return;
         }
 
         isUploading.value = true;
+        uploadProgress.value = 0;
         error.value = null;
-        progress.value = 0;
 
         try {
-            const info = await uploadFile(file);
+            // Use chunked upload for files > 5MB
+            const CHUNK_THRESHOLD = 5 * 1024 * 1024;
+            const info = file.size > CHUNK_THRESHOLD
+                ? await uploadFileChunked(file, (p) => uploadProgress.value = p)
+                : await uploadFn(file);
+
             onUploadSuccess(info);
             // Reset state
             showPaste.value = false;
@@ -34,14 +47,19 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
             error.value = err instanceof Error ? err.message : 'Upload failed';
         } finally {
             isUploading.value = false;
+            uploadProgress.value = 0;
         }
     };
 
     const processFile = (file: File) => {
-        // User requested "read the file and paste it" behavior for all file interactions
-        // This bypasses potential issues with direct OS file handle uploads
+        // For large files, skip the "read as text" logic as it crashes the browser
+        const LARGE_FILE_LIMIT = 50 * 1024 * 1024; // 50MB
+        if (file.size > LARGE_FILE_LIMIT) {
+            handleFile(file);
+            return;
+        }
 
-        // Show reading state if needed, or just leverage existing uploading state
+        // Keep the "read and paste" behavior only for smaller files if requested
         isUploading.value = true;
         error.value = null;
 
@@ -49,17 +67,14 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
         reader.onload = (e) => {
             const content = e.target?.result as string;
             if (content) {
-                // Create a new File from the content (simulating a paste)
                 const blob = new Blob([content], { type: 'text/plain' });
                 const newFile = new File([blob], file.name, { type: 'text/plain' });
                 handleFile(newFile);
             } else {
-                error.value = 'Failed to read file content';
-                isUploading.value = false;
+                handleFile(file); // Fallback to direct upload
             }
         };
         reader.onerror = () => {
-            console.warn('FileReader failed, attempting direct upload fallback');
             handleFile(file);
         };
         reader.readAsText(file);
@@ -116,13 +131,19 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
                 style={{ display: 'none' }}
                 onChange={onFileSelect}
                 disabled={isUploading.value}
+                accept={accept}
             />
 
             <div class="drop-zone-content">
                 {isUploading.value ? (
                     <>
                         <div class="upload-spinner"></div>
-                        <p class="drop-text">Uploading...</p>
+                        <p class="drop-text">Uploading... {uploadProgress.value > 0 ? `${uploadProgress.value}%` : ''}</p>
+                        {uploadProgress.value > 0 && (
+                            <div class="progress-bar-container">
+                                <div class="progress-bar" style={{ width: `${uploadProgress.value}%` }}></div>
+                            </div>
+                        )}
                     </>
                 ) : showPaste.value ? (
                     <div class="paste-area" onClick={(e) => e.stopPropagation()}>
@@ -146,9 +167,12 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
                                 <line x1="12" y1="3" x2="12" y2="15" />
                             </svg>
                         </div>
-                        <p class="drop-text">Drag & drop a log file here</p>
+                        <p class="drop-text">Drag & drop a file here</p>
                         <p class="drop-hint">or click to browse</p>
-                        <div class="drop-formats">Supports .log, .txt, .csv files up to 1GB</div>
+                        <div class="drop-formats">
+                            {accept ? `Supports ${accept.split(',').join(', ')}` : 'Supports .log, .txt, .csv files'}
+                            {maxSize ? ` · up to ${Math.floor(maxSize / (1024 * 1024 * 1024))}GB` : ''}
+                        </div>
                         <div class="paste-option" onClick={(e) => {
                             e.stopPropagation();
                             showPaste.value = true;
@@ -259,6 +283,21 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
                     padding: var(--spacing-sm);
                     background: rgba(248, 81, 73, 0.1);
                     border-radius: 4px;
+                }
+
+                .progress-bar-container {
+                    width: 80%;
+                    height: 4px;
+                    background: var(--bg-primary);
+                    border-radius: 2px;
+                    margin-top: var(--spacing-sm);
+                    overflow: hidden;
+                }
+
+                .progress-bar {
+                    height: 100%;
+                    background: var(--primary-accent);
+                    transition: width 0.3s ease;
                 }
 
                 .paste-option {

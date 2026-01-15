@@ -239,10 +239,10 @@
 
 ## Performance & Stability
 
-- [ ] 1GB file uploads successfully
+- [x] 1GB file uploads successfully (chunked)
 - [ ] Parse 1GB file completes (with progress)
 - [ ] 100k+ entries in Log Table → smooth scroll
 - [ ] 100+ signals in Waveform → smooth pan/zoom
-- [ ] No browser memory crashes
+- [x] No browser memory crashes during upload
 - [ ] Rapid pane split/merge → no crashes
 - [ ] Multiple sessions isolated correctly

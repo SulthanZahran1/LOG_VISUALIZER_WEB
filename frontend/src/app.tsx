@@ -1,6 +1,6 @@
 import { useSignal } from '@preact/signals'
 import { useEffect } from 'preact/hooks'
-import { checkHealth, getRecentFiles, deleteFile } from './api/client'
+import { checkHealth, getRecentFiles, deleteFile, renameFile } from './api/client'
 import { LogTable } from './components/log/LogTable'
 import { WaveformView } from './components/waveform/WaveformView'
 import { currentSession, startParsing, logError, initLogStore, isSyncEnabled, activeTab, openViews, openView, closeView, type ViewType } from './stores/logStore'
@@ -57,6 +57,15 @@ export function App() {
       recentFiles.value = recentFiles.value.filter(f => f.id !== id)
     } catch (err) {
       console.error('Failed to delete file', err)
+    }
+  }
+
+  const handleRename = async (id: string, newName: string) => {
+    try {
+      await renameFile(id, newName)
+      await fetchFiles()
+    } catch (err) {
+      console.error('Failed to rename file', err)
     }
   }
 
@@ -199,6 +208,7 @@ export function App() {
             onUploadSuccess={handleUploadSuccess}
             onFileSelect={handleFileSelect}
             onFileDelete={handleFileDelete}
+            onFileRename={handleRename}
             onOpenView={handleOpenView}
           />
         )}

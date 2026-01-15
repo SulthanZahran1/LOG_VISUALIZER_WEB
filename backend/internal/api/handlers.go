@@ -84,6 +84,28 @@ func (h *Handler) HandleDeleteFile(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+// HandleRenameFile updates the name of a file.
+func (h *Handler) HandleRenameFile(c echo.Context) error {
+	id := c.Param("id")
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if req.Name == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name is required"})
+	}
+
+	info, err := h.store.Rename(id, req.Name)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "file not found or could not be renamed"})
+	}
+
+	return c.JSON(http.StatusOK, info)
+}
+
 // HandleStartParse starts a parsing session for a file.
 func (h *Handler) HandleStartParse(c echo.Context) error {
 	var req struct {
@@ -184,6 +206,12 @@ func (h *Handler) HandleGetMapLayout(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]interface{}{"objects": map[string]interface{}{}})
 	}
 
+	// Get file info for metadata
+	info, err := h.store.Get(h.currentMapID)
+	if err != nil {
+		// Log error but proceed? Or fail. Let's fail safe.
+	}
+
 	path, err := h.store.GetFilePath(h.currentMapID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get map file path"})
@@ -194,7 +222,18 @@ func (h *Handler) HandleGetMapLayout(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to parse map layout: %v", err)})
 	}
 
-	return c.JSON(http.StatusOK, layout)
+	response := map[string]interface{}{
+		"version": layout.Version,
+		"objects": layout.Objects,
+		"id":      h.currentMapID,
+		"name":    "Unknown Map",
+	}
+
+	if info != nil {
+		response["name"] = info.Name
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
 // HandleUploadMapLayout accepts a map XML file and sets it as the active layout.
@@ -227,4 +266,61 @@ func (h *Handler) HandleGetValidationRules(c echo.Context) error {
 // HandleUpdateValidationRules updates placeholder validation rules.
 func (h *Handler) HandleUpdateValidationRules(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "updated"})
+}
+
+// HandleUploadChunk accepts a single chunk of a file.
+func (h *Handler) HandleUploadChunk(c echo.Context) error {
+	uploadID := c.FormValue("uploadId")
+	chunkIndexStr := c.FormValue("chunkIndex")
+
+	if uploadID == "" || chunkIndexStr == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "uploadId and chunkIndex are required"})
+	}
+
+	chunkIndex, err := strconv.Atoi(chunkIndexStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid chunkIndex"})
+	}
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing file chunk in request"})
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to open chunk"})
+	}
+	defer src.Close()
+
+	err = h.store.SaveChunk(uploadID, chunkIndex, src)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save chunk: %v", err)})
+	}
+
+	return c.NoContent(http.StatusAccepted)
+}
+
+// HandleCompleteUpload assembles the uploaded chunks.
+func (h *Handler) HandleCompleteUpload(c echo.Context) error {
+	var req struct {
+		UploadID    string `json:"uploadId"`
+		Name        string `json:"name"`
+		TotalChunks int    `json:"totalChunks"`
+	}
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if req.UploadID == "" || req.Name == "" || req.TotalChunks <= 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "uploadId, name, and totalChunks are required"})
+	}
+
+	info, err := h.store.CompleteChunkedUpload(req.UploadID, req.Name, req.TotalChunks)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to complete upload: %v", err)})
+	}
+
+	return c.JSON(http.StatusCreated, info)
 }

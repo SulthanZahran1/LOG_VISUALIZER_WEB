@@ -100,7 +100,7 @@ Phase 3 is currently in progress. The backend XML parser, API endpoints, and ini
 - [x] Backend scaffolded (Go module, Echo server, models)
 - [x] Frontend scaffolded (Vite+Preact, types, API client)
 - [x] Log parsers ported from Python to Go (PLC, MCS, CSV)
-- [x] File upload/management API and UI (drag-drop, browse, paste content)
+- [x] File upload/management API and UI (drag-drop, browse, chunked upload for 1GB+ files)
 - [x] Log Table with virtual scroll, filtering, sorting
 - [x] Waveform Canvas with signal rendering
 - [x] UI/UX overhaul (unified dark industrial theme)
@@ -170,7 +170,9 @@ Phase 3 is currently in progress. The backend XML parser, API endpoints, and ini
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/files/upload` | Upload log file (1GB max) |
+| POST | `/api/files/upload` | Upload log file (regular single POST) |
+| POST | `/api/files/upload/chunk` | Upload file chunk (5MB chunks) |
+| POST | `/api/files/upload/complete` | Complete chunked upload |
 | GET | `/api/files/recent` | List 20 recent files |
 | GET | `/api/files/:id` | Get file info |
 | DELETE | `/api/files/:id` | Remove file |

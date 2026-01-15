@@ -3,6 +3,20 @@
 > Append-only log. Add entries at the top as work is completed.
 > Format: `## YYYY-MM-DD: Summary`
 
+## 2026-01-15: Chunked Upload Implementation (1GB+ Support)
+
+### Backend
+- Implemented `Store` interface methods `SaveChunk` and `CompleteChunkedUpload` in `LocalStore`.
+- Added `POST /api/files/upload/chunk` and `POST /api/files/upload/complete` endpoints.
+- Increased server body limit to 1GB using Echo middleware.
+- Added integration tests for chunk assembly flow in `handlers_test.go`.
+
+### Frontend
+- Implemented `uploadFileChunked` in `client.ts` with 5MB chunking and progress reporting.
+- Refactored `FileUpload.tsx` to use chunked uploads for files > 5MB.
+- Optimized memory usage by removing unnecessary `FileReader.readAsText` for large files.
+- Added visual progress bar to the upload UI.
+
 ## 2026-01-15: File Upload Improvements
 - Updated Drag & Drop handling to read file content client-side (`FileReader`) before upload.
   - Fixes issues where direct file uploads are blocked by local policies.

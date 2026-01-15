@@ -9,10 +9,11 @@ interface HomeViewProps {
     onUploadSuccess: (file: FileInfo) => void
     onFileSelect: (file: FileInfo) => void
     onFileDelete: (id: string) => void
+    onFileRename: (id: string, newName: string) => Promise<void>
     onOpenView: (viewType: ViewType) => void
 }
 
-export function HomeView({ recentFiles, onUploadSuccess, onFileSelect, onFileDelete, onOpenView }: HomeViewProps) {
+export function HomeView({ recentFiles, onUploadSuccess, onFileSelect, onFileDelete, onFileRename, onOpenView }: HomeViewProps) {
     const handleNavigation = (view: ViewType) => {
         onOpenView(view);
     };
@@ -50,6 +51,7 @@ export function HomeView({ recentFiles, onUploadSuccess, onFileSelect, onFileDel
                                     files={recentFiles}
                                     onFileSelect={onFileSelect}
                                     onFileDelete={onFileDelete}
+                                    onFileRename={onFileRename}
                                 />
                             </div>
                         </div>

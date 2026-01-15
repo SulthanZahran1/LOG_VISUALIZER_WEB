@@ -63,6 +63,53 @@ export async function uploadFile(file: File): Promise<FileInfo> {
     return response.json();
 }
 
+/**
+ * Uploads a file in chunks to bypass server body limits.
+ */
+export async function uploadFileChunked(
+    file: File,
+    onProgress?: (progress: number) => void
+): Promise<FileInfo> {
+    const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const uploadId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunk = file.slice(start, end);
+
+        const formData = new FormData();
+        formData.append('file', chunk);
+        formData.append('uploadId', uploadId);
+        formData.append('chunkIndex', i.toString());
+
+        const response = await fetch(`${API_BASE}/files/upload/chunk`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({ error: 'Chunk upload failed' }));
+            throw new ApiError(response.status, error.error || `Chunk ${i} failed`);
+        }
+
+        if (onProgress) {
+            onProgress(Math.round(((i + 1) / totalChunks) * 100));
+        }
+    }
+
+    // Complete upload
+    return request<FileInfo>('/files/upload/complete', {
+        method: 'POST',
+        body: JSON.stringify({
+            uploadId,
+            name: file.name,
+            totalChunks,
+        }),
+    });
+}
+
 export async function getRecentFiles(): Promise<FileInfo[]> {
     return request<FileInfo[]>('/files/recent');
 }
@@ -73,6 +120,13 @@ export async function getFile(id: string): Promise<FileInfo> {
 
 export async function deleteFile(id: string): Promise<void> {
     await request<void>(`/files/${id}`, { method: 'DELETE' });
+}
+
+export async function renameFile(id: string, name: string): Promise<FileInfo> {
+    return request<FileInfo>(`/files/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name }),
+    });
 }
 
 // Parse
