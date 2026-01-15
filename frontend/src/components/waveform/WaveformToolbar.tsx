@@ -62,6 +62,20 @@ export function WaveformToolbar() {
         zoomLevel.value = viewportWidth.value / duration;
     };
 
+    const handleJump = (direction: 'forward' | 'backward', size: 'large' | 'small') => {
+        if (!session || session.startTime === undefined || session.endTime === undefined) return;
+
+        const viewDuration = viewportWidth.value / zoomLevel.value;
+        const jumpSize = size === 'large' ? viewDuration * 0.1 : Math.max(viewDuration * 0.01, 1000); // 10% or 1% (min 1s)
+
+        const delta = direction === 'forward' ? jumpSize : -jumpSize;
+        const newOffset = scrollOffset.value + delta;
+
+        // Clamp
+        const maxOffset = session.endTime - viewDuration;
+        scrollOffset.value = Math.max(session.startTime, Math.min(newOffset, maxOffset));
+    };
+
     return (
         <div class="waveform-toolbar">
             {/* Navigation Controls */}
@@ -88,6 +102,54 @@ export function WaveformToolbar() {
                         <polyline points="13,17 18,12 13,7" />
                         <line x1="6" y1="12" x2="18" y2="12" />
                         <line x1="20" y1="4" x2="20" y2="20" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="toolbar-separator" />
+
+            {/* Jump Controls */}
+            <div class="toolbar-group">
+                <button
+                    class="toolbar-btn"
+                    onClick={() => handleJump('backward', 'large')}
+                    disabled={!hasData}
+                    title="Jump Back 10% (<<)"
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="11,17 6,12 11,7" />
+                        <polyline points="18,17 13,12 18,7" />
+                    </svg>
+                </button>
+                <button
+                    class="toolbar-btn"
+                    onClick={() => handleJump('backward', 'small')}
+                    disabled={!hasData}
+                    title="Jump Back 1% (<)"
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="15,18 9,12 15,6" />
+                    </svg>
+                </button>
+                <button
+                    class="toolbar-btn"
+                    onClick={() => handleJump('forward', 'small')}
+                    disabled={!hasData}
+                    title="Jump Forward 1% (>)"
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="9,18 15,12 9,6" />
+                    </svg>
+                </button>
+                <button
+                    class="toolbar-btn"
+                    onClick={() => handleJump('forward', 'large')}
+                    disabled={!hasData}
+                    title="Jump Forward 10% (>>)"
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="13,17 18,12 13,7" />
+                        <polyline points="6,17 11,12 6,7" />
                     </svg>
                 </button>
             </div>

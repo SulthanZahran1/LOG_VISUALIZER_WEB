@@ -1,7 +1,7 @@
 # CONTEXT.md — Session Context
 
 > Paste this into each AI session. Update after each work session.
-> Last updated: 2026-01-14
+> Last updated: 2026-01-15
 
 ---
 

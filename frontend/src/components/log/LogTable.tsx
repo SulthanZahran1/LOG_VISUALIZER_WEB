@@ -9,10 +9,9 @@ import {
     searchRegex,
     searchCaseSensitive,
     showChangedOnly,
-    isSplitHorizontal,
-    isSplitVertical,
     signalTypeFilter,
-    fetchEntries
+    fetchEntries,
+    openView
 } from '../../stores/logStore';
 import { toggleSignal } from '../../stores/waveformStore';
 import type { LogEntry } from '../../models/types';
@@ -197,8 +196,7 @@ export function LogTable() {
                     <span className="selection-count">
                         {selectedRows.value.size > 0 && `${selectedRows.value.size} selected`}
                     </span>
-                    <button className={`btn-icon ${isSplitHorizontal.value ? 'active' : ''}`} onClick={() => { isSplitHorizontal.value = !isSplitHorizontal.value; isSplitVertical.value = false; }} title="Split Horizontal">◫</button>
-                    <button className={`btn-icon ${isSplitVertical.value ? 'active' : ''}`} onClick={() => { isSplitVertical.value = !isSplitVertical.value; isSplitHorizontal.value = false; }} title="Split Vertical">◴</button>
+                    <button className="btn-icon" onClick={() => openView('waveform')} title="Open Timing Diagram">📊</button>
                     <button className="btn-icon" onClick={handleCopy} title="Copy selected (Ctrl+C)">📋</button>
                     <button className="btn-icon" onClick={() => fetchEntries(1, 1000)} title="Reload data">🔄</button>
                 </div>

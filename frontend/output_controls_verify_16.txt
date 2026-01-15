@@ -1,0 +1,29 @@
+SyntaxError: /home/dev/work_project/CIM_Visualizer/web_version/frontend/e2e/verify_controls.spec.ts: Identifier 'readoutText' has already been declared. (105:14)
+
+  103 |         console.log('Cursor readout:', readoutText);
+  104 |         expect(readoutText).not.toBe('');
+> 105 |         const readoutText = await readout.innerText();
+      |               ^
+  106 |         console.log('Cursor readout:', readoutText);
+  107 |         expect(readoutText).not.toBe('');
+  108 |     }
+
+   at verify_controls.spec.ts:105
+
+  103 |         console.log('Cursor readout:', readoutText);
+  104 |         expect(readoutText).not.toBe('');
+> 105 |         const readoutText = await readout.innerText();
+      |              ^
+  106 |         console.log('Cursor readout:', readoutText);
+  107 |         expect(readoutText).not.toBe('');
+  108 |     }
+
+Error: No tests found.
+Make sure that arguments are regular expressions matching test files.
+You may need to escape symbols like "$" or "*" and quote the arguments.
+
+[1A[2K
+To open last HTML report run:
+[36m[39m
+[36m  npx playwright show-report[39m
+[36m[39m

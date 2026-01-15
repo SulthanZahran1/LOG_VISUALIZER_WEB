@@ -17,11 +17,29 @@ export const searchRegex = signal(false);
 export const searchCaseSensitive = signal(false);
 export const showChangedOnly = signal(false);
 
-// Layout
-export const isSplitHorizontal = signal(false);
-export const isSplitVertical = signal(false);
-export const activeTab = signal<'home' | 'log'>('home');
+// Layout - View types matching desktop reference
+export type ViewType = 'home' | 'log-table' | 'waveform' | 'map-viewer';
+export const openViews = signal<ViewType[]>(['home']);
+export const activeTab = signal<ViewType>('home');
 export const signalTypeFilter = signal<string | null>(null);
+
+// View management functions
+export function openView(viewType: ViewType) {
+    if (!openViews.value.includes(viewType)) {
+        openViews.value = [...openViews.value, viewType];
+    }
+    activeTab.value = viewType;
+}
+
+export function closeView(viewType: ViewType) {
+    if (viewType === 'home') return; // Cannot close home
+    openViews.value = openViews.value.filter(v => v !== viewType);
+    // Switch to last open view or home
+    if (activeTab.value === viewType) {
+        const remaining = openViews.value;
+        activeTab.value = remaining[remaining.length - 1] || 'home';
+    }
+}
 
 // Sync
 export const isSyncEnabled = signal(false);

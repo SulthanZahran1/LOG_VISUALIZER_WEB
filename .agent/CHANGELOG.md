@@ -3,6 +3,27 @@
 > Append-only log. Add entries at the top as work is completed.
 > Format: `## YYYY-MM-DD: Summary`
 
+## 2026-01-15: UX Flow Alignment + Signal Selector
+
+### UX Flow Alignment
+- Aligned web app navigation with desktop reference
+- Views (Timing Diagram, Log Table) now open as separate closeable tabs instead of split panes
+- Updated `logStore.ts` with `openViews` signal and `openView()`/`closeView()` functions
+- Updated `app.tsx` with dynamic tab rendering and close buttons
+- Updated `HomeView.tsx` navigation buttons to use new view management
+- Fixed `LogTable.tsx` to remove split pane buttons
+
+### Signal Selector
+- Added device/signal checkbox tree to Waveform View sidebar
+- Collapsible device groups with expand/collapse arrows
+- Individual signal checkboxes and "select all" per device
+- Count indicators showing `X/Y` selected signals per device
+- Search filter with optional regex mode
+- Updated `waveformStore.ts` with `availableSignals` computed and helper functions
+- Rewrote `SignalSidebar.tsx` with tree-style checkbox UI
+
+---
+
 ## 2026-01-14: Phase 2 — Waveform Toolbar & Cursor (Session 2)
 
 ### Waveform Toolbar

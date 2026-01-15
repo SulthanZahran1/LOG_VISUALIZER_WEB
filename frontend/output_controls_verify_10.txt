@@ -1,0 +1,15 @@
+
+Running 1 test using 1 worker
+
+[1A[2K[1/1] [chromium] › e2e/verify_controls.spec.ts:2:1 › verify waveform controls and disabled panning
+[1A[2K[chromium] › e2e/verify_controls.spec.ts:2:1 › verify waveform controls and disabled panning
+Drag panning verification: Offset remained [33m1758546000364[39m
+
+[1A[2KSlider verification: Offset changed to [33m1758546145602.5[39m
+
+[1A[2K  1 passed (3.5s)
+
+To open last HTML report run:
+[36m[39m
+[36m  npx playwright show-report[39m
+[36m[39m

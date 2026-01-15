@@ -3,8 +3,7 @@ import { useEffect } from 'preact/hooks'
 import { checkHealth, getRecentFiles, deleteFile } from './api/client'
 import { LogTable } from './components/log/LogTable'
 import { WaveformView } from './components/waveform/WaveformView'
-import { SplitPane } from './components/layout/SplitPane'
-import { currentSession, startParsing, logError, initLogStore, isSplitHorizontal, isSplitVertical, isSyncEnabled, activeTab } from './stores/logStore'
+import { currentSession, startParsing, logError, initLogStore, isSyncEnabled, activeTab, openViews, openView, closeView, type ViewType } from './stores/logStore'
 import { HomeView } from './views/HomeView'
 import type { FileInfo } from './models/types'
 
@@ -47,7 +46,7 @@ export function App() {
 
   const handleFileSelect = (file: FileInfo) => {
     startParsing(file.id)
-    activeTab.value = 'log'
+    openView('log-table')
   }
 
   const handleFileDelete = async (id: string) => {
@@ -65,10 +64,43 @@ export function App() {
 
   const handleClearSession = () => {
     currentSession.value = null
+    // Close all views except home
+    openViews.value = ['home'];
     activeTab.value = 'home'
     isSyncEnabled.value = false;
-    isSplitHorizontal.value = false;
-    isSplitVertical.value = false;
+  }
+
+  const handleOpenView = (viewType: ViewType) => {
+    openView(viewType);
+  }
+
+  const handleCloseView = (viewType: ViewType) => {
+    closeView(viewType);
+  }
+
+  const getViewLabel = (viewType: ViewType): string => {
+    switch (viewType) {
+      case 'home': return 'Home';
+      case 'log-table': return 'Log Table';
+      case 'waveform': return 'Timing Diagram';
+      case 'map-viewer': return 'Map Viewer';
+      default: return viewType;
+    }
+  }
+
+  const getViewIcon = (viewType: ViewType) => {
+    switch (viewType) {
+      case 'home':
+        return <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />;
+      case 'log-table':
+        return <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14,2 14,8 20,8" /></>;
+      case 'waveform':
+        return <path d="M3 12h4l3-9 4 18 3-9h4" />;
+      case 'map-viewer':
+        return <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 3v18" /></>;
+      default:
+        return null;
+    }
   }
 
   return (
@@ -121,34 +153,29 @@ export function App() {
       </header>
 
       <div class="app-tabs">
-        <button
-          class={`tab-item ${activeTab.value === 'home' ? 'active' : ''}`}
-          onClick={() => activeTab.value = 'home'}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            <polyline points="9,22 9,12 15,12 15,22" />
-          </svg>
-          Home
-        </button>
-        {currentSession.value && (
+        {openViews.value.map(viewType => (
           <button
-            class={`tab-item ${activeTab.value === 'log' ? 'active' : ''} ${currentSession.value.status === 'parsing' ? 'parsing' : ''}`}
-            onClick={() => activeTab.value = 'log'}
+            key={viewType}
+            class={`tab-item ${activeTab.value === viewType ? 'active' : ''} ${viewType !== 'home' && currentSession.value?.status === 'parsing' ? 'parsing' : ''}`}
+            onClick={() => activeTab.value = viewType}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14,2 14,8 20,8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
-              <polyline points="10,9 9,9 8,9" />
+              {getViewIcon(viewType)}
             </svg>
-            Log Viewer
-            {currentSession.value.status === 'parsing' && (
+            {getViewLabel(viewType)}
+            {viewType !== 'home' && currentSession.value?.status === 'parsing' && (
               <span class="parsing-badge">{Math.floor(currentSession.value.progress)}%</span>
             )}
+            {viewType !== 'home' && (
+              <span
+                class="tab-close"
+                onClick={(e) => { e.stopPropagation(); handleCloseView(viewType); }}
+              >
+                ×
+              </span>
+            )}
           </button>
-        )}
+        ))}
       </div>
 
       <main class="app-main">
@@ -164,23 +191,17 @@ export function App() {
           </div>
         )}
 
-        {activeTab.value === 'home' ? (
+        {activeTab.value === 'home' && (
           <HomeView
             recentFiles={recentFiles.value}
             onUploadSuccess={handleUploadSuccess}
             onFileSelect={handleFileSelect}
             onFileDelete={handleFileDelete}
+            onOpenView={handleOpenView}
           />
-        ) : (
-          (isSplitHorizontal.value || isSplitVertical.value) ? (
-            <SplitPane direction={isSplitHorizontal.value ? 'horizontal' : 'vertical'} minSize={200}>
-              <LogTable />
-              <WaveformView />
-            </SplitPane>
-          ) : (
-            <LogTable />
-          )
         )}
+        {activeTab.value === 'log-table' && <LogTable />}
+        {activeTab.value === 'waveform' && <WaveformView />}
 
         {showHelp.value && (
           <div class="help-overlay" onClick={() => showHelp.value = false}>
@@ -398,6 +419,24 @@ export function App() {
           padding: 2px 6px;
           border-radius: 10px;
           font-weight: 600;
+        }
+
+        .tab-close {
+          margin-left: 4px;
+          width: 16px;
+          height: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 4px;
+          font-size: 14px;
+          color: var(--text-muted);
+          transition: all var(--transition-fast);
+        }
+
+        .tab-close:hover {
+          background: rgba(248, 81, 73, 0.3);
+          color: var(--accent-error);
         }
 
         /* === MAIN === */

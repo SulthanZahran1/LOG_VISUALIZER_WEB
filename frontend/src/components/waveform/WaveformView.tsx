@@ -1,6 +1,7 @@
 import { SignalSidebar } from './SignalSidebar';
 import { WaveformCanvas } from './WaveformCanvas';
 import { WaveformToolbar } from './WaveformToolbar';
+import { TimeSlider } from './TimeSlider';
 
 export function WaveformView() {
     return (
@@ -10,6 +11,7 @@ export function WaveformView() {
                 <SignalSidebar />
                 <div class="waveform-content">
                     <WaveformCanvas />
+                    <TimeSlider />
                 </div>
             </div>
 

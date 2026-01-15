@@ -2,25 +2,19 @@ import { FileUpload } from '../components/file/FileUpload'
 import { RecentFiles } from '../components/file/RecentFiles'
 import { NavButton } from '../components/layout/NavButton'
 import type { FileInfo } from '../models/types'
-import { currentSession, isSplitVertical, activeTab } from '../stores/logStore'
+import { currentSession, type ViewType } from '../stores/logStore'
 
 interface HomeViewProps {
     recentFiles: FileInfo[]
     onUploadSuccess: (file: FileInfo) => void
     onFileSelect: (file: FileInfo) => void
     onFileDelete: (id: string) => void
+    onOpenView: (viewType: ViewType) => void
 }
 
-export function HomeView({ recentFiles, onUploadSuccess, onFileSelect, onFileDelete }: HomeViewProps) {
-    const handleNavigation = (view: string) => {
-        if (view === 'waveform' || view === 'log') {
-            activeTab.value = 'log';
-            if (view === 'waveform') {
-                isSplitVertical.value = true;
-            } else {
-                isSplitVertical.value = false;
-            }
-        }
+export function HomeView({ recentFiles, onUploadSuccess, onFileSelect, onFileDelete, onOpenView }: HomeViewProps) {
+    const handleNavigation = (view: ViewType) => {
+        onOpenView(view);
     };
 
     return (
@@ -70,21 +64,21 @@ export function HomeView({ recentFiles, onUploadSuccess, onFileSelect, onFileDel
                             icon="table"
                             description="Browse and filter log entries"
                             disabled={!currentSession.value}
-                            onClick={() => handleNavigation('log')}
+                            onClick={() => handleNavigation('log-table')}
                         />
                         <NavButton
                             title="Map Viewer"
                             icon="map"
                             description="View carrier positions"
                             disabled={true}
-                            onClick={() => handleNavigation('map')}
+                            onClick={() => handleNavigation('map-viewer')}
                         />
                         <NavButton
                             title="Transitions"
                             icon="chart"
                             description="Analyze signal intervals"
                             disabled={true}
-                            onClick={() => handleNavigation('transitions')}
+                            onClick={() => { }}
                         />
                     </div>
                 </div>

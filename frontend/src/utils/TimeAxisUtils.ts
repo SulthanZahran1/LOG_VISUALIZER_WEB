@@ -40,3 +40,23 @@ export function getTickIntervals(zoom: number): number[] {
 
     return [interval, interval / 5]; // [major, minor]
 }
+
+/**
+ * Binary search for the first index i where array[i].timestamp >= targetTime
+ */
+export function findFirstIndexAtTime(array: any[], targetTime: number): number {
+    let low = 0;
+    let high = array.length - 1;
+    let result = array.length;
+
+    while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        if (array[mid].timestamp >= targetTime) {
+            result = mid;
+            high = mid - 1;
+        } else {
+            low = mid + 1;
+        }
+    }
+    return result;
+}

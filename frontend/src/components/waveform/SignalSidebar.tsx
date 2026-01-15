@@ -1,13 +1,26 @@
 import { useState, useMemo } from 'preact/hooks';
-import { selectedSignals, toggleSignal } from '../../stores/waveformStore';
+import {
+    availableSignals,
+    selectedSignals,
+    toggleSignal,
+    selectAllSignalsForDevice,
+    deselectAllSignalsForDevice
+} from '../../stores/waveformStore';
 
 export function SignalSidebar() {
-    const signals = selectedSignals.value;
     const [searchQuery, setSearchQuery] = useState('');
     const [isRegex, setIsRegex] = useState(false);
+    const [expandedDevices, setExpandedDevices] = useState<Set<string>>(new Set());
 
-    const filteredSignals = useMemo(() => {
-        if (!searchQuery) return signals;
+    // Get all available signals grouped by device
+    const devices = useMemo(() => {
+        const devicesMap = availableSignals.value;
+        return Array.from(devicesMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    }, [availableSignals.value]);
+
+    // Filter devices and signals based on search query
+    const filteredDevices = useMemo(() => {
+        if (!searchQuery) return devices;
 
         try {
             const flags = 'i';
@@ -16,11 +29,64 @@ export function SignalSidebar() {
                 : searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const regex = new RegExp(pattern, flags);
 
-            return signals.filter(key => regex.test(key));
-        } catch (e) {
-            return []; // Invalid regex or no match
+            return devices
+                .map(([device, signals]) => {
+                    // Match device name or any signal name
+                    const matchingSignals = signals.filter(s =>
+                        regex.test(s) || regex.test(device)
+                    );
+                    if (matchingSignals.length > 0 || regex.test(device)) {
+                        return [device, regex.test(device) ? signals : matchingSignals] as [string, string[]];
+                    }
+                    return null;
+                })
+                .filter((d): d is [string, string[]] => d !== null);
+        } catch {
+            return [];
         }
-    }, [signals, searchQuery, isRegex]);
+    }, [devices, searchQuery, isRegex]);
+
+    const toggleDevice = (device: string) => {
+        const next = new Set(expandedDevices);
+        if (next.has(device)) {
+            next.delete(device);
+        } else {
+            next.add(device);
+        }
+        setExpandedDevices(next);
+    };
+
+    const isDeviceFullySelected = (device: string, signals: string[]) => {
+        return signals.every(s => selectedSignals.value.includes(`${device}::${s}`));
+    };
+
+    const isDevicePartiallySelected = (device: string, signals: string[]) => {
+        const selected = signals.filter(s => selectedSignals.value.includes(`${device}::${s}`));
+        return selected.length > 0 && selected.length < signals.length;
+    };
+
+    const getDeviceSelectedCount = (device: string, signals: string[]) => {
+        return signals.filter(s => selectedSignals.value.includes(`${device}::${s}`)).length;
+    };
+
+    const handleDeviceCheckbox = (device: string, signals: string[]) => {
+        if (isDeviceFullySelected(device, signals)) {
+            deselectAllSignalsForDevice(device);
+        } else {
+            selectAllSignalsForDevice(device);
+        }
+    };
+
+    const handleSignalCheckbox = (device: string, signal: string) => {
+        toggleSignal(device, signal);
+    };
+
+    // Auto-expand devices when searching
+    useMemo(() => {
+        if (searchQuery) {
+            setExpandedDevices(new Set(filteredDevices.map(([d]) => d)));
+        }
+    }, [searchQuery, filteredDevices]);
 
     return (
         <div class="signal-sidebar">
@@ -45,7 +111,7 @@ export function SignalSidebar() {
                 </div>
             </div>
             <div class="signal-list">
-                {filteredSignals.length === 0 ? (
+                {filteredDevices.length === 0 ? (
                     <div class="empty-state">
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                             <path d="M3 12h4l3-9 4 18 3-9h4" />
@@ -53,27 +119,51 @@ export function SignalSidebar() {
                         <p>
                             {searchQuery
                                 ? 'No matching signals.'
-                                : 'No signals selected.'}
+                                : 'No signals available.'}
                         </p>
-                        {!searchQuery && (
-                            <span class="hint">Right-click a row in the Log Table and select "Add to Waveform"</span>
+                        {!searchQuery && devices.length === 0 && (
+                            <span class="hint">Load a log file to see available signals</span>
                         )}
                     </div>
                 ) : (
-                    filteredSignals.map(key => {
-                        const [device, signal] = key.split('::');
+                    filteredDevices.map(([device, signals]) => {
+                        const isExpanded = expandedDevices.has(device);
+                        const fullySelected = isDeviceFullySelected(device, signals);
+                        const partiallySelected = isDevicePartiallySelected(device, signals);
+                        const selectedCount = getDeviceSelectedCount(device, signals);
+
                         return (
-                            <div class="signal-item" key={key}>
-                                <div class="signal-info">
+                            <div class="device-group" key={device}>
+                                <div class="device-header" onClick={() => toggleDevice(device)}>
+                                    <span class={`expand-icon ${isExpanded ? 'expanded' : ''}`}>▶</span>
+                                    <input
+                                        type="checkbox"
+                                        class={partiallySelected ? 'indeterminate' : ''}
+                                        checked={fullySelected}
+                                        ref={(el) => { if (el) el.indeterminate = partiallySelected; }}
+                                        onClick={(e) => { e.stopPropagation(); handleDeviceCheckbox(device, signals); }}
+                                        onChange={() => { }}
+                                    />
                                     <span class="device-name">{device}</span>
-                                    <span class="signal-name">{signal}</span>
+                                    <span class="device-count">{selectedCount}/{signals.length}</span>
                                 </div>
-                                <button class="remove-btn" onClick={() => toggleSignal(device, signal)} title="Remove signal">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <line x1="18" y1="6" x2="6" y2="18" />
-                                        <line x1="6" y1="6" x2="18" y2="18" />
-                                    </svg>
-                                </button>
+                                {isExpanded && (
+                                    <div class="signal-items">
+                                        {signals.map(signal => {
+                                            const isSelected = selectedSignals.value.includes(`${device}::${signal}`);
+                                            return (
+                                                <label class="signal-item" key={signal}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => handleSignalCheckbox(device, signal)}
+                                                    />
+                                                    <span class="signal-name">{signal}</span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         );
                     })
@@ -82,7 +172,7 @@ export function SignalSidebar() {
 
             <style>{`
                 .signal-sidebar {
-                    width: var(--sidebar-width, 250px);
+                    width: var(--sidebar-width, 280px);
                     background: var(--bg-secondary);
                     border-right: 1px solid var(--border-color);
                     display: flex;
@@ -168,13 +258,68 @@ export function SignalSidebar() {
                     overflow-y: auto;
                 }
 
+                .device-group {
+                    border-bottom: 1px solid var(--border-color);
+                }
+
+                .device-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 10px 12px;
+                    cursor: pointer;
+                    background: var(--bg-tertiary);
+                    transition: background var(--transition-fast);
+                }
+
+                .device-header:hover {
+                    background: var(--bg-hover);
+                }
+
+                .expand-icon {
+                    font-size: 10px;
+                    color: var(--text-muted);
+                    transition: transform var(--transition-fast);
+                }
+
+                .expand-icon.expanded {
+                    transform: rotate(90deg);
+                }
+
+                .device-header input[type="checkbox"] {
+                    width: 16px;
+                    height: 16px;
+                    cursor: pointer;
+                    accent-color: var(--primary-accent);
+                }
+
+                .device-name {
+                    flex: 1;
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: var(--primary-accent);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                .device-count {
+                    font-size: 11px;
+                    color: var(--text-muted);
+                    font-weight: 500;
+                }
+
+                .signal-items {
+                    padding: 4px 0;
+                    background: var(--bg-primary);
+                }
+
                 .signal-item {
                     display: flex;
                     align-items: center;
-                    justify-content: space-between;
-                    padding: var(--spacing-sm) var(--spacing-md);
-                    border-bottom: 1px solid var(--border-color);
-                    height: 60px; /* Match canvas row height */
+                    gap: 8px;
+                    padding: 6px 12px 6px 36px;
+                    cursor: pointer;
                     transition: background var(--transition-fast);
                 }
 
@@ -182,49 +327,19 @@ export function SignalSidebar() {
                     background: var(--bg-hover);
                 }
 
-                .signal-info {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 2px;
-                    overflow: hidden;
-                    min-width: 0;
+                .signal-item input[type="checkbox"] {
+                    width: 14px;
+                    height: 14px;
+                    cursor: pointer;
+                    accent-color: var(--primary-accent);
                 }
 
-                .device-name {
-                    font-size: 10px;
-                    color: var(--primary-accent);
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    font-weight: 500;
-                }
-
-                .signal-name {
-                    font-size: 13px;
-                    font-weight: 500;
+                .signal-item .signal-name {
+                    font-size: 12px;
                     color: var(--text-primary);
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
-                }
-
-                .remove-btn {
-                    background: none;
-                    border: none;
-                    color: var(--text-muted);
-                    cursor: pointer;
-                    padding: 6px;
-                    border-radius: 4px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    flex-shrink: 0;
-                    transition: all var(--transition-fast);
-                }
-
-                .remove-btn:hover {
-                    color: var(--accent-error);
-                    background: rgba(248, 81, 73, 0.15);
                 }
 
                 .empty-state {

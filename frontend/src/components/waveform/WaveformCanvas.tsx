@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useRef } from 'preact/hooks';
 import {
     viewRange,
     waveformEntries,
@@ -6,12 +6,11 @@ import {
     viewportWidth,
     zoomAt,
     pan,
-    isDragging,
     zoomLevel,
     hoverTime
 } from '../../stores/waveformStore';
 import type { LogEntry } from '../../models/types';
-import { formatTimestamp, getTickIntervals } from '../../utils/TimeAxisUtils';
+import { formatTimestamp, getTickIntervals, findFirstIndexAtTime } from '../../utils/TimeAxisUtils';
 
 const ROW_HEIGHT = 60;
 const AXIS_HEIGHT = 32;
@@ -52,9 +51,7 @@ const COLORS = {
 export function WaveformCanvas() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const [isMouseDown, setIsMouseDown] = useState(false);
-    const [hoverX, setHoverX] = useState<number | null>(null);
-    const lastMouseX = useRef(0);
+    const hoverXRef = useRef<number | null>(null);
 
     // Resize Observer to update viewportWidth
     useEffect(() => {
@@ -79,6 +76,8 @@ export function WaveformCanvas() {
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
+        let animationFrameId: number;
+
         const render = () => {
             const dpr = window.devicePixelRatio || 1;
             const width = viewportWidth.value;
@@ -93,7 +92,10 @@ export function WaveformCanvas() {
             ctx.fillRect(0, 0, width, height);
 
             const range = viewRange.value;
-            if (!range) return;
+            if (!range) {
+                animationFrameId = requestAnimationFrame(render); // Keep looping even if not ready
+                return;
+            }
 
             const pixelsPerMs = zoomLevel.value;
 
@@ -117,20 +119,27 @@ export function WaveformCanvas() {
 
             // Draw Signals
             selectedSignals.value.forEach((key, rowIndex) => {
-                const entries = waveformEntries.value[key] || [];
+                const allEntries = waveformEntries.value[key] || [];
                 const yBase = AXIS_HEIGHT + (rowIndex * ROW_HEIGHT);
                 const yPadding = 8;
                 const plotHeight = ROW_HEIGHT - (yPadding * 2);
 
+                // --- Visible Window Slicing (Optimization) ---
+                // Use binary search to find the first entry at or after range.start
+                // Include a small buffer (1 before, all after) to ensure transitions are drawn
+                const startIdx = Math.max(0, findFirstIndexAtTime(allEntries, range.start) - 1);
+                const endIdx = findFirstIndexAtTime(allEntries, range.end);
+                const visibleEntries = allEntries.slice(startIdx, endIdx + 1);
+
                 ctx.save();
                 ctx.translate(0, yBase + yPadding);
 
-                if (entries.length > 0) {
-                    const firstEntry = entries[0];
+                if (visibleEntries.length > 0) {
+                    const firstEntry = visibleEntries[0];
                     if (firstEntry.signalType === 'boolean' || typeof firstEntry.value === 'boolean') {
-                        drawBooleanSignal(ctx, entries, range.start, pixelsPerMs, plotHeight, width);
+                        drawBooleanSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, width);
                     } else {
-                        drawStateSignal(ctx, entries, range.start, pixelsPerMs, plotHeight, width, rowIndex);
+                        drawStateSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, width, rowIndex);
                     }
                 }
 
@@ -138,20 +147,27 @@ export function WaveformCanvas() {
             });
 
             // Draw cursor line if hovering
-            if (hoverX !== null && hoverX >= 0 && hoverX <= width) {
+            const currentHoverX = hoverXRef.current;
+            if (currentHoverX !== null && currentHoverX >= 0 && currentHoverX <= width) {
                 ctx.strokeStyle = 'rgba(77, 182, 226, 0.8)';
                 ctx.lineWidth = 1;
                 ctx.setLineDash([4, 4]);
                 ctx.beginPath();
-                ctx.moveTo(hoverX, AXIS_HEIGHT);
-                ctx.lineTo(hoverX, height);
+                ctx.moveTo(currentHoverX, AXIS_HEIGHT);
+                ctx.lineTo(currentHoverX, height);
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
+
+            animationFrameId = requestAnimationFrame(render);
         };
 
-        requestAnimationFrame(render);
-    }, [viewRange.value, waveformEntries.value, selectedSignals.value, viewportWidth.value, zoomLevel.value, hoverX]);
+        render();
+
+        return () => {
+            cancelAnimationFrame(animationFrameId);
+        };
+    }, []); // Empty dependency array: render loop runs continuously and pulls fresh signal values
 
     const handleWheel = (e: WheelEvent) => {
         if (e.ctrlKey) {
@@ -161,8 +177,6 @@ export function WaveformCanvas() {
             const x = e.clientX - rect.left;
             zoomAt(e.deltaY, x);
         } else {
-            // Normal scroll for vertical navigation if canvas gets tall
-            // But for now we pan horizontally with shift or just deltaX
             if (e.deltaX !== 0) {
                 e.preventDefault();
                 pan(-e.deltaX);
@@ -170,19 +184,11 @@ export function WaveformCanvas() {
         }
     };
 
-    const handleMouseDown = (e: MouseEvent) => {
-        if (e.button === 0) { // Left click
-            setIsMouseDown(true);
-            isDragging.value = true;
-            lastMouseX.current = e.clientX;
-        }
-    };
-
     const handleMouseMove = (e: MouseEvent) => {
         const rect = canvasRef.current?.getBoundingClientRect();
         if (rect) {
             const x = e.clientX - rect.left;
-            setHoverX(x);
+            hoverXRef.current = x; // Update ref directly
 
             // Update hover time for toolbar readout
             const range = viewRange.value;
@@ -191,25 +197,11 @@ export function WaveformCanvas() {
                 hoverTime.value = time;
             }
         }
-
-        if (!isMouseDown) return;
-        const deltaX = e.clientX - lastMouseX.current;
-        lastMouseX.current = e.clientX;
-        pan(deltaX);
     };
 
     const handleMouseLeave = () => {
-        setHoverX(null);
+        hoverXRef.current = null;
         hoverTime.value = null;
-        if (isMouseDown) {
-            setIsMouseDown(false);
-            isDragging.value = false;
-        }
-    };
-
-    const handleMouseUp = () => {
-        setIsMouseDown(false);
-        isDragging.value = false;
     };
 
     return (
@@ -221,12 +213,10 @@ export function WaveformCanvas() {
                     width: '100%',
                     height: 'auto',
                     display: 'block',
-                    cursor: isMouseDown ? 'grabbing' : 'crosshair'
+                    cursor: 'crosshair'
                 }}
                 onWheel={handleWheel}
-                onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseLeave}
             />
             <style>{`

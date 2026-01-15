@@ -31,6 +31,7 @@
 - [x] Universal Header with: Sync, Clear, Help, Status
 - [x] Theme: Industrial Dark (consistent with #003D82 primary blue)
 - [x] Breadcrumbs or Navigation Bar for active sessions
+- [x] Tabbed View Management (views open as separate tabs)
 
 ### Log Table View (Refined)
 - [x] VirtualScroll component (fixed row height)
@@ -94,10 +95,10 @@
 - [ ] Right-click → zoom to selection
 
 ### Signal Filtering
-- [ ] Search input (real-time filtering)
-- [ ] Regex mode toggle
-- [ ] Case-sensitive toggle
-- [ ] Device filter dropdown
+- [x] Search input (real-time filtering)
+- [x] Regex mode toggle
+- [x] Case-sensitive toggle
+- [x] Device filter dropdown (via collapsible groups)
 - [ ] Signal type filter (boolean/string/integer)
 - [ ] "Show changed" filter (signals with changes in view)
 
@@ -108,8 +109,8 @@
 - [ ] Store in localStorage
 
 ### Signal Labels
-- [ ] Sticky labels on left side
-- [ ] Show Device::SignalName format
+- [x] Sticky labels on left side (SignalSidebar)
+- [x] Show Device::SignalName format
 - [ ] Color coding by device
 - [ ] Click label to focus signal
 - [ ] "Show changed only" toggle in toolbar

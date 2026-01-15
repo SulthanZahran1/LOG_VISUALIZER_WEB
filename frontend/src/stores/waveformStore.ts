@@ -1,6 +1,6 @@
 import { signal, computed, effect } from '@preact/signals';
 import { getParseChunk } from '../api/client';
-import { currentSession } from './logStore';
+import { currentSession, logEntries } from './logStore';
 import type { LogEntry, TimeRange } from '../models/types';
 
 // Viewport State
@@ -13,21 +13,73 @@ export const hoverTime = signal<number | null>(null);
 export const selectedSignals = signal<string[]>([]); // "DeviceId::SignalName"
 export const waveformEntries = signal<Record<string, LogEntry[]>>({});
 
+// Available Signals - computed from all log entries
+export const availableSignals = computed<Map<string, string[]>>(() => {
+    const deviceMap = new Map<string, Set<string>>();
+
+    for (const entry of logEntries.value) {
+        if (!deviceMap.has(entry.deviceId)) {
+            deviceMap.set(entry.deviceId, new Set());
+        }
+        deviceMap.get(entry.deviceId)!.add(entry.signalName);
+    }
+
+    // Convert Sets to sorted arrays
+    const result = new Map<string, string[]>();
+    for (const [device, signals] of deviceMap) {
+        result.set(device, Array.from(signals).sort());
+    }
+    return result;
+});
+
+// Helper functions for signal selection
+export function addSignal(deviceId: string, signalName: string) {
+    const key = `${deviceId}::${signalName}`;
+    if (!selectedSignals.value.includes(key)) {
+        selectedSignals.value = [...selectedSignals.value, key];
+    }
+}
+
+export function removeSignal(deviceId: string, signalName: string) {
+    const key = `${deviceId}::${signalName}`;
+    selectedSignals.value = selectedSignals.value.filter(s => s !== key);
+}
+
+export function isSignalSelected(deviceId: string, signalName: string): boolean {
+    return selectedSignals.value.includes(`${deviceId}::${signalName}`);
+}
+
+export function selectAllSignalsForDevice(deviceId: string) {
+    const signals = availableSignals.value.get(deviceId) || [];
+    const keysToAdd = signals.map(s => `${deviceId}::${s}`);
+    const currentKeys = new Set(selectedSignals.value);
+    keysToAdd.forEach(k => currentKeys.add(k));
+    selectedSignals.value = Array.from(currentKeys);
+}
+
+export function deselectAllSignalsForDevice(deviceId: string) {
+    const prefix = `${deviceId}::`;
+    selectedSignals.value = selectedSignals.value.filter(s => !s.startsWith(prefix));
+}
+
 // UI State
 export const isDragging = signal(false);
 export const showSidebar = signal(true);
 
 // Computed view properties
 export const viewRange = computed<TimeRange | null>(() => {
-    if (!currentSession.value || currentSession.value.startTime === undefined) return null;
+    if (!currentSession.value || currentSession.value.startTime === undefined) {
+        return null;
+    }
 
     // Duration we can see in the viewport
     const viewportDuration = viewportWidth.value / zoomLevel.value;
 
-    return {
+    const range = {
         start: scrollOffset.value,
         end: scrollOffset.value + viewportDuration
     };
+    return range;
 });
 
 /**
@@ -49,20 +101,44 @@ effect(() => {
 });
 
 /**
- * Fetch entries for selected signals within visible window
+ * Fetch entries for selected signals for the FULL session duration.
+ * This is called once when signals change or session loads, not on scroll.
+ */
+// Full Data Fetching State
+let hasFetchedForCurrentSignals = false;
+let activeRequestId = 0;
+
+/**
+ * Fetch all entries for selected signals across the entire session
  */
 export async function updateWaveformEntries() {
-    const range = viewRange.value;
-    if (!currentSession.value || !range || selectedSignals.value.length === 0) return;
+    const session = currentSession.value;
+    if (!session || session.status !== 'complete' || selectedSignals.value.length === 0) return;
+    if (session.startTime === undefined || session.endTime === undefined) return;
+
+    // Only fetch once per signal set change
+    if (hasFetchedForCurrentSignals) {
+        return;
+    }
+
+    // Increment request ID to invalidate previous pending requests
+    const requestId = ++activeRequestId;
 
     try {
-        const sessionId = currentSession.value.id;
-        const { start, end } = range;
+        const sessionId = session.id;
+        const start = session.startTime;
+        const end = session.endTime;
 
-        // Fetch chunk from backend
-        // Buffer by 20% on each side to make panning smoother
-        const buffer = (end - start) * 0.2;
-        const entries = await getParseChunk(sessionId, start - buffer, end + buffer);
+        console.log(`[waveformStore] Fetching full session data: ${start} to ${end}`);
+
+        // Fetch ALL entries for the session
+        const entries = await getParseChunk(sessionId, start, end);
+
+        // Race Condition Check: If a newer request started, ignore this result
+        if (requestId !== activeRequestId) {
+            console.log('Ignoring stale fetch response', requestId);
+            return;
+        }
 
         // Group by Signal Key
         const grouped: Record<string, LogEntry[]> = {};
@@ -73,14 +149,18 @@ export async function updateWaveformEntries() {
         });
 
         waveformEntries.value = grouped;
+        hasFetchedForCurrentSignals = true;
+        console.log(`[waveformStore] Loaded ${entries.length} entries for ${Object.keys(grouped).length} signals`);
     } catch (err) {
-        console.error('Failed to fetch waveform chunk', err);
+        console.error('Failed to fetch waveform entries', err);
     }
 }
 
-// Trigger update when viewRange or selectedSignals changes
+// Trigger update when session completes or selectedSignals changes
 effect(() => {
-    // Only fetch if range actually shifted enough or signals changed
+    // Reset fetch flag when signals change
+    const _signals = selectedSignals.value;
+    hasFetchedForCurrentSignals = false;
     updateWaveformEntries();
 });
 
@@ -95,6 +175,7 @@ export function toggleSignal(deviceId: string, signalName: string) {
     } else {
         selectedSignals.value = [...selectedSignals.value, key];
     }
+    // The effect will automatically reset hasFetchedForCurrentSignals when selectedSignals changes
 }
 
 /**
