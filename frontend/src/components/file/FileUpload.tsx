@@ -11,6 +11,8 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
     const isUploading = useSignal(false);
     const error = useSignal<string | null>(null);
     const progress = useSignal(0);
+    const showPaste = useSignal(false);
+    const pasteContent = useSignal('');
 
     const handleFile = async (file: File) => {
         if (file.size > 1024 * 1024 * 1024) {
@@ -25,11 +27,53 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
         try {
             const info = await uploadFile(file);
             onUploadSuccess(info);
+            // Reset state
+            showPaste.value = false;
+            pasteContent.value = '';
         } catch (err) {
             error.value = err instanceof Error ? err.message : 'Upload failed';
         } finally {
             isUploading.value = false;
         }
+    };
+
+    const processFile = (file: File) => {
+        // User requested "read the file and paste it" behavior for all file interactions
+        // This bypasses potential issues with direct OS file handle uploads
+
+        // Show reading state if needed, or just leverage existing uploading state
+        isUploading.value = true;
+        error.value = null;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const content = e.target?.result as string;
+            if (content) {
+                // Create a new File from the content (simulating a paste)
+                const blob = new Blob([content], { type: 'text/plain' });
+                const newFile = new File([blob], file.name, { type: 'text/plain' });
+                handleFile(newFile);
+            } else {
+                error.value = 'Failed to read file content';
+                isUploading.value = false;
+            }
+        };
+        reader.onerror = () => {
+            console.warn('FileReader failed, attempting direct upload fallback');
+            handleFile(file);
+        };
+        reader.readAsText(file);
+    };
+
+    const handlePasteUpload = () => {
+        if (!pasteContent.value.trim()) {
+            error.value = 'Please paste some content first';
+            return;
+        }
+
+        const blob = new Blob([pasteContent.value], { type: 'text/plain' });
+        const file = new File([blob], `pasted_log_${new Date().toISOString()}.txt`, { type: 'text/plain' });
+        handleFile(file);
     };
 
     const onDragOver = (e: DragEvent) => {
@@ -45,13 +89,13 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
         e.preventDefault();
         isDragging.value = false;
         const file = e.dataTransfer?.files[0];
-        if (file) handleFile(file);
+        if (file) processFile(file);
     };
 
     const onFileSelect = (e: Event) => {
         const target = e.target as HTMLInputElement;
         const file = target.files?.[0];
-        if (file) handleFile(file);
+        if (file) processFile(file);
     };
 
     return (
@@ -60,7 +104,11 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
             onDrop={onDrop}
-            onClick={() => !isUploading.value && document.getElementById('file-input')?.click()}
+            onClick={() => {
+                if (!isUploading.value && !showPaste.value) {
+                    document.getElementById('file-input')?.click();
+                }
+            }}
         >
             <input
                 id="file-input"
@@ -76,6 +124,19 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
                         <div class="upload-spinner"></div>
                         <p class="drop-text">Uploading...</p>
                     </>
+                ) : showPaste.value ? (
+                    <div class="paste-area" onClick={(e) => e.stopPropagation()}>
+                        <textarea
+                            value={pasteContent.value}
+                            onInput={(e) => pasteContent.value = (e.target as HTMLTextAreaElement).value}
+                            placeholder="Paste log content here..."
+                            rows={10}
+                        />
+                        <div class="paste-actions">
+                            <button class="btn-cancel" onClick={() => showPaste.value = false}>Cancel</button>
+                            <button class="btn-upload" onClick={handlePasteUpload}>Upload Text</button>
+                        </div>
+                    </div>
                 ) : (
                     <>
                         <div class="drop-icon">
@@ -88,6 +149,13 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
                         <p class="drop-text">Drag & drop a log file here</p>
                         <p class="drop-hint">or click to browse</p>
                         <div class="drop-formats">Supports .log, .txt, .csv files up to 1GB</div>
+                        <div class="paste-option" onClick={(e) => {
+                            e.stopPropagation();
+                            showPaste.value = true;
+                            error.value = null;
+                        }}>
+                            or paste text content
+                        </div>
                     </>
                 )}
             </div>
@@ -106,7 +174,7 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
             <style>{`
                 .drop-zone {
                     width: 100%;
-                    max-width: 320px;
+                    max-width: 480px; /* Increased width to accommodate textarea */
                     padding: var(--spacing-xl);
                     border: 2px dashed var(--border-color);
                     border-radius: var(--card-radius);
@@ -137,6 +205,7 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
                     flex-direction: column;
                     align-items: center;
                     gap: var(--spacing-sm);
+                    width: 100%;
                 }
 
                 .drop-icon {
@@ -190,6 +259,75 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
                     padding: var(--spacing-sm);
                     background: rgba(248, 81, 73, 0.1);
                     border-radius: 4px;
+                }
+
+                .paste-option {
+                    margin-top: var(--spacing-md);
+                    font-size: 12px;
+                    color: var(--primary-accent);
+                    text-decoration: underline;
+                    cursor: pointer;
+                    opacity: 0.8;
+                }
+                .paste-option:hover {
+                    opacity: 1;
+                }
+
+                .paste-area {
+                    display: flex;
+                    flex-direction: column;
+                    gap: var(--spacing-md);
+                    width: 100%;
+                }
+
+                .paste-area textarea {
+                    width: 100%;
+                    background: var(--bg-primary);
+                    border: 1px solid var(--border-color);
+                    border-radius: 4px;
+                    padding: var(--spacing-sm);
+                    color: var(--text-primary);
+                    font-family: monospace;
+                    font-size: 12px;
+                    resize: vertical;
+                }
+                
+                .paste-area textarea:focus {
+                    outline: none;
+                    border-color: var(--primary-accent);
+                }
+
+                .paste-actions {
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: var(--spacing-sm);
+                }
+
+                .btn-cancel, .btn-upload {
+                    padding: 6px 12px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    border: none;
+                }
+
+                .btn-cancel {
+                    background: transparent;
+                    color: var(--text-muted);
+                    border: 1px solid var(--border-color);
+                }
+                .btn-cancel:hover {
+                    background: var(--bg-tertiary);
+                    color: var(--text-primary);
+                }
+
+                .btn-upload {
+                    background: var(--primary-accent);
+                    color: white;
+                }
+                .btn-upload:hover {
+                    filter: brightness(1.1);
                 }
 
                 @keyframes spin {

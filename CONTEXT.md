@@ -100,7 +100,7 @@ Phase 3 is currently in progress. The backend XML parser, API endpoints, and ini
 - [x] Backend scaffolded (Go module, Echo server, models)
 - [x] Frontend scaffolded (Vite+Preact, types, API client)
 - [x] Log parsers ported from Python to Go (PLC, MCS, CSV)
-- [x] File upload/management API and UI
+- [x] File upload/management API and UI (drag-drop, browse, paste content)
 - [x] Log Table with virtual scroll, filtering, sorting
 - [x] Waveform Canvas with signal rendering
 - [x] UI/UX overhaul (unified dark industrial theme)

@@ -3,6 +3,14 @@
 > Append-only log. Add entries at the top as work is completed.
 > Format: `## YYYY-MM-DD: Summary`
 
+## 2026-01-15: File Upload Improvements
+- Updated Drag & Drop handling to read file content client-side (`FileReader`) before upload.
+  - Fixes issues where direct file uploads are blocked by local policies.
+  - Providing a seamless "Drag to Paste" experience.
+- Added "Paste Content" feature to `FileUpload.tsx` to bypass file system restrictions.
+  - Users can now paste log text directly into a textarea.
+  - content is converted to a virtual file and processed via the existing upload pipeline.
+
 ## 2026-01-15: Phase 3 — Map Viewer Backend & Initial Frontend
 
 ### Backend
