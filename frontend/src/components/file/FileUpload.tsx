@@ -33,8 +33,8 @@ export function FileUpload({
         error.value = null;
 
         try {
-            // Use chunked upload for files > 5MB
-            const CHUNK_THRESHOLD = 5 * 1024 * 1024;
+            // Use chunked upload for files > 1MB (default Nginx body limit)
+            const CHUNK_THRESHOLD = 1 * 1024 * 1024;
             const info = file.size > CHUNK_THRESHOLD
                 ? await uploadFileChunked(file, (p) => uploadProgress.value = p)
                 : await uploadFn(file);

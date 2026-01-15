@@ -70,7 +70,7 @@ export async function uploadFileChunked(
     file: File,
     onProgress?: (progress: number) => void
 ): Promise<FileInfo> {
-    const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
+    const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks (Nginx default limit safe)
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     const uploadId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
