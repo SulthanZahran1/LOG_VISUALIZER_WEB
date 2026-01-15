@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { hoverTime, zoomLevel, viewRange, viewportWidth, scrollOffset, jumpToTime } from '../../stores/waveformStore';
+import { hoverTime, zoomLevel, viewRange, viewportWidth, scrollOffset, jumpToTime, selectionRange, clearSelection, zoomToSelection } from '../../stores/waveformStore';
 import { currentSession } from '../../stores/logStore';
 import { formatTimestamp } from '../../utils/TimeAxisUtils';
 
@@ -202,6 +202,45 @@ export function WaveformToolbar() {
                     </svg>
                 </button>
             </div>
+
+            <div class="toolbar-separator" />
+
+            {/* Selection Controls */}
+            {selectionRange.value && (
+                <>
+                    <div class="toolbar-group">
+                        <div class="selection-indicator">
+                            <span class="selection-label">Selection:</span>
+                            <span class="selection-value">
+                                {((Math.abs(selectionRange.value.end - selectionRange.value.start)) / 1000).toFixed(3)}s
+                            </span>
+                        </div>
+                        <button
+                            class="toolbar-btn primary"
+                            onClick={zoomToSelection}
+                            title="Zoom to Selection"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="11" cy="11" r="8" />
+                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                                <line x1="11" y1="8" x2="11" y2="14" />
+                                <path d="M8 11h6" />
+                            </svg>
+                        </button>
+                        <button
+                            class="toolbar-btn danger"
+                            onClick={clearSelection}
+                            title="Clear Selection"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="toolbar-separator" />
+                </>
+            )}
 
             <div class="toolbar-separator" />
 
@@ -411,10 +450,93 @@ export function WaveformToolbar() {
                     font-size: 11px;
                 }
 
+                .selection-info {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    color: var(--text-primary);
+                }
+
+                .selection-label {
+                    font-size: 11px;
+                    color: var(--text-muted);
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+
+                .selection-value {
+                    font-family: var(--font-mono);
+                    font-size: 12px;
+                    color: var(--primary-accent);
+                    background: rgba(77, 182, 226, 0.1);
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                }
+
+                .nav-btn.accent {
+                    color: var(--primary-accent);
+                }
+
+                .nav-btn.accent:hover {
+                    background: rgba(77, 182, 226, 0.15);
+                }
+
+                .nav-btn.error {
+                    color: var(--accent-error);
+                }
+
+                .nav-btn.error:hover {
+                    background: rgba(248, 81, 73, 0.15);
+                }
+
                 .jump-to-time {
                     display: flex;
                     align-items: center;
                     gap: 4px;
+                }
+
+                .selection-indicator {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 0 4px;
+                }
+
+                .selection-label {
+                    font-size: 11px;
+                    color: var(--text-muted);
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    font-weight: 600;
+                }
+
+                .selection-value {
+                    font-family: var(--font-mono);
+                    font-size: 11px;
+                    color: var(--primary-accent);
+                    background: rgba(77, 182, 226, 0.1);
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    min-width: 60px;
+                    text-align: center;
+                }
+
+                .toolbar-btn.primary {
+                    color: var(--primary-accent);
+                }
+
+                .toolbar-btn.primary:hover {
+                    background: rgba(77, 182, 226, 0.1);
+                    border-color: var(--primary-accent);
+                }
+
+                .toolbar-btn.danger {
+                    color: var(--accent-error);
+                }
+
+                .toolbar-btn.danger:hover {
+                    background: rgba(248, 81, 73, 0.1);
+                    border-color: var(--accent-error);
                 }
 
                 .jump-input {

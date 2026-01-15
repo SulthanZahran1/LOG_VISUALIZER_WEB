@@ -8,7 +8,8 @@ import {
     pan,
     zoomLevel,
     hoverTime,
-    jumpToTime
+    jumpToTime,
+    selectionRange
 } from '../../stores/waveformStore';
 import type { LogEntry } from '../../models/types';
 import { formatTimestamp, getTickIntervals, findFirstIndexAtTime } from '../../utils/TimeAxisUtils';
@@ -51,6 +52,11 @@ const COLORS = {
     ],
     stateText: '#e6edf3',
     stateBorder: 'rgba(139, 148, 158, 0.3)',
+
+    // Selection colors
+    selectionBg: 'rgba(77, 182, 226, 0.25)',
+    selectionBorder: '#4db6e2',
+    selectionLabelBg: 'rgba(13, 17, 23, 0.8)',
 };
 
 export function WaveformCanvas() {
@@ -61,6 +67,12 @@ export function WaveformCanvas() {
     // Panning state refs
     const isPanningRef = useRef(false);
     const panStartXRef = useRef(0);
+    const totalDragStartXRef = useRef(0);
+
+    // Selection state refs
+    const isSelectingRef = useRef(false);
+    const selectionStartXRef = useRef(0);
+    const selectionStartTimeRef = useRef(0);
 
     // Resize Observer to update viewportWidth
     useEffect(() => {
@@ -155,6 +167,12 @@ export function WaveformCanvas() {
                 ctx.restore();
             });
 
+            // Draw selection
+            const selection = selectionRange.value;
+            if (selection) {
+                drawSelection(ctx, selection, range.start, pixelsPerMs, height, width);
+            }
+
             // Draw cursor line if hovering
             const currentHoverX = hoverXRef.current;
             if (currentHoverX !== null && currentHoverX >= 0 && currentHoverX <= width) {
@@ -194,18 +212,44 @@ export function WaveformCanvas() {
     };
 
     const handleMouseDown = (e: MouseEvent) => {
-        // Start panning on left-click (button 0)
-        if (e.button === 0) {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const x = e.clientX - rect.left;
+
+        if (e.shiftKey && e.button === 0) {
+            // Start selection
+            isSelectingRef.current = true;
+            selectionStartXRef.current = x;
+
+            const range = viewRange.value;
+            if (range) {
+                const startTime = range.start + (x / zoomLevel.value);
+                selectionStartTimeRef.current = startTime;
+                selectionRange.value = { start: startTime, end: startTime };
+            }
+
+            if (containerRef.current) {
+                containerRef.current.style.cursor = 'crosshair';
+            }
+        } else if (e.button === 0) {
+            // Start panning on left-click (button 0)
             isPanningRef.current = true;
             panStartXRef.current = e.clientX;
+            totalDragStartXRef.current = e.clientX;
             if (containerRef.current) {
                 containerRef.current.style.cursor = 'grabbing';
+            }
+
+            // Clear selection on normal click if not dragging
+            if (!e.shiftKey) {
+                selectionRange.value = null;
             }
         }
     };
 
     const handleMouseUp = () => {
         isPanningRef.current = false;
+        isSelectingRef.current = false;
         if (containerRef.current) {
             containerRef.current.style.cursor = 'grab';
         }
@@ -223,6 +267,18 @@ export function WaveformCanvas() {
             const deltaX = e.clientX - panStartXRef.current;
             pan(deltaX);
             panStartXRef.current = e.clientX;
+        }
+
+        // Handle selection
+        if (isSelectingRef.current) {
+            const range = viewRange.value;
+            if (range) {
+                const currentTime = range.start + (x / zoomLevel.value);
+                selectionRange.value = {
+                    start: selectionStartTimeRef.current,
+                    end: currentTime
+                };
+            }
         }
 
         // Update hover time for toolbar readout
@@ -263,6 +319,10 @@ export function WaveformCanvas() {
 
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
+
+        // If the user dragged more than 5 pixels, treat it as a pan/scroll, not a click
+        const dragDistance = Math.abs(e.clientX - totalDragStartXRef.current);
+        if (dragDistance > 5) return;
 
         // If click is on the time axis area, jump to that time
         if (y < AXIS_HEIGHT) {
@@ -472,4 +532,67 @@ function drawStateSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], sta
             }
         }
     });
+}
+
+function drawSelection(ctx: CanvasRenderingContext2D, range: { start: number, end: number }, startTime: number, pixelsPerMs: number, height: number, width: number) {
+    const x1 = (range.start - startTime) * pixelsPerMs;
+    const x2 = (range.end - startTime) * pixelsPerMs;
+
+    const startX = Math.min(x1, x2);
+    const endX = Math.max(x1, x2);
+
+    // Boundary check
+    if (endX < 0 || startX > width) return;
+
+    const visibleX1 = Math.max(0, startX);
+    const visibleX2 = Math.min(width, endX);
+
+    // Draw highlight area
+    ctx.fillStyle = COLORS.selectionBg;
+    ctx.fillRect(visibleX1, 0, visibleX2 - visibleX1, height);
+
+    // Draw border lines
+    ctx.strokeStyle = COLORS.selectionBorder;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+
+    if (startX >= 0 && startX <= width) {
+        ctx.beginPath();
+        ctx.moveTo(startX, 0);
+        ctx.lineTo(startX, height);
+        ctx.stroke();
+    }
+
+    if (endX >= 0 && endX <= width) {
+        ctx.beginPath();
+        ctx.moveTo(endX, 0);
+        ctx.lineTo(endX, height);
+        ctx.stroke();
+    }
+
+    ctx.setLineDash([]);
+
+    // Draw duration label
+    const durationMs = Math.abs(range.end - range.start);
+    const label = `${(durationMs / 1000).toFixed(3)}s`;
+
+    ctx.font = 'bold 12px var(--font-mono)';
+    const textMetrics = ctx.measureText(label);
+    const labelWidth = textMetrics.width + 12;
+    const labelX = startX + (endX - startX) / 2 - labelWidth / 2;
+    const labelY = AXIS_HEIGHT + 10;
+
+    // Background for label
+    ctx.fillStyle = COLORS.selectionLabelBg;
+    ctx.beginPath();
+    ctx.roundRect(labelX, labelY, labelWidth, 20, 4);
+    ctx.fill();
+    ctx.strokeStyle = COLORS.selectionBorder;
+    ctx.stroke();
+
+    // Text for label
+    ctx.fillStyle = COLORS.axisTextBold;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, labelX + labelWidth / 2, labelY + 10);
 }

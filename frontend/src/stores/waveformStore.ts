@@ -8,6 +8,7 @@ export const scrollOffset = signal(0); // start timestamp in ms
 export const zoomLevel = signal(1); // pixels per millisecond
 export const viewportWidth = signal(800); // Updated by resize observer
 export const hoverTime = signal<number | null>(null);
+export const selectionRange = signal<{ start: number, end: number } | null>(null);
 
 // Signal Selection
 export const selectedSignals = signal<string[]>([]); // "DeviceId::SignalName"
@@ -66,6 +67,10 @@ export function deselectAllSignalsForDevice(deviceId: string) {
 export const isDragging = signal(false);
 export const showSidebar = signal(true);
 
+export function getViewportDuration(): number {
+    return viewportWidth.value / zoomLevel.value;
+}
+
 // Computed view properties
 export const viewRange = computed<TimeRange | null>(() => {
     if (!currentSession.value || currentSession.value.startTime === undefined) {
@@ -73,7 +78,7 @@ export const viewRange = computed<TimeRange | null>(() => {
     }
 
     // Duration we can see in the viewport
-    const viewportDuration = viewportWidth.value / zoomLevel.value;
+    const viewportDuration = getViewportDuration();
 
     const range = {
         start: scrollOffset.value,
@@ -219,9 +224,36 @@ export function jumpToTime(timeMs: number) {
     const session = currentSession.value;
     if (!session || session.startTime === undefined || session.endTime === undefined) return;
 
+    // Center the time in the viewport if possible
+    const viewportMs = getViewportDuration();
+    const newOffset = timeMs - (viewportMs / 2);
+
     // Clamp to session bounds
-    const clampedTime = Math.max(session.startTime, Math.min(timeMs, session.endTime));
-    scrollOffset.value = clampedTime;
+    const minOffset = session.startTime;
+    const maxOffset = session.endTime - viewportMs;
+    scrollOffset.value = Math.max(minOffset, Math.min(newOffset, Math.max(minOffset, maxOffset)));
+}
+
+export function clearSelection() {
+    selectionRange.value = null;
+}
+
+export function zoomToSelection() {
+    const range = selectionRange.value;
+    if (!range) return;
+
+    const duration = Math.abs(range.end - range.start);
+    if (duration <= 0) return;
+
+    // newZoom = viewportWidth / duration
+    const newZoom = viewportWidth.value / duration;
+
+    // Limit zoom level to reasonable bounds
+    const clampedZoom = Math.max(0.0001, Math.min(100, newZoom));
+
+    zoomLevel.value = clampedZoom;
+    scrollOffset.value = Math.min(range.start, range.end);
+    selectionRange.value = null; // Clear selection after zoom
 }
 
 // Debugging - extend window interface for dev tools
@@ -237,7 +269,8 @@ const waveformStoreDebug = {
     viewportWidth,
     selectedSignals,
     waveformEntries,
-    viewRange
+    viewRange,
+    selectionRange
 };
 
 if (typeof window !== 'undefined') {
