@@ -9,7 +9,9 @@ import {
     zoomLevel,
     hoverTime,
     jumpToTime,
-    selectionRange
+    selectionRange,
+    focusedSignal,
+    deviceColors
 } from '../../stores/waveformStore';
 import type { LogEntry } from '../../models/types';
 import { formatTimestamp, getTickIntervals, findFirstIndexAtTime } from '../../utils/TimeAxisUtils';
@@ -121,10 +123,24 @@ export function WaveformCanvas() {
             const pixelsPerMs = zoomLevel.value;
 
             // Draw row backgrounds
-            selectedSignals.value.forEach((_, i) => {
+            selectedSignals.value.forEach((key, i) => {
                 const y = AXIS_HEIGHT + (i * ROW_HEIGHT);
-                ctx.fillStyle = i % 2 === 0 ? COLORS.rowEven : COLORS.rowOdd;
+                const isFocused = focusedSignal.value === key;
+
+                if (isFocused) {
+                    ctx.fillStyle = 'rgba(77, 182, 226, 0.15)';
+                } else {
+                    ctx.fillStyle = i % 2 === 0 ? COLORS.rowEven : COLORS.rowOdd;
+                }
                 ctx.fillRect(0, y, width, ROW_HEIGHT);
+
+                // Device accent bar on the left
+                const [device] = key.split('::');
+                const deviceColor = deviceColors.value.get(device);
+                if (deviceColor) {
+                    ctx.fillStyle = deviceColor;
+                    ctx.fillRect(0, y + 4, 4, ROW_HEIGHT - 8);
+                }
 
                 // Row separator
                 ctx.strokeStyle = COLORS.gridMinor;

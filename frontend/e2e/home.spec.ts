@@ -13,11 +13,11 @@ test.describe('Home Page', () => {
         // Check Home tab is active
         await expect(page.locator('.tab-item.active')).toContainText('Home')
 
-        // Check welcome section
-        await expect(page.locator('.welcome-section h2')).toContainText('Welcome')
-
         // Check Log File card exists
-        await expect(page.locator('.card-header')).toContainText('Log File')
+        await expect(page.locator('.upload-card .card-header')).toContainText('Log File')
+
+        // Check Recent Files card exists
+        await expect(page.locator('.recent-files-card .card-header')).toContainText('Recent Files')
     })
 
     test('has working navigation buttons', async ({ page }) => {

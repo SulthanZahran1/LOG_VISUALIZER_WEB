@@ -87,9 +87,9 @@ Use `/testing` workflow before agentic browser testing.
 
 ## Current Phase
 
-**Phase: 2 — Waveform/Timing Diagram + Filtering (In Progress)**
+**Phase: 3 — Map Viewer + Carrier Tracking (In Progress)**
 
-Core Waveform Canvas and signal rendering are implemented. UI/UX overhauled with unified dark theme. Testing infrastructure added.
+Phase 3 is currently in progress. The backend XML parser, API endpoints, and initial SVG-based map rendering are complete.
 
 ---
 
@@ -120,13 +120,24 @@ Core Waveform Canvas and signal rendering are implemented. UI/UX overhauled with
 - [x] Signal Selector tree with search and regex
 - [x] Tabbed View Management (replacing split panes)
 - [x] "Show changed" filter for Waveform sidebar
+- [x] Filter presets (save/load/delete)
+- [x] Logarithmic zoom slider
+- [x] Signal color-coding by device
+- [x] Signal focus highlight
+- [x] Right-click context menu for signals
+- [x] Map Layout XML Parser (Go implementation)
+- [x] Map Viewer API endpoints (Upload/Layout)
+- [x] SVG-based Map Canvas with pan/zoom
+- [x] Map object sub-components (Belt, Arrow, Label)
+- [x] Map View integration into tabbed shell
 
 ---
 
 ## What's Next
 
-1. Filter presets (save/load)
-2. Begin Phase 3: Map Viewer
+1. Carrier Tracking (Mapping log data to map units)
+2. Real-time Map Updates during log playback
+3. Playback Feature (next sub-phase)
 
 ---
 
@@ -134,9 +145,8 @@ Core Waveform Canvas and signal rendering are implemented. UI/UX overhauled with
 
 | Phase | Features | Status |
 |:-----:|----------|:------:|
-| 1 | File upload, recent files, Log Table, session persistence | Completed ✅ |
-| 2 | Waveform/Timing Diagram, Signal Filtering | In Progress 🚧 |
-| 3 | Map Viewer, Carrier Tracking | Not started |
+| 2 | Waveform/Timing Diagram, Signal Filtering | Completed ✅ |
+| 3 | Map Viewer, Carrier Tracking | In Progress 🚧 |
 | 3.5 | Playback Feature (time scrubbing, play/pause) | Not started |
 | 4 | Bookmarks, Time Synchronization | Not started |
 | 4.5 | Multi-File Merge | Not started |
@@ -168,6 +178,9 @@ Core Waveform Canvas and signal rendering are implemented. UI/UX overhauled with
 | GET | `/api/parse/:sessionId/status` | Parse progress |
 | GET | `/api/parse/:sessionId/entries` | Paginated entries |
 | GET | `/api/parse/:sessionId/chunk` | Time-window chunk |
+| GET | `/api/parse/:sessionId/signals` | List all unique signals |
+| GET | `/api/map/layout` | Get active map layout |
+| POST | `/api/map/upload` | Upload new map layout |
 
 ---
 

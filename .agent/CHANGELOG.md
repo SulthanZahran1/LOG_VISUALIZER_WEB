@@ -3,6 +3,42 @@
 > Append-only log. Add entries at the top as work is completed.
 > Format: `## YYYY-MM-DD: Summary`
 
+## 2026-01-15: Phase 3 — Map Viewer Backend & Initial Frontend
+
+### Backend
+- Implemented `MapLayout` and `MapObject` models in Go.
+- Created `MapXML` parser (`map_parser.go`) following the reference Python implementation.
+- Added `GET /api/map/layout` and `POST /api/map/upload` handlers in `handlers.go`.
+- Added unit tests for the parser and integration tests for the API.
+
+### Frontend
+- Created `mapStore.ts` using Preact signals for map state (layout, zoom, offset, selection).
+- Implemented `MapCanvas.tsx` using SVG for performance and ease of interaction.
+- Created modular `MapObjectComponents.tsx` (Belt, Arrow, Label).
+- Added `MapViewer` view with an "Upload Map" placeholder and toolbar.
+- Integrated Map Viewer into the main application tabbed layout.
+- Updated version display to v0.2.0.
+
+---
+
+
+- Implemented **Logarithmic Zoom Slider** in `WaveformToolbar.tsx` for natural zoom control.
+- Added **Signal Color-coding by Device** (accent bars in sidebar and canvas).
+- Added **Interactive Signal Focus** with cross-component highlighting.
+- Implemented **Right-click Context Menu** for signals (Hide, Show Only).
+- Centralized `deviceColors` and `focusedSignal` in `waveformStore.ts`.
+
+---
+
+- Centralized filter state (search, regex, type) in `waveformStore.ts`.
+- Implemented `FilterPreset` management (save/load/delete) with `localStorage` persistence.
+- Added Presets UI to `SignalSidebar.tsx`:
+  - Dropdown for loading and deleting presets.
+  - Modal-less save dialog.
+- Cleaned up linting errors and optimized `useMemo` hooks.
+
+---
+
 ## 2026-01-15: "Show Changed" Filter Implementation
 
 ### Backend

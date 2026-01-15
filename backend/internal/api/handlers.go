@@ -7,14 +7,16 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/plc-visualizer/backend/internal/parser"
 	"github.com/plc-visualizer/backend/internal/session"
 	"github.com/plc-visualizer/backend/internal/storage"
 )
 
 // Handler handles API requests.
 type Handler struct {
-	store   storage.Store
-	session *session.Manager
+	store        storage.Store
+	session      *session.Manager
+	currentMapID string
 }
 
 // NewHandler creates a new API handler.
@@ -176,9 +178,45 @@ func (h *Handler) HandleGetSignals(c echo.Context) error {
 	return c.JSON(http.StatusOK, signals)
 }
 
-// HandleGetMapConfig returns a placeholder map config.
-func (h *Handler) HandleGetMapConfig(c echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]interface{}{})
+// HandleGetMapLayout returns the currently active map layout.
+func (h *Handler) HandleGetMapLayout(c echo.Context) error {
+	if h.currentMapID == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{"objects": map[string]interface{}{}})
+	}
+
+	path, err := h.store.GetFilePath(h.currentMapID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get map file path"})
+	}
+
+	layout, err := parser.ParseMapXML(path)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to parse map layout: %v", err)})
+	}
+
+	return c.JSON(http.StatusOK, layout)
+}
+
+// HandleUploadMapLayout accepts a map XML file and sets it as the active layout.
+func (h *Handler) HandleUploadMapLayout(c echo.Context) error {
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing file in request"})
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to open uploaded file"})
+	}
+	defer src.Close()
+
+	info, err := h.store.Save(file.Filename, src)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save map file: %v", err)})
+	}
+
+	h.currentMapID = info.ID
+	return c.JSON(http.StatusCreated, info)
 }
 
 // HandleGetValidationRules returns placeholder validation rules.

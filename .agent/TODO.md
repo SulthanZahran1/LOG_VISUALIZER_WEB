@@ -49,7 +49,7 @@
 
 ---
 
-## Phase 2: Waveform/Timing Diagram + Filtering
+## Phase 2: Waveform/Timing Diagram + Filtering [COMPLETED]
 
 ### Waveform Canvas
 - [x] Create WaveformCanvas component (HTML Canvas)
@@ -76,7 +76,7 @@
 ### Zoom Controls
 - [x] Zoom in/out buttons
 - [x] Mouse wheel zoom (centered on cursor)
-- [ ] Zoom slider
+- [x] Zoom slider
 - [x] Fit to window button
 - [x] Zoom presets (1s, 10s, 1min, 10min, 1hr)
 
@@ -109,25 +109,26 @@
 ### Signal Labels
 - [x] Sticky labels on left side (SignalSidebar)
 - [x] Show Device::SignalName format
-- [ ] Color coding by device
-- [ ] Click label to focus signal
-- [ ] "Show changed only" toggle in toolbar
+- [x] Color coding by device
+- [x] Click label to focus signal
+- [x] "Show changed only" toggle in toolbar
 - [x] Sync waveform cursor with Log Table selection
 - [x] Jump to time input (HH:MM:SS.mmm format)
-- [ ] Right-click context menu (hide, show only, etc.)
+- [x] Right-click context menu (hide, show only, etc.)
 
 ---
 
-## Phase 3: Map Viewer + Carrier Tracking
+## Phase 3: Map Viewer + Carrier Tracking [IN PROGRESS]
 
-### Map Rendering
-- [ ] Load layout from YAML/XML config
-- [ ] Render units/stations as rectangles
-- [ ] Render paths/conveyors as lines
-- [ ] Display labels
-- [ ] Pan and zoom controls
+### Map Rendering [COMPLETED]
+- [x] Load layout from XML config (`map_parser.go`)
+- [x] Render units/stations as rectangles (`MapCanvas.tsx`)
+- [x] Render paths/conveyors as lines/arrows
+- [x] Display labels
+- [x] Pan and zoom controls
 
 ### Carrier Tracking
+- [ ] Implement Carrier Tracking logic (map `CurrentLocation` signals)
 - [ ] Display carriers on units
 - [ ] Show carrier ID (truncate long IDs from start)
 - [ ] Multi-carrier count display ("2x", "3x")
@@ -139,11 +140,11 @@
   - [ ] 4+ carriers: red gradient
 
 ### Unit Interaction
+- [x] Implement unit selection/highlighting
 - [ ] Click unit → show info panel
 - [ ] Info panel shows carrier list
 - [ ] Info panel shows current state
-- [ ] Highlight unit by ID
-- [ ] Center view on unit
+- [x] Center view on unit (Reset button / initial fit)
 
 ### Follow Feature
 - [ ] Follow button with search input

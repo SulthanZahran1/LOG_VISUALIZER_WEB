@@ -13,7 +13,9 @@ import {
     filterPresets,
     savePreset,
     loadPreset,
-    deletePreset
+    deletePreset,
+    deviceColors,
+    focusedSignal
 } from '../../stores/waveformStore';
 import { logEntries } from '../../stores/logStore';
 import type { SignalType } from '../../models/types';
@@ -22,6 +24,12 @@ export function SignalSidebar() {
     const [expandedDevices, setExpandedDevices] = useState<Set<string>>(new Set());
     const [presetName, setPresetName] = useState('');
     const [showSaveDialog, setShowSaveDialog] = useState(false);
+    const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, signalKey: string | null }>({
+        visible: false,
+        x: 0,
+        y: 0,
+        signalKey: null
+    });
 
     // Build a map of signal key -> type
     const signalTypes = useMemo(() => {
@@ -139,6 +147,35 @@ export function SignalSidebar() {
 
     const handleSignalCheckbox = (device: string, signal: string) => {
         toggleSignal(device, signal);
+    };
+
+    const handleContextMenu = (e: MouseEvent, signalKey: string) => {
+        e.preventDefault();
+        setContextMenu({
+            visible: true,
+            x: e.clientX,
+            y: e.clientY,
+            signalKey
+        });
+    };
+
+    const hideContextMenu = () => {
+        setContextMenu({ ...contextMenu, visible: false });
+    };
+
+    const handleHideSignal = () => {
+        if (contextMenu.signalKey) {
+            const [device, signal] = contextMenu.signalKey.split('::');
+            toggleSignal(device, signal);
+        }
+        hideContextMenu();
+    };
+
+    const handleShowOnly = () => {
+        if (contextMenu.signalKey) {
+            selectedSignals.value = [contextMenu.signalKey];
+        }
+        hideContextMenu();
     };
 
     // Auto-expand devices when searching
@@ -266,6 +303,7 @@ export function SignalSidebar() {
                         return (
                             <div class="device-group" key={device}>
                                 <div class="device-header" onClick={() => toggleDevice(device)}>
+                                    <div class="device-accent" style={{ backgroundColor: deviceColors.value.get(device) }} />
                                     <span class={`expand-icon ${isExpanded ? 'expanded' : ''}`}>▶</span>
                                     <input
                                         type="checkbox"
@@ -282,15 +320,24 @@ export function SignalSidebar() {
                                     <div class="signal-items">
                                         {signals.map(signal => {
                                             const isSelected = selectedSignals.value.includes(`${device}::${signal}`);
+                                            const isFocused = focusedSignal.value === `${device}::${signal}`;
                                             return (
-                                                <label class="signal-item" key={signal}>
+                                                <div
+                                                    class={`signal-item ${isFocused ? 'focused' : ''}`}
+                                                    key={signal}
+                                                    onClick={() => focusedSignal.value = `${device}::${signal}`}
+                                                    onContextMenu={(e) => handleContextMenu(e, `${device}::${signal}`)}
+                                                >
                                                     <input
                                                         type="checkbox"
                                                         checked={isSelected}
-                                                        onChange={() => handleSignalCheckbox(device, signal)}
+                                                        onChange={(e) => {
+                                                            e.stopPropagation();
+                                                            handleSignalCheckbox(device, signal);
+                                                        }}
                                                     />
                                                     <span class="signal-name">{signal}</span>
-                                                </label>
+                                                </div>
                                             );
                                         })}
                                     </div>
@@ -298,6 +345,19 @@ export function SignalSidebar() {
                             </div>
                         );
                     })
+                )}
+
+                {contextMenu.visible && (
+                    <div
+                        class="context-menu"
+                        style={{ left: contextMenu.x, top: contextMenu.y }}
+                        onMouseLeave={hideContextMenu}
+                    >
+                        <div class="menu-item" onClick={handleHideSignal}>Hide Signal</div>
+                        <div class="menu-item" onClick={handleShowOnly}>Show Only This</div>
+                        <div class="menu-separator" />
+                        <div class="menu-item danger" onClick={hideContextMenu}>Cancel</div>
+                    </div>
                 )}
             </div>
 
@@ -522,6 +582,14 @@ export function SignalSidebar() {
                     height: 16px;
                     cursor: pointer;
                     accent-color: var(--primary-accent);
+                    z-index: 1;
+                }
+
+                .device-accent {
+                    width: 4px;
+                    height: 20px;
+                    border-radius: 2px;
+                    flex-shrink: 0;
                 }
 
                 .device-name {
@@ -573,6 +641,16 @@ export function SignalSidebar() {
                     text-overflow: ellipsis;
                 }
 
+                .signal-item.focused {
+                    background: rgba(77, 182, 226, 0.1);
+                    border-left: 2px solid var(--primary-accent);
+                }
+
+                .signal-item.focused .signal-name {
+                    color: var(--primary-accent);
+                    font-weight: 600;
+                }
+
                 .empty-state {
                     padding: var(--spacing-xl);
                     display: flex;
@@ -600,6 +678,41 @@ export function SignalSidebar() {
                     color: var(--text-muted);
                     line-height: 1.5;
                     max-width: 180px;
+                }
+
+                .context-menu {
+                    position: fixed;
+                    background: var(--bg-tertiary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--border-radius);
+                    padding: 4px;
+                    min-width: 140px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                    z-index: 1000;
+                }
+
+                .menu-item {
+                    padding: 8px 12px;
+                    font-size: 12px;
+                    color: var(--text-primary);
+                    cursor: pointer;
+                    border-radius: 2px;
+                    transition: background 0.1s;
+                }
+
+                .menu-item:hover {
+                    background: var(--bg-hover);
+                    color: var(--primary-accent);
+                }
+
+                .menu-item.danger:hover {
+                    color: var(--accent-error);
+                }
+
+                .menu-separator {
+                    height: 1px;
+                    background: var(--border-color);
+                    margin: 4px 0;
                 }
             `}</style>
         </div>

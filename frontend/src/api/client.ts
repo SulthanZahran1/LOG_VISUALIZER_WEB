@@ -145,3 +145,25 @@ export async function getParseChunk(
     );
     return res.map(transformEntry);
 }
+
+// Map
+export async function getMapLayout(): Promise<any> {
+    return request<any>('/map/layout');
+}
+
+export async function uploadMapLayout(file: File): Promise<FileInfo> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE}/map/upload`, {
+        method: 'POST',
+        body: formData,
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+        throw new ApiError(response.status, error.error);
+    }
+
+    return response.json();
+}

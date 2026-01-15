@@ -13,6 +13,7 @@ export const selectionRange = signal<{ start: number, end: number } | null>(null
 // Signal Selection
 export const selectedSignals = signal<string[]>([]); // "DeviceId::SignalName"
 export const waveformEntries = signal<Record<string, LogEntry[]>>({});
+export const focusedSignal = signal<string | null>(null); // "DeviceId::SignalName"
 
 // Full signal list from backend
 export const allSignals = signal<string[]>([]);
@@ -73,6 +74,27 @@ export const availableSignals = computed<Map<string, string[]>>(() => {
         result.set(device, Array.from(signals).sort());
     }
     return result;
+});
+
+// Device Colors - computed from availableSignals
+export const deviceColors = computed<Map<string, string>>(() => {
+    const devices = Array.from(availableSignals.value.keys()).sort();
+    const colors = [
+        '#4DB6E2', // Primary Blue
+        '#81C784', // Green
+        '#FFB74D', // Orange
+        '#E57373', // Red
+        '#BA68C8', // Purple
+        '#4DB6AC', // Teal
+        '#FFF176', // Yellow
+        '#A1887F'  // Brown
+    ];
+
+    const map = new Map<string, string>();
+    devices.forEach((device, i) => {
+        map.set(device, colors[i % colors.length]);
+    });
+    return map;
 });
 
 // Helper functions for signal selection

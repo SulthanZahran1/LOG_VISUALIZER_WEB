@@ -5,6 +5,7 @@ import { LogTable } from './components/log/LogTable'
 import { WaveformView } from './components/waveform/WaveformView'
 import { currentSession, startParsing, logError, initLogStore, isSyncEnabled, activeTab, openViews, openView, closeView, type ViewType } from './stores/logStore'
 import { HomeView } from './views/HomeView'
+import { MapViewer } from './views/MapViewer'
 import type { FileInfo } from './models/types'
 
 /**
@@ -203,6 +204,7 @@ export function App() {
         )}
         {activeTab.value === 'log-table' && <LogTable />}
         {activeTab.value === 'waveform' && <WaveformView />}
+        {activeTab.value === 'map-viewer' && <MapViewer />}
 
         {showHelp.value && (
           <div class="help-overlay" onClick={() => showHelp.value = false}>
@@ -237,9 +239,9 @@ export function App() {
 
       <footer class="app-footer">
         <div class="footer-left">
-          <span>PLC Log Visualizer v0.1.0</span>
+          <span>PLC Log Visualizer v0.2.0</span>
           <span class="footer-sep">•</span>
-          <span>Phase 2</span>
+          <span>Phase 3: Map Viewer</span>
         </div>
         {currentSession.value && (
           <div class="footer-right">

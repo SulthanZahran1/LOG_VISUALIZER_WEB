@@ -111,6 +111,32 @@ export function WaveformToolbar() {
         zoomLevel.value = viewportWidth.value / duration;
     };
 
+    // Logarithmic slider helpers
+    const MIN_LOG = -6; // 10^-6
+    const MAX_LOG = 3;  // 10^3
+    const LOG_RANGE = MAX_LOG - MIN_LOG;
+
+    const getSliderValue = (zoom: number) => {
+        const logZoom = Math.log10(zoom);
+        return ((logZoom - MIN_LOG) / LOG_RANGE) * 100;
+    };
+
+    const getZoomFromSlider = (value: number) => {
+        const logZoom = MIN_LOG + (value / 100) * LOG_RANGE;
+        return Math.pow(10, logZoom);
+    };
+
+    const handleSliderChange = (e: Event) => {
+        const val = parseInt((e.target as HTMLInputElement).value, 10);
+        const newZoom = getZoomFromSlider(val);
+
+        // Keep center in view
+        const center = viewportWidth.value / 2;
+        const centerTime = (range?.start || 0) + center / zoomLevel.value;
+        zoomLevel.value = newZoom;
+        scrollOffset.value = centerTime - center / newZoom;
+    };
+
     const handleJump = (direction: 'forward' | 'backward', size: 'large' | 'small') => {
         if (!session || session.startTime === undefined || session.endTime === undefined) return;
 
@@ -281,6 +307,24 @@ export function WaveformToolbar() {
                         <path d="M15 3v18" />
                     </svg>
                 </button>
+            </div>
+
+            <div class="toolbar-separator" />
+
+            {/* Zoom Slider */}
+            <div class="toolbar-group zoom-slider-group">
+                <span class="slider-icon">-</span>
+                <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={getSliderValue(zoomLevel.value)}
+                    onInput={handleSliderChange}
+                    class="zoom-slider"
+                    title="Zoom Level"
+                />
+                <span class="slider-icon">+</span>
             </div>
 
             <div class="toolbar-separator" />
@@ -590,6 +634,42 @@ export function WaveformToolbar() {
                 .jump-btn:disabled {
                     opacity: 0.5;
                     cursor: not-allowed;
+                }
+
+                .zoom-slider-group {
+                    gap: 8px;
+                    padding: 0 4px;
+                }
+
+                .zoom-slider {
+                    width: 120px;
+                    height: 4px;
+                    -webkit-appearance: none;
+                    background: var(--border-color);
+                    border-radius: 2px;
+                    outline: none;
+                    cursor: pointer;
+                }
+
+                .zoom-slider::-webkit-slider-thumb {
+                    -webkit-appearance: none;
+                    width: 12px;
+                    height: 12px;
+                    background: var(--primary-accent);
+                    border-radius: 50%;
+                    cursor: pointer;
+                    transition: transform var(--transition-fast);
+                }
+
+                .zoom-slider::-webkit-slider-thumb:hover {
+                    transform: scale(1.2);
+                }
+
+                .slider-icon {
+                    font-size: 14px;
+                    color: var(--text-muted);
+                    font-weight: 600;
+                    user-select: none;
                 }
             `}</style>
         </div>

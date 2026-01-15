@@ -58,7 +58,9 @@ func main() {
 	apiGroup.GET("/parse/:sessionId/signals", h.HandleGetSignals)
 
 	// Config
-	apiGroup.GET("/config/map", h.HandleGetMapConfig)
+	// Map Layout
+	apiGroup.GET("/map/layout", h.HandleGetMapLayout)
+	apiGroup.POST("/map/upload", h.HandleUploadMapLayout)
 	apiGroup.GET("/config/validation-rules", h.HandleGetValidationRules)
 	apiGroup.PUT("/config/validation-rules", h.HandleUpdateValidationRules)
 
