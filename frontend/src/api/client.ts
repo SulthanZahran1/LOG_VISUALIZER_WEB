@@ -87,6 +87,10 @@ export async function getParseStatus(sessionId: string): Promise<ParseSession> {
     return request<ParseSession>(`/parse/${sessionId}/status`);
 }
 
+export async function getParseSignals(sessionId: string): Promise<string[]> {
+    return request<string[]>(`/parse/${sessionId}/signals`);
+}
+
 export interface PaginatedEntries {
     entries: LogEntry[];
     total: number;

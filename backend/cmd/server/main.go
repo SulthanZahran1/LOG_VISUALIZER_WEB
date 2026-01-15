@@ -55,6 +55,7 @@ func main() {
 	apiGroup.GET("/parse/:sessionId/status", h.HandleParseStatus)
 	apiGroup.GET("/parse/:sessionId/entries", h.HandleParseEntries)
 	apiGroup.GET("/parse/:sessionId/chunk", h.HandleParseChunk)
+	apiGroup.GET("/parse/:sessionId/signals", h.HandleGetSignals)
 
 	// Config
 	apiGroup.GET("/config/map", h.HandleGetMapConfig)

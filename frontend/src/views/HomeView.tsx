@@ -20,42 +20,50 @@ export function HomeView({ recentFiles, onUploadSuccess, onFileSelect, onFileDel
     return (
         <div class="home-layout">
             <div class="home-container">
-                <div class="welcome-section">
-                    <h2>Welcome to PLC Log Visualizer</h2>
-                    <p>Upload a log file or select from recent files to get started</p>
-                </div>
-
-                <div class="card log-file-card">
-                    <div class="card-header">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                            <polyline points="14,2 14,8 20,8" />
-                            <line x1="16" y1="13" x2="8" y2="13" />
-                            <line x1="16" y1="17" x2="8" y2="17" />
-                        </svg>
-                        Log File
-                    </div>
-                    <div class="card-content">
-                        <div class="upload-section">
-                            <FileUpload onUploadSuccess={onUploadSuccess} />
+                <div class="top-section">
+                    <div class="sidebar-column">
+                        <div class="card upload-card">
+                            <div class="card-header">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                    <polyline points="14,2 14,8 20,8" />
+                                </svg>
+                                Log File
+                            </div>
+                            <div class="card-content">
+                                <FileUpload onUploadSuccess={onUploadSuccess} />
+                            </div>
                         </div>
-                        <div class="recent-section">
-                            <RecentFiles
-                                files={recentFiles}
-                                onFileSelect={onFileSelect}
-                                onFileDelete={onFileDelete}
-                            />
+                    </div>
+
+                    <div class="main-column">
+                        <div class="card recent-files-card">
+                            <div class="card-header">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                                    <polyline points="13,2 13,9 20,9" />
+                                </svg>
+                                Recent Files
+                            </div>
+                            <div class="card-content">
+                                <RecentFiles
+                                    files={recentFiles}
+                                    onFileSelect={onFileSelect}
+                                    onFileDelete={onFileDelete}
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="nav-section">
-                    <h3>Quick Actions</h3>
+                    <h3>Open Views</h3>
                     <div class="nav-grid">
                         <NavButton
                             title="Timing Diagram"
                             icon="waveform"
                             description="Visualize signal changes over time"
+                            color="#4285F4"
                             disabled={!currentSession.value}
                             onClick={() => handleNavigation('waveform')}
                         />
@@ -63,6 +71,7 @@ export function HomeView({ recentFiles, onUploadSuccess, onFileSelect, onFileDel
                             title="Log Table"
                             icon="table"
                             description="Browse and filter log entries"
+                            color="#34A853"
                             disabled={!currentSession.value}
                             onClick={() => handleNavigation('log-table')}
                         />
@@ -70,14 +79,16 @@ export function HomeView({ recentFiles, onUploadSuccess, onFileSelect, onFileDel
                             title="Map Viewer"
                             icon="map"
                             description="View carrier positions"
-                            disabled={true}
+                            color="#FBBC04"
+                            disabled={!currentSession.value}
                             onClick={() => handleNavigation('map-viewer')}
                         />
                         <NavButton
                             title="Transitions"
                             icon="chart"
                             description="Analyze signal intervals"
-                            disabled={true}
+                            color="#EA4335"
+                            disabled={!currentSession.value}
                             onClick={() => { }}
                         />
                     </div>
@@ -95,33 +106,36 @@ export function HomeView({ recentFiles, onUploadSuccess, onFileSelect, onFileDel
                 }
 
                 .home-container {
-                    max-width: 900px;
+                    max-width: 1000px;
                     width: 100%;
                     display: flex;
                     flex-direction: column;
                     gap: var(--spacing-xl);
                 }
 
-                .welcome-section {
-                    text-align: center;
-                    padding: var(--spacing-lg) 0;
+                .top-section {
+                    display: flex;
+                    gap: var(--spacing-lg);
+                    height: 320px;
                 }
 
-                .welcome-section h2 {
-                    font-size: 24px;
-                    font-weight: 600;
-                    color: var(--text-primary);
-                    margin: 0 0 var(--spacing-sm) 0;
+                .sidebar-column {
+                    flex: 4;
+                    display: flex;
                 }
 
-                .welcome-section p {
-                    font-size: 14px;
-                    color: var(--text-muted);
-                    margin: 0;
+                .main-column {
+                    flex: 6;
+                    display: flex;
                 }
 
-                .log-file-card {
-                    padding: 0;
+                .card {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--card-radius);
                     overflow: hidden;
                 }
 
@@ -130,7 +144,7 @@ export function HomeView({ recentFiles, onUploadSuccess, onFileSelect, onFileDel
                     padding: var(--spacing-md) var(--spacing-lg);
                     border-bottom: 1px solid var(--border-color);
                     font-weight: 600;
-                    font-size: 14px;
+                    font-size: 13px;
                     display: flex;
                     align-items: center;
                     gap: var(--spacing-sm);
@@ -142,26 +156,16 @@ export function HomeView({ recentFiles, onUploadSuccess, onFileSelect, onFileDel
                 }
 
                 .card-content {
-                    display: flex;
-                    min-height: 300px;
+                    flex: 1;
+                    padding: var(--spacing-md);
+                    overflow-y: auto;
                 }
 
-                .upload-section {
-                    flex: 1.2;
-                    border-right: 1px solid var(--border-color);
-                    padding: var(--spacing-xl);
+                .upload-card .card-content {
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     background: var(--bg-primary);
-                }
-
-                .recent-section {
-                    flex: 1;
-                    display: flex;
-                    flex-direction: column;
-                    background: var(--bg-secondary);
-                    overflow: hidden;
                 }
 
                 .nav-section h3 {
@@ -171,12 +175,17 @@ export function HomeView({ recentFiles, onUploadSuccess, onFileSelect, onFileDel
                     color: var(--text-muted);
                     margin: 0 0 var(--spacing-md) 0;
                     font-weight: 600;
+                    padding-left: 4px;
                 }
 
                 .nav-grid {
                     display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                    gap: var(--spacing-md);
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: var(--spacing-lg);
+                    background: var(--bg-secondary);
+                    padding: var(--spacing-lg);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--card-radius);
                 }
             `}</style>
         </div>

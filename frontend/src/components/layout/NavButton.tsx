@@ -1,10 +1,14 @@
+import type { JSX } from 'preact';
+
 interface NavButtonProps {
+
     title: string;
     icon: 'waveform' | 'table' | 'map' | 'chart';
     description?: string;
     onClick: () => void;
     active?: boolean;
     disabled?: boolean;
+    color?: string;
 }
 
 const icons = {
@@ -37,12 +41,13 @@ const icons = {
     ),
 };
 
-export function NavButton({ title, icon, description, onClick, active, disabled }: NavButtonProps) {
+export function NavButton({ title, icon, description, onClick, active, disabled, color }: NavButtonProps) {
     return (
         <button
             class={`nav-button ${active ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
             onClick={onClick}
             disabled={disabled}
+            style={color ? { '--primary-accent': color } as JSX.CSSProperties : {}}
         >
             <div class="nav-button-icon">
                 {icons[icon]}

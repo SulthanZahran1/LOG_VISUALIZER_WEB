@@ -3,6 +3,27 @@
 > Append-only log. Add entries at the top as work is completed.
 > Format: `## YYYY-MM-DD: Summary`
 
+## 2026-01-15: "Show Changed" Filter Implementation
+
+### Backend
+- Added `GetSignals` to `session.Manager` to retrieve all unique signal keys.
+- Added `GET /api/parse/:sessionId/signals` endpoint to `handlers.go`.
+- Registered route in `main.go`.
+
+### Frontend
+- Added `getParseSignals` to `api/client.ts`.
+- Updated `waveformStore.ts`:
+  - Added `allSignals`, `showChangedInView`, and `signalsWithChanges` signals.
+  - Added effect to fetch all signals on session completion.
+  - Added effect to fetch time-windowed chunks and identify active signals when filtering is enabled.
+  - Updated `availableSignals` to use the full signal list.
+- Updated `SignalSidebar.tsx`:
+  - Added "Show signals with changes in view" toggle.
+  - Implemented logic to filter the signal tree based on detected activity.
+- Fixed async effect linting issues and unrelated JSX import errors.
+
+---
+
 ## 2026-01-15: Phase 2 — Waveform Interaction Polish
 
 ### Drag Panning & Navigation

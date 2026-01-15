@@ -165,6 +165,17 @@ func (h *Handler) HandleParseChunk(c echo.Context) error {
 	return c.JSON(http.StatusOK, entries)
 }
 
+// HandleGetSignals returns the list of all unique signals for a session.
+func (h *Handler) HandleGetSignals(c echo.Context) error {
+	id := c.Param("sessionId")
+	signals, ok := h.session.GetSignals(id)
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
+	}
+
+	return c.JSON(http.StatusOK, signals)
+}
+
 // HandleGetMapConfig returns a placeholder map config.
 func (h *Handler) HandleGetMapConfig(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{})

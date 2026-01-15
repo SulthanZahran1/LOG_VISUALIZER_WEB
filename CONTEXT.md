@@ -114,15 +114,19 @@ Core Waveform Canvas and signal rendering are implemented. UI/UX overhauled with
 - [x] Signal type filter (Boolean/String/Integer)
 - [x] Value-based color coding for state signals
 - [x] Time range selection (Shift + Drag)
+- [x] Waveform Panning (Click-drag and mouse wheel)
+- [x] Arrow key navigation (Left/Right to pan)
+- [x] Jump to Time input (HH:MM:SS.mmm)
+- [x] Signal Selector tree with search and regex
+- [x] Tabbed View Management (replacing split panes)
+- [x] "Show changed" filter for Waveform sidebar
 
 ---
 
 ## What's Next
 
-1. "Show changed" filter for Waveform sidebar
-2. Filter presets (save/load)
-3. Alternating row backgrounds (Waveform Canvas)
-4. Begin Phase 3: Multi-View / Split Panes
+1. Filter presets (save/load)
+2. Begin Phase 3: Map Viewer
 
 ---
 
@@ -131,13 +135,12 @@ Core Waveform Canvas and signal rendering are implemented. UI/UX overhauled with
 | Phase | Features | Status |
 |:-----:|----------|:------:|
 | 1 | File upload, recent files, Log Table, session persistence | Completed ✅ |
-| 2 | Waveform/Timing Diagram, Signal Filtering | Completed ✅ |
-| 3 | Multi-View Split Panes, Tab management | Not started |
-| 4 | Map Viewer, Carrier Tracking | Not started |
-| 4.5 | Playback Feature (time scrubbing, play/pause) | Not started |
-| 5 | Bookmarks, Time Synchronization | Not started |
-| 5.5 | Multi-File Merge | Not started |
-| 6 | Signal Validation, YAML Rule Editor | Not started |
+| 2 | Waveform/Timing Diagram, Signal Filtering | In Progress 🚧 |
+| 3 | Map Viewer, Carrier Tracking | Not started |
+| 3.5 | Playback Feature (time scrubbing, play/pause) | Not started |
+| 4 | Bookmarks, Time Synchronization | Not started |
+| 4.5 | Multi-File Merge | Not started |
+| 5 | Signal Validation, YAML Rule Editor | Not started |
 
 ---
 

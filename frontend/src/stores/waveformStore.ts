@@ -1,5 +1,5 @@
 import { signal, computed, effect } from '@preact/signals';
-import { getParseChunk } from '../api/client';
+import { getParseChunk, getParseSignals } from '../api/client';
 import { currentSession, logEntries } from './logStore';
 import type { LogEntry, TimeRange } from '../models/types';
 
@@ -14,15 +14,27 @@ export const selectionRange = signal<{ start: number, end: number } | null>(null
 export const selectedSignals = signal<string[]>([]); // "DeviceId::SignalName"
 export const waveformEntries = signal<Record<string, LogEntry[]>>({});
 
-// Available Signals - computed from all log entries
+// Full signal list from backend
+export const allSignals = signal<string[]>([]);
+export const showChangedInView = signal(false);
+export const signalsWithChanges = signal<Set<string>>(new Set());
+
+// Available Signals - computed from allSignals (fallback to logEntries)
 export const availableSignals = computed<Map<string, string[]>>(() => {
     const deviceMap = new Map<string, Set<string>>();
 
-    for (const entry of logEntries.value) {
-        if (!deviceMap.has(entry.deviceId)) {
-            deviceMap.set(entry.deviceId, new Set());
+    const signalsToUse = allSignals.value.length > 0
+        ? allSignals.value
+        : logEntries.value.map(e => `${e.deviceId}::${e.signalName}`);
+
+    for (const signalKey of signalsToUse) {
+        const [device, signal] = signalKey.split('::');
+        if (!device || !signal) continue;
+
+        if (!deviceMap.has(device)) {
+            deviceMap.set(device, new Set());
         }
-        deviceMap.get(entry.deviceId)!.add(entry.signalName);
+        deviceMap.get(device)!.add(signal);
     }
 
     // Convert Sets to sorted arrays
@@ -103,6 +115,46 @@ effect(() => {
             zoomLevel.value = viewportWidth.value / targetDuration;
         }
     }
+});
+
+/**
+ * Fetch all signals for the session once it's complete
+ */
+effect(() => {
+    const session = currentSession.value;
+    if (session && session.status === 'complete' && allSignals.value.length === 0) {
+        getParseSignals(session.id).then(signals => {
+            allSignals.value = signals;
+        }).catch(err => {
+            console.error('Failed to fetch signals', err);
+        });
+    } else if (!session) {
+        allSignals.value = [];
+    }
+});
+
+/**
+ * Fetch entries for the current viewport to identify signals with changes
+ */
+effect(() => {
+    const session = currentSession.value;
+    const range = viewRange.value;
+    const active = showChangedInView.value;
+
+    if (!session || !range || !active) {
+        signalsWithChanges.value = new Set();
+        return;
+    }
+
+    getParseChunk(session.id, range.start, range.end).then(chunk => {
+        const changed = new Set<string>();
+        for (const e of chunk) {
+            changed.add(`${e.deviceId}::${e.signalName}`);
+        }
+        signalsWithChanges.value = changed;
+    }).catch(err => {
+        console.error('Failed to fetch chunk for changed signals', err);
+    });
 });
 
 /**

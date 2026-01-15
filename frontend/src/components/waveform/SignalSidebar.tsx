@@ -4,7 +4,9 @@ import {
     selectedSignals,
     toggleSignal,
     selectAllSignalsForDevice,
-    deselectAllSignalsForDevice
+    deselectAllSignalsForDevice,
+    showChangedInView,
+    signalsWithChanges
 } from '../../stores/waveformStore';
 import { logEntries } from '../../stores/logStore';
 import type { SignalType } from '../../models/types';
@@ -36,9 +38,25 @@ export function SignalSidebar() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [availableSignals.value]);
 
-    // Filter devices and signals based on search query and type filter
+    // Filter devices and signals based on search query, type filter, and "show changed"
     const filteredDevices = useMemo(() => {
         let result = devices;
+
+        // "Show Changed" filter
+        const activeChangedFilter = showChangedInView.value;
+        const changedKeys = signalsWithChanges.value;
+
+        if (activeChangedFilter) {
+            result = result
+                .map(([device, signals]) => {
+                    const matchingSignals = signals.filter(s => {
+                        const key = `${device}::${s}`;
+                        return changedKeys.has(key);
+                    });
+                    return matchingSignals.length > 0 ? [device, matchingSignals] as [string, string[]] : null;
+                })
+                .filter((d): d is [string, string[]] => d !== null);
+        }
 
         // Type filter
         if (typeFilter !== 'all') {
@@ -155,6 +173,16 @@ export function SignalSidebar() {
                         <option value="string">String</option>
                         <option value="integer">Integer</option>
                     </select>
+                </div>
+                <div class="changed-filter-bar">
+                    <label class="toggle-label">
+                        <input
+                            type="checkbox"
+                            checked={showChangedInView.value}
+                            onChange={(e) => showChangedInView.value = (e.target as HTMLInputElement).checked}
+                        />
+                        <span>Show signals with changes in view</span>
+                    </label>
                 </div>
             </div>
             <div class="signal-list">
@@ -324,6 +352,28 @@ export function SignalSidebar() {
                 .type-select:focus {
                     border-color: var(--primary-accent);
                     box-shadow: 0 0 0 3px rgba(77, 182, 226, 0.15);
+                }
+
+                .changed-filter-bar {
+                    margin-top: var(--spacing-sm);
+                    padding-top: var(--spacing-sm);
+                    border-top: 1px solid var(--border-color);
+                }
+
+                .toggle-label {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-size: 11px;
+                    color: var(--text-secondary);
+                    cursor: pointer;
+                    user-select: none;
+                }
+
+                .toggle-label input {
+                    width: 14px;
+                    height: 14px;
+                    accent-color: var(--primary-accent);
                 }
 
                 .signal-list {

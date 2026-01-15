@@ -184,3 +184,21 @@ func (m *Manager) GetChunk(id string, startTs, endTs time.Time) ([]models.LogEnt
 
 	return entries, true
 }
+
+// GetSignals returns the full list of signal keys for a session.
+func (m *Manager) GetSignals(id string) ([]string, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	state, ok := m.sessions[id]
+	if !ok || state.Result == nil {
+		return nil, false
+	}
+
+	signals := make([]string, 0, len(state.Result.Signals))
+	for s := range state.Result.Signals {
+		signals = append(signals, s)
+	}
+
+	return signals, true
+}

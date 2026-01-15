@@ -26,12 +26,10 @@
 ## Phase 1: Foundation + Log Table [COMPLETED]
 
 ### User Interface & Layout (UX Polish)
-- [x] Flexible Layout Engine (Tabs + Split Panes)
-- [x] Drag-to-split interaction (Left, Right, Top, Bottom)
+- [x] Tabbed View Management (views open as separate tabs)
 - [x] Universal Header with: Sync, Clear, Help, Status
 - [x] Theme: Industrial Dark (consistent with #003D82 primary blue)
-- [x] Breadcrumbs or Navigation Bar for active sessions
-- [x] Tabbed View Management (views open as separate tabs)
+- [x] Navigation Bar for active sessions
 
 ### Log Table View (Refined)
 - [x] VirtualScroll component (fixed row height)
@@ -100,7 +98,7 @@
 - [x] Case-sensitive toggle
 - [x] Device filter dropdown (via collapsible groups)
 - [x] Signal type filter (boolean/string/integer)
-- [ ] "Show changed" filter (signals with changes in view)
+- [x] "Show changed" filter (signals with changes in view)
 
 ### Filter Presets
 - [ ] Save current filter as preset
@@ -120,8 +118,7 @@
 
 ---
 
-
-## Phase 4: Map Viewer + Carrier Tracking
+## Phase 3: Map Viewer + Carrier Tracking
 
 ### Map Rendering
 - [ ] Load layout from YAML/XML config
@@ -129,14 +126,6 @@
 - [ ] Render paths/conveyors as lines
 - [ ] Display labels
 - [ ] Pan and zoom controls
-
-### Waveform Canvas (UX Focus)
-- [ ] Create WaveformCanvas component (HTML Canvas 2D)
-- [ ] High-DPI (retina) support via scaling
-- [ ] Virtual viewport (render only visible time range + buffer)
-- [ ] Smooth pan (drag) and zoom (scroll)
-- [ ] Signal labels (sticky sidebar)
-- [ ] Tooltip/Cursor readout for values at time
 
 ### Carrier Tracking
 - [ ] Display carriers on units
@@ -165,7 +154,7 @@
 
 ---
 
-## Phase 4.5: Playback Feature
+## Phase 3.5: Playback Feature
 
 ### Playback Controls
 - [ ] Play/pause button
@@ -181,7 +170,7 @@
 
 ---
 
-## Phase 5: Bookmarks + Time Sync
+## Phase 4: Bookmarks + Time Sync
 
 ### Adding Bookmarks
 - [ ] Ctrl+B opens add dialog
@@ -214,7 +203,7 @@
 
 ---
 
-## Phase 5.5: Multi-File Merge
+## Phase 4.5: Multi-File Merge
 
 - [ ] Allow selecting multiple files for upload
 - [ ] Merge log entries by timestamp
@@ -224,7 +213,7 @@
 
 ---
 
-## Phase 6: Validation (Post-MVP)
+## Phase 5: Validation (Post-MVP)
 
 ### Validation Engine
 - [ ] Load rules from YAML

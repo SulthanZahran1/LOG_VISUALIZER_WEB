@@ -127,7 +127,8 @@ This checklist covers testing for the web version features.
 - [ ] Case-sensitive toggle works
 - [ ] Device filter dropdown works
 - [ ] Signal type filter (boolean/string/integer)
-- [ ] "Show changed" shows only changed signals
+- [ ] "Show changed" shows only changed signals in the current viewport
+- [ ] Sidebar dynamically updates while panning when "Show changed" is ON
 - [ ] Save filter preset
 - [ ] Load filter preset
 - [ ] Delete filter preset

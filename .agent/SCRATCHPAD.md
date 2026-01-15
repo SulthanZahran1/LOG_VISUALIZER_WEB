@@ -19,15 +19,13 @@
 
 ## Updated Phase Order
 
-1. Log Table (Phase 1)
-2. Waveform/Timing Diagram (Phase 2)
-3. Signal Filtering (Phase 2)
-4. Multi-View/Split Panes (Phase 3)
-5. Map Viewer + Carrier Tracking (Phase 4)
-6. **Playback Feature** (Phase 4.5) ← NEW
-7. Bookmarks + Time Sync (Phase 5)
-8. **Multi-File Merge** (Phase 5.5) ← NEW
-9. Signal Validation + YAML Editor (Phase 6)
+1. Log Table (Phase 1) - Complete ✅
+2. Waveform/Timing Diagram + Filtering (Phase 2) - In Progress 🚧
+3. Map Viewer + Carrier Tracking (Phase 3) - Next ⏭️
+4. Playback Feature (Phase 3.5)
+5. Bookmarks + Time Sync (Phase 4)
+6. Multi-File Merge (Phase 4.5)
+7. Signal Validation + YAML Editor (Phase 5)
 
 ---
 
@@ -38,6 +36,9 @@
 - Max file size: 1GB
 - Chrome-only, no mobile
 - Industrial dark theme
+- **Tabbed view management implemented (replacing split panes).**
+- **Waveform Canvas interactive (panning, keyboard nav, jump to time).**
+- **"Show Changed" filter dynamically updates sidebar based on viewport activity.**
 
 ---
 
