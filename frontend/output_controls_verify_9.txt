@@ -34,3 +34,4 @@ Drag panning verification: Offset remained [33m1758546000364[39m
     [chromium] › e2e/verify_controls.spec.ts:2:1 › verify waveform controls and disabled panning ───
 
 [36m  Serving HTML report at http://localhost:42963. Press Ctrl+C to quit.[39m
+Terminated

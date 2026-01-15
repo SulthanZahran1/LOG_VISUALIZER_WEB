@@ -25,8 +25,8 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
         try {
             const info = await uploadFile(file);
             onUploadSuccess(info);
-        } catch (err: any) {
-            error.value = err.message || 'Upload failed';
+        } catch (err) {
+            error.value = err instanceof Error ? err.message : 'Upload failed';
         } finally {
             isUploading.value = false;
         }

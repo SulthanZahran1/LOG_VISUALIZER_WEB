@@ -107,15 +107,18 @@ Core Waveform Canvas and signal rendering are implemented. UI/UX overhauled with
 - [x] Testing infrastructure (Vitest, Playwright, ESLint)
 - [x] Waveform Toolbar (Zoom, Pan, Fit, Presets)
 - [x] Waveform Cursor (Hover line, Readout)
+- [x] Click-drag panning (mouse drag to pan timeline)
+- [x] Arrow key navigation (Left/Right to pan)
+- [x] Jump to Time input (HH:MM:SS.mmm format)
 
 ---
 
 ## What's Next
 
-1. Implement Time Axis labels and ticks
-2. Refine Waveform interaction (cursor readout, sticky selection)
-3. Implement Signal Filtering (regex, type) for Waveform
-4. Add "Jump to Time" controls
+1. Click axis to jump to time
+2. Signal type filter for Waveform sidebar
+3. Color coding per unique state value
+4. Time range selection (click-drag to select)
 
 ---
 

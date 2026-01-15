@@ -61,7 +61,7 @@ export const filteredEntries = computed(() => {
 
     // 2. Filter "Show Changed Only"
     if (showChangedOnly.value) {
-        const lastValues = new Map<string, any>();
+        const lastValues = new Map<string, string | number | boolean>();
         entries = entries.filter(e => {
             const key = `${e.deviceId}::${e.signalName}`;
             const lastVal = lastValues.get(key);
@@ -85,7 +85,7 @@ export const filteredEntries = computed(() => {
                 const flags = searchCaseSensitive.value ? '' : 'i';
                 const regex = new RegExp(searchQuery.value, flags);
                 matcher = (text) => regex.test(text);
-            } catch (e) {
+            } catch {
                 // Invalid regex, fallback to string includes
                 matcher = (text) => text.toLowerCase().includes(searchQuery.value.toLowerCase());
             }
@@ -210,17 +210,25 @@ export async function fetchEntries(page: number, pageSize: number) {
     }
 }
 
-// Debugging
+// Debugging - extend window interface for dev tools
+declare global {
+    interface Window {
+        logStore?: typeof logStoreDebug;
+    }
+}
+
+const logStoreDebug = {
+    currentSession,
+    logEntries,
+    totalEntries,
+    isLoadingLog,
+    searchQuery,
+    searchRegex,
+    searchCaseSensitive,
+    showChangedOnly,
+    isSyncEnabled
+};
+
 if (typeof window !== 'undefined') {
-    (window as any).logStore = {
-        currentSession,
-        logEntries,
-        totalEntries,
-        isLoadingLog,
-        searchQuery,
-        searchRegex,
-        searchCaseSensitive,
-        showChangedOnly,
-        isSyncEnabled
-    };
+    window.logStore = logStoreDebug;
 }

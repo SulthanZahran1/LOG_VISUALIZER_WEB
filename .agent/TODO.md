@@ -72,8 +72,8 @@
 - [x] Cursor position readout
 
 ### Grid Lines
-- [ ] Vertical grid lines (time intervals)
-- [ ] Alternating row backgrounds
+- [x] Vertical grid lines (time intervals)
+- [x] Alternating row backgrounds
 
 ### Zoom Controls
 - [x] Zoom in/out buttons
@@ -83,10 +83,10 @@
 - [x] Zoom presets (1s, 10s, 1min, 10min, 1hr)
 
 ### Pan Controls
-- [ ] Click and drag to pan (mouse move)
-- [ ] Arrow keys navigation
+- [x] Click and drag to pan (mouse move)
+- [x] Arrow keys navigation
 - [x] Go to start/end buttons
-- [ ] Smooth panning (no jank)
+- [x] Smooth panning (no jank)
 
 ### Time Range Selection
 - [ ] Click and drag to select range
@@ -115,6 +115,7 @@
 - [ ] Click label to focus signal
 - [ ] "Show changed only" toggle in toolbar
 - [x] Sync waveform cursor with Log Table selection
+- [x] Jump to time input (HH:MM:SS.mmm format)
 - [ ] Right-click context menu (hide, show only, etc.)
 
 ---

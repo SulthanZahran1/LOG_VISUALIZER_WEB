@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-test.describe('Log Viewer', () => {
+test.describe('Log Table', () => {
     test.beforeEach(async ({ page }) => {
         await page.goto('/')
         // Wait for the app to load
@@ -15,11 +15,11 @@ test.describe('Log Viewer', () => {
         if (await recentFile.isVisible()) {
             await recentFile.click()
 
-            // Wait for Log Viewer tab to appear
-            await expect(page.locator('.tab-item').filter({ hasText: 'Log Viewer' })).toBeVisible({ timeout: 5000 })
+            // Wait for Log Table tab to appear
+            await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 5000 })
 
-            // Click on Log Viewer tab
-            await page.locator('.tab-item').filter({ hasText: 'Log Viewer' }).click()
+            // Click on Log Table tab
+            await page.locator('.tab-item').filter({ hasText: 'Log Table' }).click()
 
             // Check that log table is visible
             await expect(page.locator('.log-table-container')).toBeVisible()
@@ -32,7 +32,7 @@ test.describe('Log Viewer', () => {
 
         if (await recentFile.isVisible()) {
             await recentFile.click()
-            await page.locator('.tab-item').filter({ hasText: 'Log Viewer' }).click()
+            await page.locator('.tab-item').filter({ hasText: 'Log Table' }).click()
 
             // Wait for header
             await expect(page.locator('.log-table-header')).toBeVisible()
@@ -51,7 +51,7 @@ test.describe('Log Viewer', () => {
 
         if (await recentFile.isVisible()) {
             await recentFile.click()
-            await page.locator('.tab-item').filter({ hasText: 'Log Viewer' }).click()
+            await page.locator('.tab-item').filter({ hasText: 'Log Table' }).click()
 
             // Check filter elements
             await expect(page.locator('.search-box input')).toBeVisible()
@@ -65,7 +65,7 @@ test.describe('Log Viewer', () => {
 
         if (await recentFile.isVisible()) {
             await recentFile.click()
-            await page.locator('.tab-item').filter({ hasText: 'Log Viewer' }).click()
+            await page.locator('.tab-item').filter({ hasText: 'Log Table' }).click()
 
             // Find and click vertical split button
             const splitBtn = page.locator('.btn-icon').filter({ hasText: '◴' })

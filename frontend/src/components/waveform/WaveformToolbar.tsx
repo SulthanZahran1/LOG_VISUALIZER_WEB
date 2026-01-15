@@ -1,4 +1,5 @@
-import { hoverTime, zoomLevel, viewRange, viewportWidth, scrollOffset } from '../../stores/waveformStore';
+import { useState } from 'preact/hooks';
+import { hoverTime, zoomLevel, viewRange, viewportWidth, scrollOffset, jumpToTime } from '../../stores/waveformStore';
 import { currentSession } from '../../stores/logStore';
 import { formatTimestamp } from '../../utils/TimeAxisUtils';
 
@@ -15,6 +16,54 @@ export function WaveformToolbar() {
     const cursorTime = hoverTime.value;
     const session = currentSession.value;
     const hasData = session && session.status === 'complete' && session.startTime !== undefined;
+
+    // Jump to Time state
+    const [jumpInput, setJumpInput] = useState('');
+    const [jumpError, setJumpError] = useState(false);
+
+    /**
+     * Parse time string in format HH:MM:SS or HH:MM:SS.mmm to milliseconds
+     * Returns null if invalid
+     */
+    const parseTimeInput = (input: string): number | null => {
+        if (!session || session.startTime === undefined) return null;
+
+        // Match HH:MM:SS or HH:MM:SS.mmm
+        const match = input.match(/^(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/);
+        if (!match) return null;
+
+        const hours = parseInt(match[1], 10);
+        const minutes = parseInt(match[2], 10);
+        const seconds = parseInt(match[3], 10);
+        const millis = match[4] ? parseInt(match[4].padEnd(3, '0'), 10) : 0;
+
+        if (hours > 23 || minutes > 59 || seconds > 59) return null;
+
+        // Get the date from session startTime and construct target time
+        const baseDate = new Date(session.startTime);
+        const targetDate = new Date(baseDate);
+        targetDate.setUTCHours(hours, minutes, seconds, millis);
+
+        return targetDate.getTime();
+    };
+
+    const handleJumpToTime = () => {
+        const time = parseTimeInput(jumpInput);
+        if (time !== null) {
+            jumpToTime(time);
+            setJumpError(false);
+            setJumpInput('');
+        } else {
+            setJumpError(true);
+        }
+    };
+
+    const handleJumpInputKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleJumpToTime();
+        }
+    };
 
     const handleZoomIn = () => {
         const newZoom = zoomLevel.value * 1.3;
@@ -214,6 +263,32 @@ export function WaveformToolbar() {
             {/* Spacer */}
             <div class="toolbar-spacer" />
 
+            {/* Jump to Time Input */}
+            <div class="jump-to-time">
+                <input
+                    type="text"
+                    class={`jump-input ${jumpError ? 'error' : ''}`}
+                    placeholder="HH:MM:SS"
+                    value={jumpInput}
+                    onInput={(e) => {
+                        setJumpInput((e.target as HTMLInputElement).value);
+                        setJumpError(false);
+                    }}
+                    onKeyDown={handleJumpInputKeyDown}
+                    disabled={!hasData}
+                />
+                <button
+                    class="jump-btn"
+                    onClick={handleJumpToTime}
+                    disabled={!hasData || !jumpInput}
+                    title="Jump to Time"
+                >
+                    Go
+                </button>
+            </div>
+
+            <div class="toolbar-separator" />
+
             {/* Cursor Readout */}
             <div class="cursor-readout">
                 {cursorTime !== null ? (
@@ -334,6 +409,65 @@ export function WaveformToolbar() {
                     color: var(--text-muted);
                     font-style: italic;
                     font-size: 11px;
+                }
+
+                .jump-to-time {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                }
+
+                .jump-input {
+                    width: 90px;
+                    padding: 4px 8px;
+                    font-family: var(--font-mono);
+                    font-size: 12px;
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--border-radius);
+                    color: var(--text-primary);
+                    outline: none;
+                    transition: all var(--transition-fast);
+                }
+
+                .jump-input:focus {
+                    border-color: var(--primary-accent);
+                    box-shadow: 0 0 0 2px rgba(77, 182, 226, 0.2);
+                }
+
+                .jump-input.error {
+                    border-color: var(--accent-error);
+                    box-shadow: 0 0 0 2px rgba(248, 81, 73, 0.2);
+                }
+
+                .jump-input::placeholder {
+                    color: var(--text-muted);
+                }
+
+                .jump-input:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+
+                .jump-btn {
+                    padding: 4px 10px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    background: var(--primary-accent);
+                    border: none;
+                    border-radius: var(--border-radius);
+                    color: white;
+                    cursor: pointer;
+                    transition: all var(--transition-fast);
+                }
+
+                .jump-btn:hover:not(:disabled) {
+                    background: #5fc4e8;
+                }
+
+                .jump-btn:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
                 }
             `}</style>
         </div>

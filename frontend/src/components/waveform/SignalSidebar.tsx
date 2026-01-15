@@ -13,9 +13,11 @@ export function SignalSidebar() {
     const [expandedDevices, setExpandedDevices] = useState<Set<string>>(new Set());
 
     // Get all available signals grouped by device
+    // Note: accessing .value inside useMemo creates reactivity; empty deps is intentional for signals
     const devices = useMemo(() => {
         const devicesMap = availableSignals.value;
         return Array.from(devicesMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [availableSignals.value]);
 
     // Filter devices and signals based on search query

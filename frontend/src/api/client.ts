@@ -94,11 +94,27 @@ export interface PaginatedEntries {
     pageSize: number;
 }
 
-function transformEntry(e: any): LogEntry {
+interface RawLogEntry {
+    timestamp: string | number;
+    deviceId: string;
+    signalName: string;
+    value: string | number | boolean;
+    signalType?: string;
+    [key: string]: unknown;
+}
+
+interface RawPaginatedEntries {
+    entries: RawLogEntry[];
+    total: number;
+    page: number;
+    pageSize: number;
+}
+
+function transformEntry(e: RawLogEntry): LogEntry {
     return {
         ...e,
         timestamp: new Date(e.timestamp).getTime()
-    };
+    } as LogEntry;
 }
 
 export async function getParseEntries(
@@ -106,7 +122,7 @@ export async function getParseEntries(
     page: number = 1,
     pageSize: number = 100
 ): Promise<PaginatedEntries> {
-    const res = await request<any>(
+    const res = await request<RawPaginatedEntries>(
         `/parse/${sessionId}/entries?page=${page}&pageSize=${pageSize}`
     );
     return {
@@ -120,7 +136,7 @@ export async function getParseChunk(
     start: number,
     end: number
 ): Promise<LogEntry[]> {
-    const res = await request<any[]>(
+    const res = await request<RawLogEntry[]>(
         `/parse/${sessionId}/chunk?start=${start}&end=${end}`
     );
     return res.map(transformEntry);

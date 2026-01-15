@@ -53,6 +53,10 @@ export function WaveformCanvas() {
     const containerRef = useRef<HTMLDivElement>(null);
     const hoverXRef = useRef<number | null>(null);
 
+    // Panning state refs
+    const isPanningRef = useRef(false);
+    const panStartXRef = useRef(0);
+
     // Resize Observer to update viewportWidth
     useEffect(() => {
         const container = containerRef.current;
@@ -165,7 +169,7 @@ export function WaveformCanvas() {
         render();
 
         return () => {
-            cancelAnimationFrame(animationFrameId);
+            window.cancelAnimationFrame(animationFrameId);
         };
     }, []); // Empty dependency array: render loop runs continuously and pulls fresh signal values
 
@@ -184,38 +188,88 @@ export function WaveformCanvas() {
         }
     };
 
+    const handleMouseDown = (e: MouseEvent) => {
+        // Start panning on left-click (button 0)
+        if (e.button === 0) {
+            isPanningRef.current = true;
+            panStartXRef.current = e.clientX;
+            if (containerRef.current) {
+                containerRef.current.style.cursor = 'grabbing';
+            }
+        }
+    };
+
+    const handleMouseUp = () => {
+        isPanningRef.current = false;
+        if (containerRef.current) {
+            containerRef.current.style.cursor = 'grab';
+        }
+    };
+
     const handleMouseMove = (e: MouseEvent) => {
         const rect = canvasRef.current?.getBoundingClientRect();
-        if (rect) {
-            const x = e.clientX - rect.left;
-            hoverXRef.current = x; // Update ref directly
+        if (!rect) return;
 
-            // Update hover time for toolbar readout
-            const range = viewRange.value;
-            if (range) {
-                const time = range.start + (x / zoomLevel.value);
-                hoverTime.value = time;
-            }
+        const x = e.clientX - rect.left;
+        hoverXRef.current = x;
+
+        // Handle panning
+        if (isPanningRef.current) {
+            const deltaX = e.clientX - panStartXRef.current;
+            pan(deltaX);
+            panStartXRef.current = e.clientX;
+        }
+
+        // Update hover time for toolbar readout
+        const range = viewRange.value;
+        if (range) {
+            const time = range.start + (x / zoomLevel.value);
+            hoverTime.value = time;
         }
     };
 
     const handleMouseLeave = () => {
         hoverXRef.current = null;
         hoverTime.value = null;
+        isPanningRef.current = false;
+        if (containerRef.current) {
+            containerRef.current.style.cursor = 'grab';
+        }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+        const PAN_AMOUNT = 100; // pixels
+
+        switch (e.key) {
+            case 'ArrowLeft':
+                e.preventDefault();
+                pan(PAN_AMOUNT); // Pan left (positive moves view left in time)
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                pan(-PAN_AMOUNT); // Pan right
+                break;
+        }
     };
 
     return (
-        <div ref={containerRef} class="waveform-canvas-wrapper">
+        <div
+            ref={containerRef}
+            class="waveform-canvas-wrapper"
+            tabIndex={0}
+            onKeyDown={handleKeyDown}
+        >
             <canvas
                 ref={canvasRef}
                 class="waveform-canvas"
                 style={{
                     width: '100%',
                     height: 'auto',
-                    display: 'block',
-                    cursor: 'crosshair'
+                    display: 'block'
                 }}
                 onWheel={handleWheel}
+                onMouseDown={handleMouseDown}
+                onMouseUp={handleMouseUp}
                 onMouseMove={handleMouseMove}
                 onMouseLeave={handleMouseLeave}
             />
@@ -225,6 +279,11 @@ export function WaveformCanvas() {
                     height: 100%;
                     overflow: hidden;
                     background: ${COLORS.canvasBg};
+                    cursor: grab;
+                    outline: none;
+                }
+                .waveform-canvas-wrapper:focus {
+                    box-shadow: inset 0 0 0 2px var(--primary-accent);
                 }
             `}</style>
         </div>

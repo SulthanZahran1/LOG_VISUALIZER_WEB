@@ -3,6 +3,32 @@
 > Append-only log. Add entries at the top as work is completed.
 > Format: `## YYYY-MM-DD: Summary`
 
+## 2026-01-15: Phase 2 — Waveform Interaction Polish
+
+### Drag Panning & Navigation
+- Added click-drag panning to `WaveformCanvas.tsx` (grab/grabbing cursor)
+- Added arrow key navigation (Left/Right to pan viewport)
+- Made canvas focusable with visual focus indicator
+
+### Jump to Time
+- Added `jumpToTime(ms)` function to `waveformStore.ts`
+- Added Jump to Time input field to `WaveformToolbar.tsx`
+- Parses HH:MM:SS and HH:MM:SS.mmm formats
+- Shows error state for invalid input
+
+### Lint Fixes
+- Fixed 1 error and 19 warnings across 10 files
+- Replaced `any` types with proper interfaces
+- Fixed unused variables and hook dependencies
+- Added Window interface extensions for debugging
+
+### Tests
+- Updated E2E test to verify panning works (was checking disabled)
+- Fixed Log Table tab name in E2E tests (`Log Viewer` → `Log Table`)
+- All 10 E2E tests passing
+
+---
+
 ## 2026-01-15: UX Flow Alignment + Signal Selector
 
 ### UX Flow Alignment

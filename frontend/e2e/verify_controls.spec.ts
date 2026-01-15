@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('verify waveform controls and disabled panning', async ({ page }) => {
+test('verify waveform controls and panning', async ({ page }) => {
     // 1. Setup: Upload and parse file
     await page.goto('/');
     const fileInput = page.locator('input[type="file"]');
@@ -49,9 +49,9 @@ test('verify waveform controls and disabled panning', async ({ page }) => {
 
     const endOffset = await page.evaluate(() => window.waveformStore.scrollOffset.value);
 
-    // Expect NO change (or extremely negligible floating point noise, but should be identical if logic removed)
-    expect(endOffset).toBe(startOffset);
-    console.log('Drag panning verification: Offset remained', startOffset);
+    // Expect offset to CHANGE (panning is now enabled)
+    expect(endOffset).not.toBe(startOffset);
+    console.log('Drag panning verification: Offset changed from', startOffset, 'to', endOffset);
 
     // 5. Verify Time Slider
     const slider = page.locator('.time-slider-track');

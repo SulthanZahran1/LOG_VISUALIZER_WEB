@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'preact/hooks';
+import { useRef, useState, useEffect, useCallback } from 'preact/hooks';
 import { currentSession } from '../../stores/logStore';
 import { scrollOffset, zoomLevel, viewportWidth } from '../../stores/waveformStore';
 
@@ -27,48 +27,21 @@ export function TimeSlider() {
         updateFromMouse(e.clientX);
     };
 
-    const updateFromMouse = (clientX: number) => {
+    const updateFromMouse = useCallback((clientX: number) => {
         if (!sliderRef.current || !session || session.startTime === undefined || session.endTime === undefined) return;
 
         const rect = sliderRef.current.getBoundingClientRect();
-        // ...
         const pct = (clientX - rect.left) / rect.width;
 
-        // New start time based on percentage
-        // We want the mouse to align with the center of the thumb if possible, 
-        // but for simple scrollbar logic, let's say clicked point becomes new center?
-        // Or standard scrollbar behavior: mouse pos corresponds to relative pos in track.
-
-        // Calculate target offset from percentage
-        const newOffset = session.startTime + (pct * totalDuration);
-
-        // Clamp newOffset to be within session bounds with a small buffer
-        // Buffer allows scrolling slightly past purely for visual comfort, but we should probably hard clamp for now to avoid "hiding"
+        // Calculate max scroll position
         const maxScroll = session.endTime - viewDuration;
 
-        // Adjust to center the view on the mouse if we consider the mouse represents "center"
-        // But for a scrollbar, usually we drag the thumb. 
-        // Let's stick to simple "drag thumb to position" logic
-
-        // Use clamped value
-        // const centeredOffset = clampedOffset - (viewDuration / 2);
-
-        // Actually, if we are recalculating "start time" based on percentage:
-        // scrollOffset represents the START time of the view
-
-        // Let's recalculate simply:
-        // Pct triggers where the window STARTS relative to total duration
-        // But wait, the thumb represents the VIEWPORT.
-        // So thumb position = scrollOffset.
-
-        // Let's revert to: Mouse position on track = % of total duration
-        // We want the ScrollOffset (Start of view) to correspond to that %
-
+        // Calculate target start time from mouse position percentage
         const targetStart = session.startTime + (pct * totalDuration);
         const safeStart = Math.max(session.startTime, Math.min(targetStart, maxScroll));
 
         scrollOffset.value = safeStart;
-    };
+    }, [session, totalDuration, viewDuration]);
 
     useEffect(() => {
         const handleWindowMouseMove = (e: MouseEvent) => {
@@ -91,7 +64,7 @@ export function TimeSlider() {
             window.removeEventListener('mousemove', handleWindowMouseMove);
             window.removeEventListener('mouseup', handleWindowMouseUp);
         };
-    }, [isDragging]);
+    }, [isDragging, updateFromMouse]);
 
     const isDisabled = !session || session.startTime === undefined || session.endTime === undefined;
 

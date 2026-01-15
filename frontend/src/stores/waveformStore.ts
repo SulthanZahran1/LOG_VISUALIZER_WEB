@@ -129,14 +129,11 @@ export async function updateWaveformEntries() {
         const start = session.startTime;
         const end = session.endTime;
 
-        console.log(`[waveformStore] Fetching full session data: ${start} to ${end}`);
-
         // Fetch ALL entries for the session
         const entries = await getParseChunk(sessionId, start, end);
 
         // Race Condition Check: If a newer request started, ignore this result
         if (requestId !== activeRequestId) {
-            console.log('Ignoring stale fetch response', requestId);
             return;
         }
 
@@ -150,7 +147,6 @@ export async function updateWaveformEntries() {
 
         waveformEntries.value = grouped;
         hasFetchedForCurrentSignals = true;
-        console.log(`[waveformStore] Loaded ${entries.length} entries for ${Object.keys(grouped).length} signals`);
     } catch (err) {
         console.error('Failed to fetch waveform entries', err);
     }
@@ -159,7 +155,8 @@ export async function updateWaveformEntries() {
 // Trigger update when session completes or selectedSignals changes
 effect(() => {
     // Reset fetch flag when signals change
-    const _signals = selectedSignals.value;
+    // Access selectedSignals.value to create dependency
+    selectedSignals.value;
     hasFetchedForCurrentSignals = false;
     updateWaveformEntries();
 });
@@ -169,7 +166,6 @@ effect(() => {
  */
 export function toggleSignal(deviceId: string, signalName: string) {
     const key = `${deviceId}::${signalName}`;
-    console.log('[waveformStore] toggleSignal:', key);
     if (selectedSignals.value.includes(key)) {
         selectedSignals.value = selectedSignals.value.filter(s => s !== key);
     } else {
@@ -216,14 +212,34 @@ export function pan(deltaX: number) {
     }
 }
 
-// Debugging
+/**
+ * Jump to a specific time (in ms), clamped to session bounds
+ */
+export function jumpToTime(timeMs: number) {
+    const session = currentSession.value;
+    if (!session || session.startTime === undefined || session.endTime === undefined) return;
+
+    // Clamp to session bounds
+    const clampedTime = Math.max(session.startTime, Math.min(timeMs, session.endTime));
+    scrollOffset.value = clampedTime;
+}
+
+// Debugging - extend window interface for dev tools
+declare global {
+    interface Window {
+        waveformStore?: typeof waveformStoreDebug;
+    }
+}
+
+const waveformStoreDebug = {
+    scrollOffset,
+    zoomLevel,
+    viewportWidth,
+    selectedSignals,
+    waveformEntries,
+    viewRange
+};
+
 if (typeof window !== 'undefined') {
-    (window as any).waveformStore = {
-        scrollOffset,
-        zoomLevel,
-        viewportWidth,
-        selectedSignals,
-        waveformEntries,
-        viewRange
-    };
+    window.waveformStore = waveformStoreDebug;
 }
