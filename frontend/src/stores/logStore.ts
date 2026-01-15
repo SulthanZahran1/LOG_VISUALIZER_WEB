@@ -45,6 +45,15 @@ export function closeView(viewType: ViewType) {
 export const isSyncEnabled = signal(false);
 export const syncScrollTop = signal(0);
 
+export function clearSession() {
+    currentSession.value = null;
+    logEntries.value = [];
+    totalEntries.value = 0;
+    isLoadingLog.value = false;
+    logError.value = null;
+    // Note: waveformStore and others might have their own cleanup triggered by currentSession change
+}
+
 export const isParsing = computed(() =>
     currentSession.value?.status === 'parsing' || currentSession.value?.status === 'pending'
 );
@@ -185,9 +194,14 @@ async function pollStatus(sessionId: string) {
             }
 
             setTimeout(poll, 1000);
-        } catch (err) {
-            logError.value = (err as Error).message;
-            isLoadingLog.value = false;
+        } catch (err: any) {
+            if (err.status === 404) {
+                console.warn('Session not found on server, clearing local state');
+                clearSession();
+            } else {
+                logError.value = (err as Error).message;
+                isLoadingLog.value = false;
+            }
         }
     };
 
@@ -203,8 +217,13 @@ export async function fetchEntries(page: number, pageSize: number) {
 
         logEntries.value = res.entries as LogEntry[];
         totalEntries.value = res.total;
-    } catch (err) {
-        logError.value = (err as Error).message;
+    } catch (err: any) {
+        if (err.status === 404) {
+            console.warn('Session not found on server during fetchEntries, clearing local state');
+            clearSession();
+        } else {
+            logError.value = (err as Error).message;
+        }
     } finally {
         isLoadingLog.value = false;
     }

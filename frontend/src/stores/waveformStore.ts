@@ -1,6 +1,6 @@
 import { signal, computed, effect } from '@preact/signals';
 import { getParseChunk, getParseSignals } from '../api/client';
-import { currentSession, logEntries } from './logStore';
+import { currentSession, logEntries, clearSession } from './logStore';
 import type { LogEntry, TimeRange, SignalType } from '../models/types';
 
 // Viewport State
@@ -178,7 +178,12 @@ effect(() => {
         getParseSignals(session.id).then(signals => {
             allSignals.value = signals;
         }).catch(err => {
-            console.error('Failed to fetch signals', err);
+            if (err.status === 404) {
+                console.warn('Session not found on server during getParseSignals, clearing local state');
+                clearSession();
+            } else {
+                console.error('Failed to fetch signals', err);
+            }
         });
     } else if (!session) {
         allSignals.value = [];
@@ -205,7 +210,12 @@ effect(() => {
         }
         signalsWithChanges.value = changed;
     }).catch(err => {
-        console.error('Failed to fetch chunk for changed signals', err);
+        if (err.status === 404) {
+            console.warn('Session not found on server during chunk fetch, clearing local state');
+            clearSession();
+        } else {
+            console.error('Failed to fetch chunk for changed signals', err);
+        }
     });
 });
 
@@ -256,8 +266,13 @@ export async function updateWaveformEntries() {
 
         waveformEntries.value = grouped;
         hasFetchedForCurrentSignals = true;
-    } catch (err) {
-        console.error('Failed to fetch waveform entries', err);
+    } catch (err: any) {
+        if (err.status === 404) {
+            console.warn('Session not found on server during updateWaveformEntries, clearing local state');
+            clearSession();
+        } else {
+            console.error('Failed to fetch waveform entries', err);
+        }
     }
 }
 
