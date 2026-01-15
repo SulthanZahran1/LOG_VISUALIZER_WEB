@@ -6,11 +6,27 @@ import {
     selectAllSignalsForDevice,
     deselectAllSignalsForDevice
 } from '../../stores/waveformStore';
+import { logEntries } from '../../stores/logStore';
+import type { SignalType } from '../../models/types';
 
 export function SignalSidebar() {
     const [searchQuery, setSearchQuery] = useState('');
     const [isRegex, setIsRegex] = useState(false);
     const [expandedDevices, setExpandedDevices] = useState<Set<string>>(new Set());
+    const [typeFilter, setTypeFilter] = useState<SignalType | 'all'>('all');
+
+    // Build a map of signal key -> type
+    const signalTypes = useMemo(() => {
+        const types = new Map<string, SignalType>();
+        for (const entry of logEntries.value) {
+            const key = `${entry.deviceId}::${entry.signalName}`;
+            if (!types.has(key)) {
+                types.set(key, entry.signalType);
+            }
+        }
+        return types;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [logEntries.value]);
 
     // Get all available signals grouped by device
     // Note: accessing .value inside useMemo creates reactivity; empty deps is intentional for signals
@@ -20,33 +36,50 @@ export function SignalSidebar() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [availableSignals.value]);
 
-    // Filter devices and signals based on search query
+    // Filter devices and signals based on search query and type filter
     const filteredDevices = useMemo(() => {
-        if (!searchQuery) return devices;
+        let result = devices;
 
-        try {
-            const flags = 'i';
-            const pattern = isRegex
-                ? searchQuery
-                : searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp(pattern, flags);
-
-            return devices
+        // Type filter
+        if (typeFilter !== 'all') {
+            result = result
                 .map(([device, signals]) => {
-                    // Match device name or any signal name
-                    const matchingSignals = signals.filter(s =>
-                        regex.test(s) || regex.test(device)
-                    );
-                    if (matchingSignals.length > 0 || regex.test(device)) {
-                        return [device, regex.test(device) ? signals : matchingSignals] as [string, string[]];
-                    }
-                    return null;
+                    const matchingSignals = signals.filter(s => {
+                        const key = `${device}::${s}`;
+                        return signalTypes.get(key) === typeFilter;
+                    });
+                    return matchingSignals.length > 0 ? [device, matchingSignals] as [string, string[]] : null;
                 })
                 .filter((d): d is [string, string[]] => d !== null);
-        } catch {
-            return [];
         }
-    }, [devices, searchQuery, isRegex]);
+
+        // Text/regex filter
+        if (searchQuery) {
+            try {
+                const flags = 'i';
+                const pattern = isRegex
+                    ? searchQuery
+                    : searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(pattern, flags);
+
+                result = result
+                    .map(([device, signals]) => {
+                        const matchingSignals = signals.filter(s =>
+                            regex.test(s) || regex.test(device)
+                        );
+                        if (matchingSignals.length > 0 || regex.test(device)) {
+                            return [device, regex.test(device) ? signals : matchingSignals] as [string, string[]];
+                        }
+                        return null;
+                    })
+                    .filter((d): d is [string, string[]] => d !== null);
+            } catch {
+                return [];
+            }
+        }
+
+        return result;
+    }, [devices, searchQuery, isRegex, typeFilter, signalTypes]);
 
     const toggleDevice = (device: string) => {
         const next = new Set(expandedDevices);
@@ -110,6 +143,18 @@ export function SignalSidebar() {
                         onClick={() => setIsRegex(!isRegex)}
                         title="Regex Mode"
                     >.*</button>
+                </div>
+                <div class="type-filter-bar">
+                    <select
+                        class="type-select"
+                        value={typeFilter}
+                        onChange={(e) => setTypeFilter((e.target as HTMLSelectElement).value as SignalType | 'all')}
+                    >
+                        <option value="all">All Types</option>
+                        <option value="boolean">Boolean</option>
+                        <option value="string">String</option>
+                        <option value="integer">Integer</option>
+                    </select>
                 </div>
             </div>
             <div class="signal-list">
@@ -253,6 +298,32 @@ export function SignalSidebar() {
                 .regex-toggle.active {
                     color: var(--primary-accent);
                     background: rgba(77, 182, 226, 0.15);
+                }
+
+                .type-filter-bar {
+                    margin-top: var(--spacing-sm);
+                }
+
+                .type-select {
+                    width: 100%;
+                    padding: 6px 8px;
+                    font-size: 12px;
+                    background: var(--bg-primary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--border-radius);
+                    color: var(--text-primary);
+                    cursor: pointer;
+                    outline: none;
+                    transition: all var(--transition-fast);
+                }
+
+                .type-select:hover {
+                    border-color: var(--primary-accent);
+                }
+
+                .type-select:focus {
+                    border-color: var(--primary-accent);
+                    box-shadow: 0 0 0 3px rgba(77, 182, 226, 0.15);
                 }
 
                 .signal-list {

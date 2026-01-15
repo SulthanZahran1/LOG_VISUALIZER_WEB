@@ -62,13 +62,13 @@
 ### Signal Renderers
 - [x] BooleanRenderer (high/low waveform)
 - [x] StateRenderer (boxes with value text)
-- [ ] Transition markers at state changes
-- [ ] Color coding per unique value
+- [x] Transition markers at state changes
+- [x] Color coding per unique value
 
 ### Time Axis
-- [/] Time labels (HH:MM:SS.mmm format)
+- [x] Time labels (HH:MM:SS.mmm format)
 - [x] Dynamic tick spacing based on zoom
-- [ ] Click axis to jump to time
+- [x] Click axis to jump to time
 - [x] Cursor position readout
 
 ### Grid Lines
@@ -99,7 +99,7 @@
 - [x] Regex mode toggle
 - [x] Case-sensitive toggle
 - [x] Device filter dropdown (via collapsible groups)
-- [ ] Signal type filter (boolean/string/integer)
+- [x] Signal type filter (boolean/string/integer)
 - [ ] "Show changed" filter (signals with changes in view)
 
 ### Filter Presets
@@ -120,17 +120,6 @@
 
 ---
 
-## Phase 3: Multi-View / Split Panes
-
-### Split Pane Operations (UX Focus)
-- [ ] Tabbed interface for multi-view (Home, Log, Timing, Map)
-- [ ] Drag-to-split interaction (blue drop zone feedback)
-- [ ] Save/Restore split layout configuration
-- [ ] Maximum 4 panes restriction (with warning dialog)
-- [ ] Pane context menu (Split Horizontal/Vertical, Close)
-- [ ] Tabs: Drag between panes, context menu (Close Others, Close All)
-
----
 
 ## Phase 4: Map Viewer + Carrier Tracking
 

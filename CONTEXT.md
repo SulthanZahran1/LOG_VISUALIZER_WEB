@@ -110,15 +110,18 @@ Core Waveform Canvas and signal rendering are implemented. UI/UX overhauled with
 - [x] Click-drag panning (mouse drag to pan timeline)
 - [x] Arrow key navigation (Left/Right to pan)
 - [x] Jump to Time input (HH:MM:SS.mmm format)
+- [x] Click axis to jump to time
+- [x] Signal type filter (Boolean/String/Integer)
+- [x] Value-based color coding for state signals
 
 ---
 
 ## What's Next
 
-1. Click axis to jump to time
-2. Signal type filter for Waveform sidebar
-3. Color coding per unique state value
-4. Time range selection (click-drag to select)
+1. Time range selection (click-drag to select)
+2. "Show changed" filter for Waveform sidebar
+3. Filter presets (save/load)
+4. Begin Phase 3: Multi-View / Split Panes
 
 ---
 

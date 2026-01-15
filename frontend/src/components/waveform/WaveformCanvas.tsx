@@ -7,7 +7,8 @@ import {
     zoomAt,
     pan,
     zoomLevel,
-    hoverTime
+    hoverTime,
+    jumpToTime
 } from '../../stores/waveformStore';
 import type { LogEntry } from '../../models/types';
 import { formatTimestamp, getTickIntervals, findFirstIndexAtTime } from '../../utils/TimeAxisUtils';
@@ -37,12 +38,16 @@ const COLORS = {
 
     transition: '#f0883e',        // Orange for transitions
 
-    // State signal colors
+    // State signal colors - expanded palette for value-based coloring
     stateColors: [
-        'rgba(88, 166, 255, 0.3)',   // Blue
-        'rgba(163, 113, 247, 0.3)',  // Purple
-        'rgba(210, 153, 34, 0.3)',   // Yellow
-        'rgba(240, 136, 62, 0.3)',   // Orange
+        'rgba(88, 166, 255, 0.35)',   // Blue
+        'rgba(163, 113, 247, 0.35)',  // Purple
+        'rgba(210, 168, 34, 0.35)',   // Gold
+        'rgba(240, 136, 62, 0.35)',   // Orange
+        'rgba(63, 185, 80, 0.35)',    // Green
+        'rgba(230, 100, 120, 0.35)',  // Pink
+        'rgba(100, 200, 180, 0.35)',  // Teal
+        'rgba(180, 140, 200, 0.35)',  // Lavender
     ],
     stateText: '#e6edf3',
     stateBorder: 'rgba(139, 148, 158, 0.3)',
@@ -252,6 +257,23 @@ export function WaveformCanvas() {
         }
     };
 
+    const handleClick = (e: MouseEvent) => {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
+
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        // If click is on the time axis area, jump to that time
+        if (y < AXIS_HEIGHT) {
+            const range = viewRange.value;
+            if (range) {
+                const clickTime = range.start + (x / zoomLevel.value);
+                jumpToTime(clickTime);
+            }
+        }
+    };
+
     return (
         <div
             ref={containerRef}
@@ -272,6 +294,7 @@ export function WaveformCanvas() {
                 onMouseUp={handleMouseUp}
                 onMouseMove={handleMouseMove}
                 onMouseLeave={handleMouseLeave}
+                onClick={handleClick}
             />
             <style>{`
                 .waveform-canvas-wrapper {
@@ -406,6 +429,17 @@ function drawBooleanSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], s
 function drawStateSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], startTime: number, pixelsPerMs: number, height: number, width: number, _rowIndex: number) {
     ctx.lineWidth = 1;
 
+    // Simple hash function for consistent value->color mapping
+    const hashString = (str: string): number => {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return Math.abs(hash);
+    };
+
     entries.forEach((entry, i) => {
         const x = (entry.timestamp - startTime) * pixelsPerMs;
         const nextX = (i < entries.length - 1)
@@ -415,7 +449,8 @@ function drawStateSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], sta
         if (nextX < 0 || x > width) return;
 
         const valStr = String(entry.value);
-        const colorIndex = i % COLORS.stateColors.length;
+        // Use hash of value for consistent coloring (same value = same color)
+        const colorIndex = hashString(valStr) % COLORS.stateColors.length;
 
         // Background box with colored fill
         ctx.fillStyle = COLORS.stateColors[colorIndex];
