@@ -38,6 +38,7 @@ export function App() {
         status.value = 'error'
         errorMessage.value = err.message || 'Failed to connect to backend'
       })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleUploadSuccess = (file: FileInfo) => {

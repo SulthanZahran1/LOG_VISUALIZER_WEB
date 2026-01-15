@@ -47,6 +47,7 @@ export function SplitPane({ direction = 'horizontal', children, minSize = 100, i
             window.removeEventListener('mouseup', onMouseUp);
         };
         // Note: size is reactive via signal, direction and minSize used in body
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isDragging.value, direction, minSize]);
 
     return (

@@ -113,14 +113,15 @@ Core Waveform Canvas and signal rendering are implemented. UI/UX overhauled with
 - [x] Click axis to jump to time
 - [x] Signal type filter (Boolean/String/Integer)
 - [x] Value-based color coding for state signals
+- [x] Time range selection (Shift + Drag)
 
 ---
 
 ## What's Next
 
-1. Time range selection (click-drag to select)
-2. "Show changed" filter for Waveform sidebar
-3. Filter presets (save/load)
+1. "Show changed" filter for Waveform sidebar
+2. Filter presets (save/load)
+3. Alternating row backgrounds (Waveform Canvas)
 4. Begin Phase 3: Multi-View / Split Panes
 
 ---
@@ -130,7 +131,7 @@ Core Waveform Canvas and signal rendering are implemented. UI/UX overhauled with
 | Phase | Features | Status |
 |:-----:|----------|:------:|
 | 1 | File upload, recent files, Log Table, session persistence | Completed ✅ |
-| 2 | Waveform/Timing Diagram, Signal Filtering | In Progress |
+| 2 | Waveform/Timing Diagram, Signal Filtering | Completed ✅ |
 | 3 | Multi-View Split Panes, Tab management | Not started |
 | 4 | Map Viewer, Carrier Tracking | Not started |
 | 4.5 | Playback Feature (time scrubbing, play/pause) | Not started |

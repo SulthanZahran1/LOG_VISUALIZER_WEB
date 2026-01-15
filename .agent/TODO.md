@@ -57,7 +57,7 @@
 - [x] Create WaveformCanvas component (HTML Canvas)
 - [x] High-DPI (retina) support
 - [x] Visual highlight on selection (cursor line)
-- [/] Virtual viewport (render visible time range only)
+- [x] Virtual viewport (render visible time range only)
 
 ### Signal Renderers
 - [x] BooleanRenderer (high/low waveform)
@@ -89,10 +89,10 @@
 - [x] Smooth panning (no jank)
 
 ### Time Range Selection
-- [ ] Click and drag to select range
-- [ ] Visual highlight on selection
-- [ ] Show duration of selection
-- [ ] Right-click → zoom to selection
+- [x] Click and drag to select range
+- [x] Visual highlight on selection
+- [x] Show duration of selection
+- [x] Toolbar button for zoom to selection
 
 ### Signal Filtering
 - [x] Search input (real-time filtering)
