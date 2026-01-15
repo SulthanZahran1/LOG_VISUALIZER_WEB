@@ -1,7 +1,7 @@
 import { signal, computed, effect } from '@preact/signals';
 import { getParseChunk, getParseSignals } from '../api/client';
 import { currentSession, logEntries } from './logStore';
-import type { LogEntry, TimeRange } from '../models/types';
+import type { LogEntry, TimeRange, SignalType } from '../models/types';
 
 // Viewport State
 export const scrollOffset = signal(0); // start timestamp in ms
@@ -18,6 +18,36 @@ export const waveformEntries = signal<Record<string, LogEntry[]>>({});
 export const allSignals = signal<string[]>([]);
 export const showChangedInView = signal(false);
 export const signalsWithChanges = signal<Set<string>>(new Set());
+
+// Centralized Filter State
+export const signalSearchQuery = signal('');
+export const signalIsRegex = signal(false);
+export const signalTypeFilter = signal<SignalType | 'all'>('all');
+
+export interface FilterPreset {
+    name: string;
+    searchQuery: string;
+    isRegex: boolean;
+    typeFilter: SignalType | 'all';
+    showChangedInView: boolean;
+}
+
+// Presets persisted in localStorage
+const PRESETS_KEY = 'waveform_filter_presets';
+const loadPresets = (): FilterPreset[] => {
+    try {
+        const stored = window.localStorage.getItem(PRESETS_KEY);
+        return stored ? JSON.parse(stored) : [];
+    } catch {
+        return [];
+    }
+};
+
+export const filterPresets = signal<FilterPreset[]>(loadPresets());
+
+effect(() => {
+    window.localStorage.setItem(PRESETS_KEY, JSON.stringify(filterPresets.value));
+});
 
 // Available Signals - computed from allSignals (fallback to logEntries)
 export const availableSignals = computed<Map<string, string[]>>(() => {
@@ -306,6 +336,29 @@ export function zoomToSelection() {
     zoomLevel.value = clampedZoom;
     scrollOffset.value = Math.min(range.start, range.end);
     selectionRange.value = null; // Clear selection after zoom
+}
+
+// Preset Management
+export function savePreset(name: string) {
+    const newPreset: FilterPreset = {
+        name,
+        searchQuery: signalSearchQuery.value,
+        isRegex: signalIsRegex.value,
+        typeFilter: signalTypeFilter.value,
+        showChangedInView: showChangedInView.value
+    };
+    filterPresets.value = [...filterPresets.value.filter(p => p.name !== name), newPreset];
+}
+
+export function loadPreset(preset: FilterPreset) {
+    signalSearchQuery.value = preset.searchQuery;
+    signalIsRegex.value = preset.isRegex;
+    signalTypeFilter.value = preset.typeFilter;
+    showChangedInView.value = preset.showChangedInView;
+}
+
+export function deletePreset(name: string) {
+    filterPresets.value = filterPresets.value.filter(p => p.name !== name);
 }
 
 // Debugging - extend window interface for dev tools

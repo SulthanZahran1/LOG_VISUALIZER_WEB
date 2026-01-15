@@ -6,16 +6,22 @@ import {
     selectAllSignalsForDevice,
     deselectAllSignalsForDevice,
     showChangedInView,
-    signalsWithChanges
+    signalsWithChanges,
+    signalSearchQuery,
+    signalIsRegex,
+    signalTypeFilter,
+    filterPresets,
+    savePreset,
+    loadPreset,
+    deletePreset
 } from '../../stores/waveformStore';
 import { logEntries } from '../../stores/logStore';
 import type { SignalType } from '../../models/types';
 
 export function SignalSidebar() {
-    const [searchQuery, setSearchQuery] = useState('');
-    const [isRegex, setIsRegex] = useState(false);
     const [expandedDevices, setExpandedDevices] = useState<Set<string>>(new Set());
-    const [typeFilter, setTypeFilter] = useState<SignalType | 'all'>('all');
+    const [presetName, setPresetName] = useState('');
+    const [showSaveDialog, setShowSaveDialog] = useState(false);
 
     // Build a map of signal key -> type
     const signalTypes = useMemo(() => {
@@ -59,12 +65,12 @@ export function SignalSidebar() {
         }
 
         // Type filter
-        if (typeFilter !== 'all') {
+        if (signalTypeFilter.value !== 'all') {
             result = result
                 .map(([device, signals]) => {
                     const matchingSignals = signals.filter(s => {
                         const key = `${device}::${s}`;
-                        return signalTypes.get(key) === typeFilter;
+                        return signalTypes.get(key) === signalTypeFilter.value;
                     });
                     return matchingSignals.length > 0 ? [device, matchingSignals] as [string, string[]] : null;
                 })
@@ -72,12 +78,12 @@ export function SignalSidebar() {
         }
 
         // Text/regex filter
-        if (searchQuery) {
+        if (signalSearchQuery.value) {
             try {
                 const flags = 'i';
-                const pattern = isRegex
-                    ? searchQuery
-                    : searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const pattern = signalIsRegex.value
+                    ? signalSearchQuery.value
+                    : signalSearchQuery.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const regex = new RegExp(pattern, flags);
 
                 result = result
@@ -97,7 +103,8 @@ export function SignalSidebar() {
         }
 
         return result;
-    }, [devices, searchQuery, isRegex, typeFilter, signalTypes]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [devices, signalSearchQuery.value, signalIsRegex.value, signalTypeFilter.value, signalTypes]);
 
     const toggleDevice = (device: string) => {
         const next = new Set(expandedDevices);
@@ -136,10 +143,19 @@ export function SignalSidebar() {
 
     // Auto-expand devices when searching
     useMemo(() => {
-        if (searchQuery) {
+        if (signalSearchQuery.value) {
             setExpandedDevices(new Set(filteredDevices.map(([d]) => d)));
         }
-    }, [searchQuery, filteredDevices]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [signalSearchQuery.value, filteredDevices]);
+
+    const handleSavePreset = () => {
+        if (presetName.trim()) {
+            savePreset(presetName.trim());
+            setPresetName('');
+            setShowSaveDialog(false);
+        }
+    };
 
     return (
         <div class="signal-sidebar">
@@ -153,20 +169,20 @@ export function SignalSidebar() {
                     <input
                         type="text"
                         placeholder="Filter signals..."
-                        value={searchQuery}
-                        onInput={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
+                        value={signalSearchQuery.value}
+                        onInput={(e) => signalSearchQuery.value = (e.target as HTMLInputElement).value}
                     />
                     <button
-                        class={`regex-toggle ${isRegex ? 'active' : ''}`}
-                        onClick={() => setIsRegex(!isRegex)}
+                        class={`regex-toggle ${signalIsRegex.value ? 'active' : ''}`}
+                        onClick={() => signalIsRegex.value = !signalIsRegex.value}
                         title="Regex Mode"
                     >.*</button>
                 </div>
-                <div class="type-filter-bar">
+                <div class="filter-actions-bar">
                     <select
                         class="type-select"
-                        value={typeFilter}
-                        onChange={(e) => setTypeFilter((e.target as HTMLSelectElement).value as SignalType | 'all')}
+                        value={signalTypeFilter.value}
+                        onChange={(e) => signalTypeFilter.value = (e.target as HTMLSelectElement).value as SignalType | 'all'}
                     >
                         <option value="all">All Types</option>
                         <option value="boolean">Boolean</option>
@@ -174,6 +190,46 @@ export function SignalSidebar() {
                         <option value="integer">Integer</option>
                     </select>
                 </div>
+                <div class="presets-bar">
+                    <select
+                        class="preset-select"
+                        onChange={(e) => {
+                            const val = (e.target as HTMLSelectElement).value;
+                            if (val.startsWith('DELETE:')) {
+                                deletePreset(val.replace('DELETE:', ''));
+                                (e.target as HTMLSelectElement).value = "";
+                                return;
+                            }
+                            const selected = filterPresets.value.find(p => p.name === val);
+                            if (selected) loadPreset(selected);
+                        }}
+                        value=""
+                    >
+                        <option value="" disabled selected>Load Preset...</option>
+                        {filterPresets.value.map(p => (
+                            <optgroup key={p.name} label={p.name}>
+                                <option value={p.name}>Load "{p.name}"</option>
+                                <option value={`DELETE:${p.name}`}>❌ Delete "{p.name}"</option>
+                            </optgroup>
+                        ))}
+                    </select>
+                    <button class="preset-btn" onClick={() => setShowSaveDialog(true)} title="Save Preset">+</button>
+                </div>
+
+                {showSaveDialog && (
+                    <div class="preset-save-dialog">
+                        <input
+                            type="text"
+                            placeholder="Preset name..."
+                            value={presetName}
+                            onInput={(e) => setPresetName((e.target as HTMLInputElement).value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSavePreset()}
+                        />
+                        <button onClick={handleSavePreset}>Save</button>
+                        <button onClick={() => setShowSaveDialog(false)}>Cancel</button>
+                    </div>
+                )}
+
                 <div class="changed-filter-bar">
                     <label class="toggle-label">
                         <input
@@ -192,11 +248,11 @@ export function SignalSidebar() {
                             <path d="M3 12h4l3-9 4 18 3-9h4" />
                         </svg>
                         <p>
-                            {searchQuery
+                            {signalSearchQuery.value
                                 ? 'No matching signals.'
                                 : 'No signals available.'}
                         </p>
-                        {!searchQuery && devices.length === 0 && (
+                        {!signalSearchQuery.value && devices.length === 0 && (
                             <span class="hint">Load a log file to see available signals</span>
                         )}
                     </div>
@@ -352,6 +408,58 @@ export function SignalSidebar() {
                 .type-select:focus {
                     border-color: var(--primary-accent);
                     box-shadow: 0 0 0 3px rgba(77, 182, 226, 0.15);
+                }
+
+                .presets-bar {
+                    display: flex;
+                    gap: 4px;
+                    margin-top: var(--spacing-sm);
+                }
+
+                .preset-select {
+                    flex: 1;
+                    font-size: 11px;
+                    padding: 4px 6px;
+                    background: var(--bg-primary);
+                    border: 1px solid var(--border-color);
+                    border-radius: 4px;
+                    color: var(--text-primary);
+                }
+
+                .preset-btn {
+                    padding: 4px 8px;
+                    background: var(--bg-tertiary);
+                    border: 1px solid var(--border-color);
+                    border-radius: 4px;
+                    color: var(--text-primary);
+                    cursor: pointer;
+                    font-size: 12px;
+                }
+
+                .preset-save-dialog {
+                    display: flex;
+                    gap: 4px;
+                    margin-top: 4px;
+                    padding: 4px;
+                    background: var(--bg-tertiary);
+                    border: 1px solid var(--border-color);
+                    border-radius: 4px;
+                }
+
+                .preset-save-dialog input {
+                    flex: 1;
+                    font-size: 11px;
+                    padding: 2px 4px;
+                    background: var(--bg-primary);
+                    border: 1px solid var(--border-color);
+                    border-radius: 2px;
+                    color: var(--text-primary);
+                }
+
+                .preset-save-dialog button {
+                    font-size: 10px;
+                    padding: 2px 4px;
+                    cursor: pointer;
                 }
 
                 .changed-filter-bar {

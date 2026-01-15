@@ -101,10 +101,10 @@
 - [x] "Show changed" filter (signals with changes in view)
 
 ### Filter Presets
-- [ ] Save current filter as preset
-- [ ] Load preset from dropdown
-- [ ] Delete preset
-- [ ] Store in localStorage
+- [x] Save current filter as preset
+- [x] Load preset from dropdown
+- [x] Delete preset
+- [x] Store in localStorage
 
 ### Signal Labels
 - [x] Sticky labels on left side (SignalSidebar)
