@@ -5,23 +5,42 @@
 
 ---
 
-## Resolved Questions
+## Current Work Focus
 
-| Question | Decision | Priority |
-|----------|----------|----------|
-| Playback feature for Map Viewer? | ✅ Yes | After Phase 4 (Map Viewer) |
-| Export (waveform PNG, table CSV)? | ❌ Not now | Future consideration |
-| WebSocket vs polling? | Polling | Simpler, sufficient for single-user |
-| Session persistence across refresh? | ✅ Yes | Phase 1 (use IndexedDB) |
-| Multi-file merge? | ✅ Yes | After Playback feature |
+| Item | Status |
+|------|--------|
+| **Active Feature** | Carrier Tracking |
+| **Current Task** | Mapping `CurrentLocation` signals to map units |
+| **Blocking Issues** | None |
+| **Next Up** | Unit info panel, carrier display |
 
 ---
 
-## Updated Phase Order
+## Known Issues
 
-1. Log Table (Phase 1) - Complete ✅
-2. Waveform/Timing Diagram + Filtering (Phase 2) - Complete ✅
-3. Map Viewer + Carrier Tracking (Phase 3) - In Progress 🚧
+| Issue | Severity | Notes |
+|-------|----------|-------|
+| None currently | - | - |
+
+---
+
+## Open Questions
+
+| Question | Decision | Priority |
+|----------|----------|----------|
+| Playback feature for Map Viewer? | ✅ Yes | Phase 3.5 |
+| Export (waveform PNG, table CSV)? | ❌ Not now | Future |
+| WebSocket vs polling? | Polling | Simpler for single-user |
+| Session persistence across refresh? | ✅ Yes | Using IndexedDB |
+| Multi-file merge? | ✅ Yes | Phase 4.5 |
+
+---
+
+## Phase Order
+
+1. Log Table (Phase 1) — ✅ Complete
+2. Waveform/Timing Diagram (Phase 2) — ✅ Complete
+3. Map Viewer + Carrier Tracking (Phase 3) — 🚧 In Progress
 4. Playback Feature (Phase 3.5)
 5. Bookmarks + Time Sync (Phase 4)
 6. Multi-File Merge (Phase 4.5)
@@ -29,16 +48,13 @@
 
 ---
 
-## Notes
+## Technical Notes
 
 - Reference desktop implementation: `../plc_to_wavedrom/`
-- Max file size: 1GB
-- Industrial dark theme
-- **Tabbed view management implemented (replacing split panes).**
-- **Waveform Canvas interactive (panning, keyboard nav, jump to time).**
-- **Log parsers (PLC, MCS, CSV) ported and verified with unit tests.**
-- **Map Layout XML parser implemented in Go.**
-- **SVG-based Map Viewer with pan/zoom and unit selection.**
+- Max file size: 1GB (chunked uploads)
+- Theme: Industrial dark
+- Tabbed view management (replaced split panes)
+- SVG-based Map Viewer with pan/zoom
 
 ---
 

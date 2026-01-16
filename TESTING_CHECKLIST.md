@@ -1,310 +1,160 @@
 # PLC Log Visualizer Web - Testing Checklist
 
-This checklist covers testing for the web version features.
+> Run automated tests first! See [/testing workflow](../.agent/workflows/testing.md)
 
 ---
 
 ## Automated Testing (Run First!)
 
-**Always run automated tests before manual testing or browser agent testing.**
+### Quick Commands (from `frontend/`)
 
-### Test Hierarchy
-```
-1. TypeCheck   → npm run typecheck
-2. Lint        → npm run lint  
-3. Unit Tests  → npm run test
-4. E2E Tests   → npm run test:e2e
-5. Manual/Agent → Only for edge cases
-```
+| Command | Purpose | Speed |
+|---------|---------|-------|
+| `npm run typecheck` | Check TypeScript types | instant |
+| `npm run lint` | Check code quality | ~2s |
+| `npm run test` | Run unit tests | ~2s |
+| `npm run test:e2e` | Run Playwright E2E | ~10s |
+| `npm run test:all` | All of above | ~15s |
 
-### Quick Commands (run from `frontend/` directory)
-
-| Command | Purpose |
-|---------|---------|
-| `npm run typecheck` | Check TypeScript types |
-| `npm run lint` | Check code quality |
-| `npm run test` | Run unit tests |
-| `npm run test:watch` | Run tests in watch mode |
-| `npm run test:e2e` | Run Playwright E2E tests |
-| `npm run test:all` | Run all tests (typecheck + lint + unit + e2e) |
-
-### Test Files Location
+### Test Files
 - **Unit tests**: `src/**/*.test.{ts,tsx}`
 - **E2E tests**: `e2e/*.spec.ts`
 - **Test setup**: `src/test/setup.ts`
-
-### When to Use Each Test Type
-
-| Test Type | Use For | Speed |
-|-----------|---------|-------|
-| Unit Tests | Pure functions, component logic, stores | ~1s |
-| E2E Tests | Page load, navigation, form submission | ~10s |
-| Browser Agent | Visual bugs, complex interactions, edge cases | ~30s+ token-intensive |
 
 ---
 
 ## Phase 1: Foundation & Log Table
 
 ### File Upload
-- [ ] Drag-drop file onto upload zone → upload starts
-- [ ] Click browse and select file → upload starts  
-- [ ] Upload file under 1GB → success
-- [ ] Upload file over 1GB → error message displayed
-- [ ] Upload progress indicator shows percentage
-- [ ] Upload completes → file appears in recent files
+- [ ] Drag-drop file → upload starts
+- [ ] Click browse → upload starts
+- [ ] Upload <1GB → success
+- [ ] Upload >1GB → chunked upload with progress
+- [ ] File appears in recent files on completion
 
 ### Recent Files Panel
-- [ ] List shows up to 20 most recent files
-- [ ] Each entry shows: filename, size, date, status
-- [ ] Click file → loads/parses file
-- [ ] Delete button removes file from list
-- [ ] List persists across page refresh
+- [ ] Shows up to 20 recent files
+- [ ] Each shows: filename, size, date, status
+- [ ] Click file → loads/parses
+- [ ] Delete button removes file
+- [ ] Persists across refresh
 
 ### Parsing
-- [ ] Parse PLC debug log → entries extracted correctly
-- [ ] Parse MCS/AMHS log → signals and carriers detected
-- [ ] Parse CSV log → columns parsed correctly
-- [ ] Large file (500MB+) → progress shown, no timeout
-- [ ] Parse errors → displayed in error panel
-- [ ] Parse complete → entry count shown in status bar
+- [ ] PLC debug log parses correctly
+- [ ] MCS/AMHS log parses correctly
+- [ ] CSV log parses correctly
+- [ ] Large file (500MB+) shows progress
 
 ### Log Table View
-- [ ] Table renders with all columns visible
 - [ ] Virtual scroll works with 100k+ rows
-- [ ] Scroll performance smooth (no jank)
-- [ ] Sort by timestamp (ascending/descending)
-- [ ] Sort by device ID
-- [ ] Sort by signal name
+- [ ] Sort by timestamp/device/signal
 - [ ] Column resizing works
-- [ ] Single row selection (click)
-- [ ] Multi-row selection (Shift+click, Ctrl+click)
-- [ ] Copy selected rows (Ctrl+C) → clipboard contains data
-- [ ] Right-click context menu appears
-- [ ] Filter by time range works
-- [ ] Search/filter bar filters results in real-time
+- [ ] Multi-row selection (Shift/Ctrl+click)
+- [ ] Copy selected rows (Ctrl+C)
+- [ ] Filter bar filters in real-time
 
 ---
 
 ## Phase 2: Waveform/Timing Diagram
 
 ### Waveform Rendering
-- [ ] Boolean signals render as high/low waveforms
-- [ ] String/state signals render as boxes with text
-- [ ] Large number of signals (50+) renders without lag
-- [ ] Signal transitions marked clearly
-- [ ] Colors distinguish different signal values
+- [ ] Boolean signals → high/low waveforms
+- [ ] String/state signals → boxes with text
+- [ ] 50+ signals renders without lag
+- [ ] Colors distinguish values
 
 ### Time Axis
-- [ ] Time labels show HH:MM:SS.mmm format
+- [ ] Labels: HH:MM:SS.mmm format
 - [ ] Tick spacing adjusts on zoom
-- [ ] Click on axis jumps to that time
-- [ ] Cursor position shows time readout
+- [ ] Click axis → jumps to time
+- [ ] Cursor position readout
 
 ### Zoom Controls
-- [ ] Zoom in button works
-- [ ] Zoom out button works
-- [ ] Mouse wheel zooms (centered on cursor)
-- [ ] Zoom slider works
-- [ ] Fit to window button
-- [ ] Zoom presets (1s, 10s, 1min, etc.)
+- [ ] Zoom in/out buttons
+- [ ] Mouse wheel zoom (centered)
+- [ ] Zoom slider
+- [ ] Fit to window
+- [ ] Zoom presets (1s, 10s, 1min)
 
 ### Pan Controls
-- [ ] Click and drag to pan
-- [ ] Arrow keys pan left/right
-- [ ] Go to start button
-- [ ] Go to end button
-- [ ] Pan is smooth (no jank)
+- [ ] Click-drag to pan
+- [ ] Arrow keys pan
+- [ ] Go to start/end buttons
 
 ### Time Range Selection
-- [ ] Click and drag to select time range
-- [ ] Selection highlighted visually
-- [ ] Selection shows duration
-- [ ] Right-click selection → zoom to selection
+- [ ] Shift+drag to select range
+- [ ] Selection highlighted
+- [ ] Shows duration
+- [ ] Zoom to selection button
 
 ### Signal Filtering
-- [ ] Search input filters signals in real-time
-- [ ] Regex mode toggle works
-- [ ] Case-sensitive toggle works
-- [ ] Device filter dropdown works
+- [ ] Search input filters signals
+- [ ] Regex mode toggle
+- [ ] Device collapsible groups
 - [ ] Signal type filter (boolean/string/integer)
-- [ ] "Show changed" shows only changed signals in the current viewport
-- [ ] Sidebar dynamically updates while panning when "Show changed" is ON
-- [ ] Save filter preset
-- [ ] Load filter preset
-- [ ] Delete filter preset
-
-### Signal Labels
-- [ ] Labels stick on left side
-- [ ] Show Device::SignalName format
-- [ ] Color coding by device
-- [ ] Click label focuses signal
-- [ ] Right-click label shows context menu
+- [ ] "Show changed" filter works
+- [ ] Save/load/delete filter presets
 
 ---
 
-## Phase 3: Multi-View / Split Panes
-
-### Split Pane Operations
-- [ ] Drag tab to top edge → horizontal split
-- [ ] Drag tab to bottom edge → horizontal split
-- [ ] Drag tab to left edge → vertical split
-- [ ] Drag tab to right edge → vertical split
-- [ ] Maximum 4 panes enforced (shows warning)
-- [ ] Drag splitter to resize panes
-- [ ] Resize is smooth
-
-### Tab System
-- [ ] New tabs appear in current pane
-- [ ] Click between tabs switches content
-- [ ] Drag tab between panes works
-- [ ] Tab context menu: Close Tab
-- [ ] Tab context menu: Close Other Tabs
-- [ ] Tab context menu: Close All Tabs
-- [ ] Close all tabs in pane → pane merges back
-
-### View Types
-- [ ] Open Timing Diagram view (Ctrl+T)
-- [ ] Open Log Table view (Ctrl+L)
-- [ ] Multiple instances of same type work
-- [ ] Each view operates independently
-
-### Layout Persistence
-- [ ] Layout saved on change
-- [ ] Layout restored on page refresh
-- [ ] Reset layout option works
-
----
-
-## Phase 4: Map Viewer & Carrier Tracking
+## Phase 3: Map Viewer & Carrier Tracking
 
 ### Map Rendering
-- [ ] Map loads from YAML/XML config
-- [ ] Units/stations render as rectangles
-- [ ] Paths/conveyors render as lines
-- [ ] Labels display correctly
-- [ ] Pan and zoom work
+- [x] Map loads from XML config
+- [x] Units render as rectangles
+- [x] Paths render as lines/arrows
+- [x] Labels display correctly
+- [x] Pan and zoom work
 
-### State Visualization
-- [ ] State-to-color mapping applied
-- [ ] Colors update during playback
-- [ ] Color rules from config work
+### Configuration Files
+- [x] XML layout upload
+- [x] YAML rules upload
+- [x] Recent files selection dialog
+- [ ] Validate both files before tracking
 
 ### Carrier Tracking
 - [ ] Carriers displayed on units
-- [ ] Carrier ID shown (truncated if long)
-- [ ] Multi-carrier count shows "2x", "3x"
-- [ ] Carrier count colors:
-  - [ ] 0: default color
-  - [ ] 1: green
-  - [ ] 2: yellow
-  - [ ] 3: orange
-  - [ ] 4+: red gradient
+- [ ] Carrier ID shown (truncated)
+- [ ] Multi-carrier count ("2x", "3x")
+- [ ] Color coding: 0=default, 1=green, 2=yellow, 3=orange, 4+=red
 
 ### Unit Interaction
+- [x] Click unit → highlights
 - [ ] Click unit → info panel shows
 - [ ] Info shows carrier list
-- [ ] Info shows current state
-- [ ] Highlight unit by ID works
-- [ ] Center view on unit works
-
-### Follow Feature
-- [ ] Follow button opens search
-- [ ] Fuzzy search matches carriers
-- [ ] Multiple matches → selection dialog
-- [ ] View follows carrier on move
-- [ ] Stop Follow button works
-
----
-
-## Phase 5: Bookmarks & Time Sync
-
-### Adding Bookmarks
-- [ ] Ctrl+B opens bookmark dialog
-- [ ] Enter label and optional description
-- [ ] Bookmark added at current time
-- [ ] Confirmation message shown
-- [ ] Right-click → Add Bookmark works
-
-### Bookmark Management
-- [ ] Ctrl+Shift+B opens bookmark list
-- [ ] Table shows: timestamp, label, description
-- [ ] Bookmarks sorted by timestamp
-- [ ] Edit bookmark works
-- [ ] Delete bookmark works
-
-### Bookmark Navigation
-- [ ] Click bookmark → jumps to time
-- [ ] Ctrl+] → next bookmark
-- [ ] Ctrl+[ → previous bookmark
-- [ ] Navigation wraps at ends
-- [ ] Bookmark markers on time axis
-
-### Time Synchronization
-- [ ] Sync Views button in toolbar
-- [ ] Button disabled when no data
-- [ ] Click syncs all views to active view's time
-- [ ] Timing Diagram syncs time range
-- [ ] Log Table scrolls to matching rows
-- [ ] Map Viewer updates state
-
----
-
-## Phase 6: Signal Validation (Post-MVP)
-
-### Validation Engine
-- [ ] Load rules from YAML
-- [ ] Sequence validator works
-- [ ] Timing constraint validator works
-- [ ] Value range validator works
-
-### YAML Editor
-- [ ] Editor opens in sidebar
-- [ ] Syntax highlighting works
-- [ ] Syntax validation on save
-- [ ] Save updates rules
-- [ ] Reload rules works
-
-### Validation Results
-- [ ] Results panel lists violations
-- [ ] Each shows: timestamp, rule, device, description
-- [ ] Click violation → jumps to time
-- [ ] Filter by severity works
+- [x] Center view on unit
 
 ---
 
 ## Performance & Stability
 
-### Large Data Handling
-- [ ] 1GB file uploads successfully
-- [ ] Parse 1GB file completes (may take time)
-- [ ] 100k+ entries in Log Table → smooth scroll
-- [ ] 100+ signals in Waveform → smooth pan/zoom
-- [ ] No browser memory crashes
-
-### Stress Testing
-- [ ] Rapid pane split/merge → no crashes
-- [ ] Rapid tab switching → no glitches
-- [ ] Quick zoom in/out → no rendering errors
-- [ ] Multiple files parsed → sessions isolated
+- [x] 1GB file uploads successfully
+- [ ] Parse 1GB file completes
+- [ ] 100k+ entries → smooth scroll
+- [ ] 100+ signals → smooth pan/zoom
+- [x] No browser memory crashes
 
 ---
 
-## Known Issues
+<details>
+<summary>Future Phases (Not Yet Implemented)</summary>
 
-Document issues found:
+## Phase 3.5: Playback
+- [ ] Play/pause button
+- [ ] Speed control (0.5x–10x)
+- [ ] Time scrubber
+- [ ] All views sync to playback
 
-1. **Issue**: 
-   - Steps to reproduce:
-   - Expected behavior:
-   - Actual behavior:
+## Phase 4: Bookmarks & Time Sync
+- [ ] Ctrl+B add bookmark
+- [ ] Bookmark list (Ctrl+Shift+B)
+- [ ] Jump to bookmark
+- [ ] Sync Views button
 
----
+## Phase 5: Signal Validation
+- [ ] Load rules from YAML
+- [ ] Sequence/timing validators
+- [ ] YAML editor
+- [ ] Results panel with violations
 
-## Test Results Summary
-
-**Date**: ___________  
-**Tester**: ___________  
-**Total Tests**: ___________  
-**Passed**: ___________  
-**Failed**: ___________  
-**Notes**:
+</details>
