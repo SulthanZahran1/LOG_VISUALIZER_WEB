@@ -1,14 +1,12 @@
-import type { MapObject } from '../../stores/mapStore';
+import { getUnitColor, getCarrierDisplayText, selectedUnitId, type MapObject } from '../../stores/mapStore';
 
 interface ObjectProps {
     object: MapObject;
-    selected?: boolean;
     onClick?: (unitId: string) => void;
-    carrierColor?: string;
-    carrierText?: string | null;
 }
 
-export function MapObjectComponent({ object, selected, onClick, carrierColor, carrierText }: ObjectProps) {
+export function MapObjectComponent({ object, onClick }: ObjectProps) {
+    const isSelected = selectedUnitId.value === object.unitId;
     const loc = parseLocation(object.location);
     const size = parseSize(object.size);
 
@@ -17,16 +15,26 @@ export function MapObjectComponent({ object, selected, onClick, carrierColor, ca
     const { x, y } = loc;
     const { width, height } = size;
 
-    // Determine render type
+    // Internalize signal-based logic
+    let carrierColor: string | undefined;
+    let carrierText: string | null = null;
+
+    if (object.unitId) {
+        const result = getUnitColor(object.unitId);
+        carrierColor = result.color;
+        // Text priority: rule text -> carrier ID display
+        carrierText = result.text || getCarrierDisplayText(object.unitId);
+    }
+
     if (object.type.includes('WidgetArrow')) {
-        return <Arrow object={object} x={x} y={y} width={width} height={height} selected={selected} />;
+        return <Arrow object={object} x={x} y={y} width={width} height={height} selected={isSelected} />;
     }
     if (object.type.includes('Label')) {
-        return <Label object={object} x={x} y={y} height={height} selected={selected} />;
+        return <Label object={object} x={x} y={y} height={height} selected={isSelected} />;
     }
 
     // Default to rectangle (Belt, Diverter, Port)
-    const fillColor = carrierColor || (selected ? 'rgba(255, 0, 0, 0.2)' : 'var(--bg-tertiary)');
+    const fillColor = carrierColor || (isSelected ? 'rgba(255, 0, 0, 0.2)' : 'var(--bg-tertiary)');
 
     return (
         <g onClick={() => object.unitId && onClick?.(object.unitId)} style={{ cursor: object.unitId ? 'pointer' : 'default' }}>
@@ -36,8 +44,8 @@ export function MapObjectComponent({ object, selected, onClick, carrierColor, ca
                 width={width}
                 height={height}
                 fill={fillColor}
-                stroke={selected ? '#ff0000' : '#444'}
-                strokeWidth={selected ? 2 : 1}
+                stroke={isSelected ? '#ff0000' : '#444'}
+                strokeWidth={isSelected ? 2 : 1}
             />
             {/* Carrier text overlay (takes priority) */}
             {carrierText && (

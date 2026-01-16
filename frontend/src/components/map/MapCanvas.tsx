@@ -2,10 +2,10 @@ import { useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import {
     mapLayout, mapLoading, mapError, mapZoom, mapOffset, selectedUnitId, fetchMapLayout, mapObjectsArray,
-    getUnitColor, getCarrierDisplayText, latestSignalValues, mapRules,
     type MapObject
 } from '../../stores/mapStore';
 import { MapObjectComponent } from './MapObjectComponents';
+import { MapDetailPanel } from './MapDetailPanel';
 
 export function MapCanvas() {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -84,33 +84,17 @@ export function MapCanvas() {
                     </marker>
                 </defs>
                 <g transform={`translate(${mapOffset.value.x}, ${mapOffset.value.y}) scale(${mapZoom.value})`}>
-                    {mapObjectsArray.value.map((obj: MapObject) => {
-                        // Trigger re-render on signal value changes
-                        void mapRules.value;
-                        void latestSignalValues.value;
-
-                        let carrierColor: string | undefined;
-                        let carrierText: string | null = null;
-
-                        if (obj.unitId) {
-                            const result = getUnitColor(obj.unitId);
-                            carrierColor = result.color;
-                            carrierText = result.text || getCarrierDisplayText(obj.unitId);
-                        }
-
-                        return (
-                            <MapObjectComponent
-                                key={obj.name}
-                                object={obj}
-                                selected={selectedUnitId.value === obj.unitId}
-                                onClick={(id) => selectedUnitId.value = id}
-                                carrierColor={carrierColor}
-                                carrierText={carrierText}
-                            />
-                        );
-                    })}
+                    {mapObjectsArray.value.map((obj: MapObject) => (
+                        <MapObjectComponent
+                            key={obj.name}
+                            object={obj}
+                            onClick={(id) => selectedUnitId.value = id}
+                        />
+                    ))}
                 </g>
             </svg>
+
+            <MapDetailPanel />
 
             {/* Controls */}
             <div class="map-controls">
