@@ -93,7 +93,7 @@ Detailed architecture diagrams are in [.agent/architecture/](.agent/architecture
 | [parser-architecture.md](.agent/architecture/parser-architecture.md) | Log format detection and parsing |
 | [state-management.md](.agent/architecture/state-management.md) | Preact Signals store patterns |
 
-
+---
 
 ## API Endpoints
 

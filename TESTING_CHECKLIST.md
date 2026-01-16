@@ -1,6 +1,6 @@
 # PLC Log Visualizer Web - Testing Checklist
 
-> Run automated tests first! See [/testing workflow](../.agent/workflows/testing.md)
+> Run automated tests first! See [/testing workflow](.agent/workflows/testing.md)
 
 ---
 

@@ -12,8 +12,10 @@
 - Refactored `CONTEXT.md`: Added quick-start, moved session instructions up, removed duplicates
 - Refactored `TODO.md`: Active tasks first, collapsed completed phases
 - Created `CHANGELOG_ARCHIVE.md` for older entries
-- Updated `TESTING_CHECKLIST.md`: Fixed outdated split pane section
+- Updated `TESTING_CHECKLIST.md`: Removed outdated split pane section, collapsed future phases
 - Enhanced `SCRATCHPAD.md` with current focus and known issues
+- Created `.agent/architecture/` folder with 5 detailed architecture documents:
+  - `system-overview.md`, `data-flow.md`, `map-dual-log.md`, `parser-architecture.md`, `state-management.md`
 
 ---
 
