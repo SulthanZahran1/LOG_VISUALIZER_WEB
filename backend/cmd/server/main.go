@@ -68,6 +68,12 @@ func main() {
 	apiGroup.GET("/map/rules", h.HandleGetMapRules)
 	apiGroup.POST("/map/rules", h.HandleUploadMapRules)
 	apiGroup.GET("/map/files/recent", h.HandleRecentMapFiles)
+
+	// Carrier log for map tracking
+	apiGroup.POST("/map/carrier-log", h.HandleUploadCarrierLog)
+	apiGroup.GET("/map/carrier-log", h.HandleGetCarrierLog)
+	apiGroup.GET("/map/carrier-log/entries", h.HandleGetCarrierEntries)
+
 	apiGroup.GET("/config/validation-rules", h.HandleGetValidationRules)
 	apiGroup.PUT("/config/validation-rules", h.HandleUpdateValidationRules)
 

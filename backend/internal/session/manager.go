@@ -89,6 +89,7 @@ func (m *Manager) runParse(sessionID, filePath string) {
 	state.Session.EntryCount = len(result.Entries)
 	state.Session.SignalCount = len(result.Signals)
 	state.Session.ProcessingTimeMs = elapsed
+	state.Session.ParserName = p.Name()
 
 	if result.TimeRange != nil {
 		state.Session.StartTime = result.TimeRange.Start.UnixMilli()

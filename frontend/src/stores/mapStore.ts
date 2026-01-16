@@ -1,5 +1,8 @@
 import { signal, computed } from '@preact/signals';
-import { getMapLayout, getMapRules, getRecentMapFiles, type MapRules, type RecentMapFiles } from '../api/client';
+import {
+    getMapLayout, getMapRules, getRecentMapFiles, getCarrierLog, getCarrierEntries,
+    type MapRules, type RecentMapFiles, type CarrierLogInfo, type CarrierEntry
+} from '../api/client';
 
 export interface MapObject {
     name: string;
@@ -40,6 +43,12 @@ export const rulesError = signal<string | null>(null);
 // Recent files state
 export const recentMapFiles = signal<RecentMapFiles | null>(null);
 export const recentFilesLoading = signal(false);
+
+// Carrier log state
+export const carrierLogInfo = signal<CarrierLogInfo | null>(null);
+export const carrierLogEntries = signal<CarrierEntry[]>([]);
+export const carrierLogLoading = signal(false);
+export const carrierLogFileName = signal<string | null>(null);
 
 // Actions
 export async function fetchMapLayout() {
@@ -158,10 +167,46 @@ export function processLogEntryForCarrier(deviceId: string, signalName: string, 
     carrierLocations.value = newMap;
 }
 
+// Fetch carrier log info
+export async function fetchCarrierLog(): Promise<void> {
+    try {
+        const info = await getCarrierLog();
+        carrierLogInfo.value = info;
+    } catch (err) {
+        console.error('Failed to fetch carrier log info:', err);
+    }
+}
+
+// Load carrier entries and populate carrier locations
+export async function loadCarrierEntries(): Promise<void> {
+    carrierLogLoading.value = true;
+    try {
+        const response = await getCarrierEntries();
+        carrierLogEntries.value = response.entries || [];
+
+        // Populate carrier locations from entries (use latest position for each carrier)
+        const newLocations = new Map<string, string>();
+        for (const entry of carrierLogEntries.value) {
+            newLocations.set(entry.carrierId, entry.unitId);
+        }
+        carrierLocations.value = newLocations;
+    } catch (err) {
+        console.error('Failed to load carrier entries:', err);
+    } finally {
+        carrierLogLoading.value = false;
+    }
+}
+
 // Toggle carrier tracking
-export function toggleCarrierTracking(): void {
+export async function toggleCarrierTracking(): Promise<void> {
     carrierTrackingEnabled.value = !carrierTrackingEnabled.value;
-    if (!carrierTrackingEnabled.value) {
+
+    if (carrierTrackingEnabled.value) {
+        // Load carrier entries when enabled
+        if (carrierLogInfo.value?.loaded) {
+            await loadCarrierEntries();
+        }
+    } else {
         // Clear all carrier locations when disabled
         carrierLocations.value = new Map();
     }

@@ -7,8 +7,11 @@ import {
     fetchMapLayout,
     fetchMapRules,
     fetchRecentMapFiles,
+    carrierLogInfo,
+    carrierLogFileName,
+    fetchCarrierLog,
 } from '../../stores/mapStore';
-import { uploadMapLayout, uploadMapRules } from '../../api/client';
+import { uploadMapLayout, uploadMapRules, uploadCarrierLog } from '../../api/client';
 import type { FileInfo } from '../../models/types';
 
 import './MapFileSelector.css';
@@ -20,9 +23,11 @@ interface MapFileSelectorProps {
 export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
     const [showDialog, setShowDialog] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [carrierError, setCarrierError] = useState<string | null>(null);
 
     useEffect(() => {
         fetchRecentMapFiles();
+        fetchCarrierLog();
     }, []);
 
     const handleUploadXML = async (e: Event) => {
@@ -76,8 +81,32 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
         onFilesChanged?.();
     };
 
+    const handleUploadCarrierLog = async (e: Event) => {
+        const input = e.target as HTMLInputElement;
+        if (!input.files?.length) return;
+
+        setUploading(true);
+        setCarrierError(null);
+        try {
+            const result = await uploadCarrierLog(input.files[0]);
+            carrierLogFileName.value = result.fileName;
+            await fetchCarrierLog();
+            onFilesChanged?.();
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Upload failed';
+            setCarrierError(msg);
+            console.error('Failed to upload carrier log:', err);
+        } finally {
+            setUploading(false);
+            input.value = '';
+        }
+    };
+
     const currentXML = mapLayout.value?.name || 'No XML loaded';
     const currentYAML = mapRules.value?.name || 'No rules loaded';
+    const currentCarrier = carrierLogInfo.value?.loaded
+        ? (carrierLogFileName.value || 'Carrier log loaded')
+        : 'No carrier log';
 
     return (
         <div className="map-file-selector">
@@ -87,6 +116,9 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
                 </span>
                 <span className="file-label" title={currentYAML}>
                     <strong>Rules:</strong> {currentYAML}
+                </span>
+                <span className="file-label" title={currentCarrier}>
+                    <strong>Carriers:</strong> {currentCarrier}
                 </span>
             </div>
 
@@ -163,6 +195,29 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
                                     !recentFilesLoading.value && <div className="no-files">No YAML files uploaded</div>
                                 )}
                             </div>
+                        </div>
+
+                        <div className="file-section">
+                            <h4>Carrier Log (MCS Format)</h4>
+                            <p className="section-hint">Upload an MCS/AMHS log for carrier tracking</p>
+                            <input
+                                type="file"
+                                accept=".log,.txt"
+                                onChange={handleUploadCarrierLog}
+                                id="carrier-upload"
+                                style={{ display: 'none' }}
+                            />
+                            <label htmlFor="carrier-upload" className="upload-btn">
+                                Upload Carrier Log
+                            </label>
+                            {carrierError && (
+                                <div className="error-message">{carrierError}</div>
+                            )}
+                            {carrierLogInfo.value?.loaded && (
+                                <div className="carrier-info">
+                                    ✓ Loaded: {carrierLogInfo.value.entryCount} entries
+                                </div>
+                            )}
                         </div>
 
                         <button className="close-btn" onClick={() => setShowDialog(false)}>

@@ -126,7 +126,8 @@
     border-color: var(--primary, #003D82);
 }
 
-.no-files, .loading {
+.no-files,
+.loading {
     color: var(--text-secondary, #888);
     font-size: 0.85rem;
     font-style: italic;
@@ -147,4 +148,30 @@
 
 .close-btn:hover {
     background: var(--surface-4, #4a4a4a);
+}
+
+.section-hint {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary, #888);
+}
+
+.error-message {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(255, 68, 68, 0.2);
+    border: 1px solid #ff4444;
+    border-radius: 4px;
+    color: #ff6666;
+    font-size: 0.85rem;
+}
+
+.carrier-info {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(144, 238, 144, 0.2);
+    border: 1px solid #90EE90;
+    border-radius: 4px;
+    color: #90EE90;
+    font-size: 0.85rem;
 }

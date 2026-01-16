@@ -3,6 +3,23 @@
 > Append-only log. Add entries at the top as work is completed.
 > Format: `## YYYY-MM-DD: Summary`
 
+## 2026-01-16: Carrier Log Integration (Dual Log System)
+
+### Backend
+- Added `carrierSessionID` to Handler for separate carrier log session
+- Added `ParserName` to ParseSession model to identify MCS logs
+- Added `/api/map/carrier-log` (POST upload, GET status)
+- Added `/api/map/carrier-log/entries` for carrier tracking data
+- MCS log validation: rejects non-MCS format uploads
+
+### Frontend
+- Added `uploadCarrierLog`, `getCarrierLog`, `getCarrierEntries` to API client
+- Added carrier log state to mapStore (`carrierLogInfo`, `carrierLogEntries`)
+- Added `loadCarrierEntries()` function to populate carrier locations
+- Updated `toggleCarrierTracking()` to load carrier data when enabled
+- Added carrier log upload section to MapFileSelector dialog
+- Shows carrier log status in file selector toolbar
+
 ## 2026-01-16: Carrier Tracking UI
 
 ### Frontend

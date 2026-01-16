@@ -285,3 +285,46 @@ export async function getRecentMapFiles(): Promise<RecentMapFiles> {
     return request<RecentMapFiles>('/map/files/recent');
 }
 
+// Carrier Log
+export interface CarrierLogInfo {
+    loaded: boolean;
+    sessionId?: string;
+    status?: string;
+    entryCount?: number;
+}
+
+export interface CarrierEntry {
+    carrierId: string;
+    unitId: string;
+    timestamp: number;
+}
+
+export interface CarrierEntriesResponse {
+    entries: CarrierEntry[];
+    total: number;
+}
+
+export async function uploadCarrierLog(file: File): Promise<{ sessionId: string; fileId: string; fileName: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE}/map/carrier-log`, {
+        method: 'POST',
+        body: formData,
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+        throw new ApiError(response.status, error.error);
+    }
+
+    return response.json();
+}
+
+export async function getCarrierLog(): Promise<CarrierLogInfo> {
+    return request<CarrierLogInfo>('/map/carrier-log');
+}
+
+export async function getCarrierEntries(): Promise<CarrierEntriesResponse> {
+    return request<CarrierEntriesResponse>('/map/carrier-log/entries');
+}

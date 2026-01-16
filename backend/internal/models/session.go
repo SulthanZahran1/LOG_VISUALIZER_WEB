@@ -21,6 +21,7 @@ type ParseSession struct {
 	ProcessingTimeMs int64         `json:"processingTimeMs,omitempty"`
 	StartTime        int64         `json:"startTime,omitempty"` // Unix ms
 	EndTime          int64         `json:"endTime,omitempty"`   // Unix ms
+	ParserName       string        `json:"parserName,omitempty"`
 	Errors           []ParseError  `json:"errors,omitempty"`
 }
 

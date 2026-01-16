@@ -16,11 +16,12 @@ import (
 
 // Handler handles API requests.
 type Handler struct {
-	store          storage.Store
-	session        *session.Manager
-	currentMapID   string
-	currentRulesID string
-	currentRules   *models.MapRules
+	store            storage.Store
+	session          *session.Manager
+	currentMapID     string
+	currentRulesID   string
+	currentRules     *models.MapRules
+	carrierSessionID string
 }
 
 // NewHandler creates a new API handler.
@@ -350,6 +351,117 @@ func (h *Handler) HandleRecentMapFiles(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"xmlFiles":  xmlFiles,
 		"yamlFiles": yamlFiles,
+	})
+}
+
+// HandleUploadCarrierLog uploads and parses a carrier log (MCS format) for carrier tracking.
+func (h *Handler) HandleUploadCarrierLog(c echo.Context) error {
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing file in request"})
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to open uploaded file"})
+	}
+	defer src.Close()
+
+	// Save the file
+	info, err := h.store.Save(file.Filename, src)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save file: %v", err)})
+	}
+
+	// Get file path
+	path, err := h.store.GetFilePath(info.ID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get file path"})
+	}
+
+	// Start parsing session
+	sess, err := h.session.StartSession(info.ID, path)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to start session: %v", err)})
+	}
+
+	// Check if it's an MCS log by checking the parser name
+	// Wait briefly for parsing to complete (carrier logs are typically small)
+	for i := 0; i < 50; i++ { // Wait up to 5 seconds
+		currentSess, ok := h.session.GetSession(sess.ID)
+		if !ok {
+			break
+		}
+		if currentSess.Status == "complete" || currentSess.Status == "error" {
+			if currentSess.ParserName != "mcs_log" {
+				return c.JSON(http.StatusBadRequest, map[string]string{
+					"error": "Invalid carrier log format. Please upload an MCS/AMHS format log file with carrier tracking data.",
+				})
+			}
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	h.carrierSessionID = sess.ID
+
+	return c.JSON(http.StatusCreated, map[string]interface{}{
+		"sessionId": sess.ID,
+		"fileId":    info.ID,
+		"fileName":  info.Name,
+	})
+}
+
+// HandleGetCarrierLog returns the current carrier log session info.
+func (h *Handler) HandleGetCarrierLog(c echo.Context) error {
+	if h.carrierSessionID == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"loaded": false,
+		})
+	}
+
+	sess, ok := h.session.GetSession(h.carrierSessionID)
+	if !ok {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"loaded": false,
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"loaded":     true,
+		"sessionId":  sess.ID,
+		"status":     sess.Status,
+		"entryCount": sess.EntryCount,
+	})
+}
+
+// HandleGetCarrierEntries returns carrier log entries (CurrentLocation signals).
+func (h *Handler) HandleGetCarrierEntries(c echo.Context) error {
+	if h.carrierSessionID == "" {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "no carrier log loaded"})
+	}
+
+	// Get all entries (carrier logs are typically smaller)
+	entries, total, ok := h.session.GetEntries(h.carrierSessionID, 1, 100000)
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "carrier session not found or not complete"})
+	}
+
+	// Filter to only CurrentLocation signals for carrier tracking
+	var carrierEntries []map[string]interface{}
+	for _, entry := range entries {
+		if entry.SignalName == "CurrentLocation" {
+			carrierEntries = append(carrierEntries, map[string]interface{}{
+				"carrierId": entry.DeviceID,
+				"unitId":    entry.Value,
+				"timestamp": entry.Timestamp.UnixMilli(),
+			})
+		}
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"entries": carrierEntries,
+		"total":   total,
 	})
 }
 
