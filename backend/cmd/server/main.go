@@ -34,7 +34,7 @@ func main() {
 
 	// CORS configuration for frontend dev server
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"http://localhost:5173", "http://127.0.0.1:5173"},
+		AllowOrigins: []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"},
 		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept},
 	}))
@@ -78,5 +78,5 @@ func main() {
 	apiGroup.PUT("/config/validation-rules", h.HandleUpdateValidationRules)
 
 	// Start server
-	e.Logger.Fatal(e.Start(":8080"))
+	e.Logger.Fatal(e.Start(":8089"))
 }
