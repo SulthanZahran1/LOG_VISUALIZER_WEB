@@ -120,6 +120,28 @@
 
 ## Phase 3: Map Viewer + Carrier Tracking [IN PROGRESS]
 
+### Map Configuration Files
+> **Two files required**: XML layout + YAML rules (like desktop reference)
+
+- [x] **XML Layout File** — defines visual layout (belts, diverters, ports, arrows)
+  - [x] Upload new XML file via API
+  - [x] Select from recently uploaded XML files
+  - [x] Show recent XML files in Map Viewer sidebar
+  
+- [x] **YAML Rules File** — defines device-to-unit mappings and color rules
+  - [x] Create YAML parser in backend
+  - [x] Add `/api/map/rules` endpoint (upload/get)
+  - [x] Upload new YAML rules file
+  - [x] Select from recently uploaded YAML files
+  - [ ] Store device-to-unit mappings for carrier tracking
+  - [ ] Store color rules for signal-based coloring
+  
+- [x] **File Association UI** — combine XML + YAML
+  - [x] Map Viewer shows current XML + YAML file names
+  - [x] "Select Files" button opens file picker dialog
+  - [x] Dialog shows recent XML files and recent YAML files
+  - [ ] Validate that both files are selected before activating carrier tracking
+
 ### Map Rendering [COMPLETED]
 - [x] Load layout from XML config (`map_parser.go`)
 - [x] Render units/stations as rectangles (`MapCanvas.tsx`)

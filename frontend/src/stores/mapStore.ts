@@ -1,5 +1,5 @@
 import { signal, computed } from '@preact/signals';
-import { getMapLayout } from '../api/client';
+import { getMapLayout, getMapRules, getRecentMapFiles, type MapRules, type RecentMapFiles } from '../api/client';
 
 export interface MapObject {
     name: string;
@@ -32,6 +32,15 @@ export const mapZoom = signal(1.0);
 export const mapOffset = signal({ x: 0, y: 0 });
 export const selectedUnitId = signal<string | null>(null);
 
+// Rules state
+export const mapRules = signal<MapRules | null>(null);
+export const rulesLoading = signal(false);
+export const rulesError = signal<string | null>(null);
+
+// Recent files state
+export const recentMapFiles = signal<RecentMapFiles | null>(null);
+export const recentFilesLoading = signal(false);
+
 // Actions
 export async function fetchMapLayout() {
     mapLoading.value = true;
@@ -39,10 +48,35 @@ export async function fetchMapLayout() {
     try {
         const data = await getMapLayout();
         mapLayout.value = data;
-    } catch (err: any) {
-        mapError.value = err.message || 'Failed to fetch map layout';
+    } catch (err: unknown) {
+        mapError.value = err instanceof Error ? err.message : 'Failed to fetch map layout';
     } finally {
         mapLoading.value = false;
+    }
+}
+
+export async function fetchMapRules() {
+    rulesLoading.value = true;
+    rulesError.value = null;
+    try {
+        const data = await getMapRules();
+        mapRules.value = data;
+    } catch (err: unknown) {
+        rulesError.value = err instanceof Error ? err.message : 'Failed to fetch rules';
+    } finally {
+        rulesLoading.value = false;
+    }
+}
+
+export async function fetchRecentMapFiles() {
+    recentFilesLoading.value = true;
+    try {
+        const data = await getRecentMapFiles();
+        recentMapFiles.value = data;
+    } catch (err: unknown) {
+        console.error('Failed to fetch recent map files:', err);
+    } finally {
+        recentFilesLoading.value = false;
     }
 }
 
@@ -51,3 +85,4 @@ export const mapObjectsArray = computed(() => {
     if (!mapLayout.value) return [];
     return Object.values(mapLayout.value.objects);
 });
+

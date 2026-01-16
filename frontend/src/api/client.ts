@@ -221,3 +221,67 @@ export async function uploadMapLayout(file: File): Promise<FileInfo> {
 
     return response.json();
 }
+
+// Map Rules
+export interface RulesInfo {
+    id: string;
+    name: string;
+    uploadedAt: string;
+    rulesCount: number;
+    deviceCount: number;
+}
+
+export interface DeviceMapping {
+    pattern: string;
+    unitId: string;
+}
+
+export interface ColorRule {
+    signal: string;
+    op: string;
+    value: string | number | boolean;
+    color?: string;
+    bgColor?: string;
+    text?: string;
+    textColor?: string;
+    priority: number;
+}
+
+export interface MapRules {
+    id?: string;
+    name?: string;
+    defaultColor: string;
+    deviceToUnit: DeviceMapping[];
+    rules: ColorRule[];
+}
+
+export async function uploadMapRules(file: File): Promise<RulesInfo> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE}/map/rules`, {
+        method: 'POST',
+        body: formData,
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+        throw new ApiError(response.status, error.error);
+    }
+
+    return response.json();
+}
+
+export async function getMapRules(): Promise<MapRules> {
+    return request<MapRules>('/map/rules');
+}
+
+export interface RecentMapFiles {
+    xmlFiles: FileInfo[];
+    yamlFiles: FileInfo[];
+}
+
+export async function getRecentMapFiles(): Promise<RecentMapFiles> {
+    return request<RecentMapFiles>('/map/files/recent');
+}
+

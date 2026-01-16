@@ -1,0 +1,176 @@
+import { useEffect, useState } from 'preact/hooks';
+import {
+    mapLayout,
+    mapRules,
+    recentMapFiles,
+    recentFilesLoading,
+    fetchMapLayout,
+    fetchMapRules,
+    fetchRecentMapFiles,
+} from '../../stores/mapStore';
+import { uploadMapLayout, uploadMapRules } from '../../api/client';
+import type { FileInfo } from '../../models/types';
+
+import './MapFileSelector.css';
+
+interface MapFileSelectorProps {
+    onFilesChanged?: () => void;
+}
+
+export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
+    const [showDialog, setShowDialog] = useState(false);
+    const [uploading, setUploading] = useState(false);
+
+    useEffect(() => {
+        fetchRecentMapFiles();
+    }, []);
+
+    const handleUploadXML = async (e: Event) => {
+        const input = e.target as HTMLInputElement;
+        if (!input.files?.length) return;
+
+        setUploading(true);
+        try {
+            await uploadMapLayout(input.files[0]);
+            await fetchMapLayout();
+            await fetchRecentMapFiles();
+            onFilesChanged?.();
+        } catch (err) {
+            console.error('Failed to upload XML:', err);
+        } finally {
+            setUploading(false);
+            input.value = '';
+        }
+    };
+
+    const handleUploadYAML = async (e: Event) => {
+        const input = e.target as HTMLInputElement;
+        if (!input.files?.length) return;
+
+        setUploading(true);
+        try {
+            await uploadMapRules(input.files[0]);
+            await fetchMapRules();
+            await fetchRecentMapFiles();
+            onFilesChanged?.();
+        } catch (err) {
+            console.error('Failed to upload YAML:', err);
+        } finally {
+            setUploading(false);
+            input.value = '';
+        }
+    };
+
+    const handleSelectXML = async (_file: FileInfo) => {
+        // For now, just re-fetch the layout (the backend uses the most recently uploaded)
+        // In a full implementation, we'd add an endpoint to set active map by ID
+        setShowDialog(false);
+        await fetchMapLayout();
+        onFilesChanged?.();
+    };
+
+    const handleSelectYAML = async (_file: FileInfo) => {
+        // Similar - for now just re-fetch
+        setShowDialog(false);
+        await fetchMapRules();
+        onFilesChanged?.();
+    };
+
+    const currentXML = mapLayout.value?.name || 'No XML loaded';
+    const currentYAML = mapRules.value?.name || 'No rules loaded';
+
+    return (
+        <div className="map-file-selector">
+            <div className="file-status">
+                <span className="file-label" title={currentXML}>
+                    <strong>Layout:</strong> {currentXML}
+                </span>
+                <span className="file-label" title={currentYAML}>
+                    <strong>Rules:</strong> {currentYAML}
+                </span>
+            </div>
+
+            <button
+                className="select-files-btn"
+                onClick={() => setShowDialog(true)}
+                disabled={uploading}
+            >
+                {uploading ? 'Uploading...' : 'Select Files'}
+            </button>
+
+            {showDialog && (
+                <div className="file-dialog-overlay" onClick={() => setShowDialog(false)}>
+                    <div className="file-dialog" onClick={e => e.stopPropagation()}>
+                        <h3>Map Configuration Files</h3>
+
+                        <div className="file-section">
+                            <h4>XML Layout File</h4>
+                            <input
+                                type="file"
+                                accept=".xml"
+                                onChange={handleUploadXML}
+                                id="xml-upload"
+                                style={{ display: 'none' }}
+                            />
+                            <label htmlFor="xml-upload" className="upload-btn">
+                                Upload New XML
+                            </label>
+
+                            <div className="recent-files">
+                                {recentFilesLoading.value && <div className="loading">Loading...</div>}
+                                {recentMapFiles.value?.xmlFiles?.length ? (
+                                    recentMapFiles.value.xmlFiles.map(file => (
+                                        <button
+                                            key={file.id}
+                                            className="file-item"
+                                            onClick={() => handleSelectXML(file)}
+                                        >
+                                            {file.name}
+                                        </button>
+                                    ))
+                                ) : (
+                                    !recentFilesLoading.value && <div className="no-files">No XML files uploaded</div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="file-section">
+                            <h4>YAML Rules File</h4>
+                            <input
+                                type="file"
+                                accept=".yaml,.yml"
+                                onChange={handleUploadYAML}
+                                id="yaml-upload"
+                                style={{ display: 'none' }}
+                            />
+                            <label htmlFor="yaml-upload" className="upload-btn">
+                                Upload New YAML
+                            </label>
+
+                            <div className="recent-files">
+                                {recentFilesLoading.value && <div className="loading">Loading...</div>}
+                                {recentMapFiles.value?.yamlFiles?.length ? (
+                                    recentMapFiles.value.yamlFiles.map(file => (
+                                        <button
+                                            key={file.id}
+                                            className="file-item"
+                                            onClick={() => handleSelectYAML(file)}
+                                        >
+                                            {file.name}
+                                        </button>
+                                    ))
+                                ) : (
+                                    !recentFilesLoading.value && <div className="no-files">No YAML files uploaded</div>
+                                )}
+                            </div>
+                        </div>
+
+                        <button className="close-btn" onClick={() => setShowDialog(false)}>
+                            Close
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}

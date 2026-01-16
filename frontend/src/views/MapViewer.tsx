@@ -1,67 +1,40 @@
 import { useEffect, useState } from 'preact/hooks';
 import { MapCanvas } from '../components/map/MapCanvas';
+import { MapFileSelector } from '../components/map/MapFileSelector';
 import { FileUpload } from '../components/file/FileUpload';
-import { RecentFiles } from '../components/file/RecentFiles';
-import { uploadMapLayout, getRecentFiles, deleteFile, renameFile } from '../api/client';
-import { fetchMapLayout, mapLayout } from '../stores/mapStore';
-import type { FileInfo } from '../models/types';
+import { uploadMapLayout } from '../api/client';
+import { fetchMapLayout, fetchMapRules, mapLayout, mapRules } from '../stores/mapStore';
 
 export function MapViewer() {
-    const [recentMaps, setRecentMaps] = useState<FileInfo[]>([]);
-
-    const loadRecentMaps = async () => {
-        try {
-            const files = await getRecentFiles();
-            // Filter for XML files
-            setRecentMaps(files.filter(f => f.name.toLowerCase().endsWith('.xml')));
-        } catch (err) {
-            console.error('Failed to load recent maps', err);
-        }
-    };
+    const [initialized, setInitialized] = useState(false);
 
     useEffect(() => {
-        loadRecentMaps();
+        const init = async () => {
+            await Promise.all([fetchMapLayout(), fetchMapRules()]);
+            setInitialized(true);
+        };
+        init();
     }, []);
 
     const handleUploadSuccess = async () => {
         await fetchMapLayout();
-        loadRecentMaps();
     };
 
-    const handleMapSelect = async () => {
-        // TODO: Map selection logic (backend currently only supports "current" map from upload)
-        // For now, we might need an endpoint to "set current map" or re-upload it
-        // Re-uploading is a safe cheat for now given the backend structure
-        alert('Selecting previously uploaded maps is not fully supported yet. Please re-upload the file.');
+    const handleFilesChanged = () => {
+        // Refresh data when files change
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Are you sure you want to delete this map?')) return;
-        try {
-            await deleteFile(id);
-            await loadRecentMaps();
-            if (mapLayout.value?.id === id) {
-                mapLayout.value = null; // Clear if deleted current
-            }
-        } catch (err) {
-            console.error('Failed to delete map', err);
-            alert('Failed to delete map');
-        }
-    };
-
-    const handleRename = async (id: string, newName: string) => {
-        try {
-            await renameFile(id, newName);
-            await loadRecentMaps();
-        } catch (err) {
-            console.error('Failed to rename map', err);
-            alert('Failed to rename map');
-        }
-    };
+    if (!initialized) {
+        return (
+            <div class="view-container">
+                <div class="map-loading">Loading...</div>
+            </div>
+        );
+    }
 
     return (
         <div class="view-container">
-            {!mapLayout.value ? (
+            {!mapLayout.value?.objects || Object.keys(mapLayout.value.objects).length === 0 ? (
                 <div class="map-placeholder">
                     <h2>No Map Loaded</h2>
                     <p>Upload a conveyor map XML file to get started.</p>
@@ -73,29 +46,22 @@ export function MapViewer() {
                             maxSize={50 * 1024 * 1024} // 50MB for maps
                         />
                     </div>
+                    <p class="hint">You'll also need a YAML rules file for carrier tracking.</p>
                 </div>
             ) : (
                 <>
                     <div class="map-toolbar">
                         <div class="toolbar-left">
                             <h3>{mapLayout.value.name || 'Conveyor Map'}</h3>
+                            {!mapRules.value?.rules?.length && (
+                                <span class="rules-warning">⚠️ No rules loaded</span>
+                            )}
                         </div>
-                        <div class="toolbar-right">
-                            {/* Add toolbar actions here */}
-                        </div>
+                        <MapFileSelector onFilesChanged={handleFilesChanged} />
                     </div>
                     <MapCanvas />
                 </>
             )}
-
-            <div class="recent-maps-sidebar">
-                <RecentFiles
-                    files={recentMaps}
-                    onFileSelect={handleMapSelect}
-                    onFileDelete={handleDelete}
-                    onFileRename={handleRename}
-                />
-            </div>
 
             <style>{`
                 .view-container {

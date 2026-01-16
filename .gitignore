@@ -1,8 +1,8 @@
 # Go
 backend/bin/
 backend/dist/
-backend/data/uploads/*
-!backend/data/uploads/.gitkeep
+backend/data/
+uploads/
 
 # Logs
 *.log

@@ -65,6 +65,9 @@ func main() {
 	// Map Layout
 	apiGroup.GET("/map/layout", h.HandleGetMapLayout)
 	apiGroup.POST("/map/upload", h.HandleUploadMapLayout)
+	apiGroup.GET("/map/rules", h.HandleGetMapRules)
+	apiGroup.POST("/map/rules", h.HandleUploadMapRules)
+	apiGroup.GET("/map/files/recent", h.HandleRecentMapFiles)
 	apiGroup.GET("/config/validation-rules", h.HandleGetValidationRules)
 	apiGroup.PUT("/config/validation-rules", h.HandleUpdateValidationRules)
 

@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/plc-visualizer/backend/internal/models"
 	"github.com/plc-visualizer/backend/internal/parser"
 	"github.com/plc-visualizer/backend/internal/session"
 	"github.com/plc-visualizer/backend/internal/storage"
@@ -14,9 +16,11 @@ import (
 
 // Handler handles API requests.
 type Handler struct {
-	store        storage.Store
-	session      *session.Manager
-	currentMapID string
+	store          storage.Store
+	session        *session.Manager
+	currentMapID   string
+	currentRulesID string
+	currentRules   *models.MapRules
 }
 
 // NewHandler creates a new API handler.
@@ -256,6 +260,97 @@ func (h *Handler) HandleUploadMapLayout(c echo.Context) error {
 
 	h.currentMapID = info.ID
 	return c.JSON(http.StatusCreated, info)
+}
+
+// HandleUploadMapRules accepts a YAML rules file and sets it as the active rules.
+func (h *Handler) HandleUploadMapRules(c echo.Context) error {
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing file in request"})
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to open uploaded file"})
+	}
+	defer src.Close()
+
+	// Parse the YAML to validate it
+	rules, err := parser.ParseMapRulesFromReader(src)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid YAML format: %v", err)})
+	}
+
+	// Reopen to save
+	src2, _ := file.Open()
+	defer src2.Close()
+
+	info, err := h.store.Save(file.Filename, src2)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save rules file: %v", err)})
+	}
+
+	h.currentRulesID = info.ID
+	h.currentRules = rules
+
+	return c.JSON(http.StatusCreated, models.RulesInfo{
+		ID:          info.ID,
+		Name:        info.Name,
+		UploadedAt:  info.UploadedAt.Format(time.RFC3339),
+		RulesCount:  len(rules.Rules),
+		DeviceCount: len(rules.DeviceToUnit),
+	})
+}
+
+// HandleGetMapRules returns the currently active rules.
+func (h *Handler) HandleGetMapRules(c echo.Context) error {
+	if h.currentRulesID == "" || h.currentRules == nil {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"defaultColor": "#D3D3D3",
+			"deviceToUnit": []interface{}{},
+			"rules":        []interface{}{},
+		})
+	}
+
+	// Get file info for metadata
+	info, _ := h.store.Get(h.currentRulesID)
+
+	response := map[string]interface{}{
+		"id":           h.currentRulesID,
+		"name":         "Unknown",
+		"defaultColor": h.currentRules.DefaultColor,
+		"deviceToUnit": h.currentRules.DeviceToUnit,
+		"rules":        h.currentRules.Rules,
+	}
+
+	if info != nil {
+		response["name"] = info.Name
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// HandleRecentMapFiles returns lists of recently uploaded XML and YAML map files.
+func (h *Handler) HandleRecentMapFiles(c echo.Context) error {
+	files, err := h.store.List(50)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list files"})
+	}
+
+	var xmlFiles, yamlFiles []*models.FileInfo
+	for _, f := range files {
+		nameLower := strings.ToLower(f.Name)
+		if strings.HasSuffix(nameLower, ".xml") {
+			xmlFiles = append(xmlFiles, f)
+		} else if strings.HasSuffix(nameLower, ".yaml") || strings.HasSuffix(nameLower, ".yml") {
+			yamlFiles = append(yamlFiles, f)
+		}
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"xmlFiles":  xmlFiles,
+		"yamlFiles": yamlFiles,
+	})
 }
 
 // HandleGetValidationRules returns placeholder validation rules.

@@ -3,6 +3,22 @@
 > Append-only log. Add entries at the top as work is completed.
 > Format: `## YYYY-MM-DD: Summary`
 
+## 2026-01-16: YAML Rules Parser & File Selection
+
+### Backend
+- Created `rules.go` with `MapRules`, `DeviceMapping`, `ColorRule` types.
+- Created `rules_parser.go` with YAML parsing (uses `gopkg.in/yaml.v3`).
+- Added unit tests for YAML parser (2 tests).
+- Added `HandleUploadMapRules` and `HandleGetMapRules` handlers.
+- Added `HandleRecentMapFiles` to list recent XML/YAML files.
+- Registered routes: `GET/POST /api/map/rules`, `GET /api/map/files/recent`.
+
+### Frontend
+- Added `uploadMapRules`, `getMapRules`, `getRecentMapFiles` to `client.ts`.
+- Updated `mapStore.ts` with `mapRules`, `recentMapFiles` signals.
+- Created `MapFileSelector.tsx` component with dialog UI.
+- Integrated file selector into `MapViewer.tsx` toolbar.
+
 ## 2026-01-16: Enhanced Paste Support (Forcepoint Bypass)
 
 ### Frontend
