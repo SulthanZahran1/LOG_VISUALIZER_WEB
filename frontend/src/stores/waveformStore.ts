@@ -151,14 +151,19 @@ export const viewRange = computed<TimeRange | null>(() => {
     return range;
 });
 
+// Track the last session ID to detect when a new session starts
+let lastInitializedSessionId: string | null = null;
+
 /**
  * Initialize view range from session info
+ * Resets scrollOffset and zoom when a NEW session is loaded
  */
 effect(() => {
     const session = currentSession.value;
     if (session && session.status === 'complete' && session.startTime !== undefined) {
-        // Only reset if scrollOffset is 0
-        if (scrollOffset.value === 0) {
+        // Reset if this is a NEW session (different ID) or if scrollOffset is at default (0)
+        if (session.id !== lastInitializedSessionId) {
+            lastInitializedSessionId = session.id;
             scrollOffset.value = session.startTime;
 
             // Set initial zoom to fit roughly 10 seconds or the whole thing if shorter
@@ -166,6 +171,9 @@ effect(() => {
             const targetDuration = Math.min(sessionDuration, 10000) || 1000;
             zoomLevel.value = viewportWidth.value / targetDuration;
         }
+    } else if (!session) {
+        // Clear the tracked session ID when session is cleared
+        lastInitializedSessionId = null;
     }
 });
 

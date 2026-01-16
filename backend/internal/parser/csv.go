@@ -151,9 +151,18 @@ func (p *CSVSignalParser) Parse(filePath string) (*models.ParsedLog, []*models.P
 		return nil, nil, err
 	}
 
+	var timeRange *models.TimeRange
+	if len(entries) > 0 {
+		timeRange = &models.TimeRange{
+			Start: entries[0].Timestamp,
+			End:   entries[len(entries)-1].Timestamp,
+		}
+	}
+
 	return &models.ParsedLog{
-		Entries: entries,
-		Signals: signals,
-		Devices: devices,
+		Entries:   entries,
+		Signals:   signals,
+		Devices:   devices,
+		TimeRange: timeRange,
 	}, errors, nil
 }

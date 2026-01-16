@@ -239,7 +239,7 @@ export function LogTable() {
                                     <div className="log-col" style={{ width: columnWidths.value.ts }}>{formatDateTime(entry.timestamp)}</div>
                                     <div className="log-col" style={{ width: columnWidths.value.dev }}>{entry.deviceId}</div>
                                     <div className="log-col" style={{ width: columnWidths.value.sig }}>{entry.signalName}</div>
-                                    <div className="log-col" style={{ width: columnWidths.value.val }}>{entry.value}</div>
+                                    <div className="log-col" style={{ width: columnWidths.value.val }}>{String(entry.value)}</div>
                                     <div className="log-col" style={{ width: columnWidths.value.type }}>{entry.signalType}</div>
                                 </div>
                             );

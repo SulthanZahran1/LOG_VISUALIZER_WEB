@@ -28,6 +28,16 @@ func TestPLCDebugParser(t *testing.T) {
 	if entry.SignalType != models.SignalTypeBoolean {
 		t.Errorf("Expected SignalType boolean, got %s", entry.SignalType)
 	}
+
+	// Test full parse to verify TimeRange
+	tmpFile := "test_debug.log"
+	os.WriteFile(tmpFile, []byte(line), 0644)
+	defer os.Remove(tmpFile)
+
+	parsed, _, _ := p.Parse(tmpFile)
+	if parsed.TimeRange == nil {
+		t.Error("Expected TimeRange to be set")
+	}
 }
 
 func TestPLCTabParser(t *testing.T) {
@@ -51,6 +61,20 @@ func TestPLCTabParser(t *testing.T) {
 	}
 	if entry.SignalType != models.SignalTypeInteger {
 		t.Errorf("Expected SignalType integer, got %s", entry.SignalType)
+	}
+
+	// Test trimming and TimeRange
+	line2 := "2025-09-22 13:00:00.199 [] SYSTEM/PATH/DEV-456\tMY_SIGNAL         \tIN\t123\t\tLOC\tF1\tF2\t2025-09-22 13:00:00.199"
+	tmpFile := "test_tab.log"
+	os.WriteFile(tmpFile, []byte(line2), 0644)
+	defer os.Remove(tmpFile)
+
+	parsed, _, _ := p.Parse(tmpFile)
+	if parsed.TimeRange == nil {
+		t.Error("Expected TimeRange to be set")
+	}
+	if parsed.Entries[0].SignalName != "MY_SIGNAL         " {
+		t.Errorf("Expected padded SignalName 'MY_SIGNAL         ', got '%s'", parsed.Entries[0].SignalName)
 	}
 }
 
@@ -115,5 +139,9 @@ func TestCSVSignalParser(t *testing.T) {
 	}
 	if e.Value != 62 {
 		t.Errorf("Expected Value 62, got %v", e.Value)
+	}
+
+	if parsed.TimeRange == nil {
+		t.Error("Expected TimeRange to be set")
 	}
 }
