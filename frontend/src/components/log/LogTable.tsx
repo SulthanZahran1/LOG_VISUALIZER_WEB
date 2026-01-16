@@ -14,6 +14,7 @@ import {
     openView
 } from '../../stores/logStore';
 import { toggleSignal } from '../../stores/waveformStore';
+import { formatDateTime } from '../../utils/TimeAxisUtils';
 import type { LogEntry } from '../../models/types';
 import './LogTable.css';
 
@@ -102,7 +103,7 @@ export function LogTable() {
             .sort((a, b) => a - b)
             .map(idx => {
                 const e = entries[idx];
-                return e ? `${e.timestamp}\t${e.deviceId}\t${e.signalName}\t${e.value}` : '';
+                return e ? `${formatDateTime(e.timestamp)}\t${e.deviceId}\t${e.signalName}\t${e.value}` : '';
             })
             .join('\n');
 
@@ -235,7 +236,7 @@ export function LogTable() {
                                     onClick={(e) => handleRowClick(actualIdx, e)}
                                     onContextMenu={handleContextMenu}
                                 >
-                                    <div className="log-col" style={{ width: columnWidths.value.ts }}>{entry.timestamp}</div>
+                                    <div className="log-col" style={{ width: columnWidths.value.ts }}>{formatDateTime(entry.timestamp)}</div>
                                     <div className="log-col" style={{ width: columnWidths.value.dev }}>{entry.deviceId}</div>
                                     <div className="log-col" style={{ width: columnWidths.value.sig }}>{entry.signalName}</div>
                                     <div className="log-col" style={{ width: columnWidths.value.val }}>{entry.value}</div>

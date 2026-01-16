@@ -3,7 +3,7 @@
  */
 
 /**
- * Format a Unix ms timestamp to HH:MM:SS.mmm
+ * Format a Unix ms timestamp to HH:MM:SS.mmm (time only, for waveform axis)
  */
 export function formatTimestamp(ms: number): string {
     const date = new Date(ms);
@@ -12,6 +12,21 @@ export function formatTimestamp(ms: number): string {
     const s = String(date.getUTCSeconds()).padStart(2, '0');
     const mss = String(date.getUTCMilliseconds()).padStart(3, '0');
     return `${h}:${m}:${s}.${mss}`;
+}
+
+/**
+ * Format a Unix ms timestamp to YYYY-MM-DD HH:MM:SS.mmm (full date-time, for log table)
+ */
+export function formatDateTime(ms: number): string {
+    const date = new Date(ms);
+    const Y = date.getUTCFullYear();
+    const M = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const D = String(date.getUTCDate()).padStart(2, '0');
+    const h = String(date.getUTCHours()).padStart(2, '0');
+    const m = String(date.getUTCMinutes()).padStart(2, '0');
+    const s = String(date.getUTCSeconds()).padStart(2, '0');
+    const mss = String(date.getUTCMilliseconds()).padStart(3, '0');
+    return `${Y}-${M}-${D} ${h}:${m}:${s}.${mss}`;
 }
 
 /**
