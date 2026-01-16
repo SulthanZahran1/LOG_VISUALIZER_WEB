@@ -41,7 +41,7 @@ Write-Host "  Application is running!              " -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Frontend: http://localhost:3000" -ForegroundColor White
-Write-Host "  Backend:  http://localhost:8080" -ForegroundColor White
+Write-Host "  Backend:  http://localhost:8089" -ForegroundColor White
 Write-Host ""
 Write-Host "To stop: docker-compose down" -ForegroundColor Gray
 Write-Host "To view logs: docker-compose logs -f" -ForegroundColor Gray

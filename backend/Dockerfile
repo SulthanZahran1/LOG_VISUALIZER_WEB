@@ -26,6 +26,6 @@ COPY --from=builder /server .
 RUN mkdir -p config
 COPY --from=builder /app/config* ./config/
 
-EXPOSE 8080
+EXPOSE 8089
 
 CMD ["./server"]

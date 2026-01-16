@@ -6,11 +6,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "8089:8089"
     volumes:
       - ./uploads:/app/data/uploads
     environment:
-      - PORT=8080
+      - PORT=8089
     restart: unless-stopped
 
   frontend:

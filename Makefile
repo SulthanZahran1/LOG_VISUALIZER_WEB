@@ -9,7 +9,7 @@ dev:
 
 # Run Go backend server
 dev-backend:
-	@echo "Starting Go backend on :8080..."
+	@echo "Starting Go backend on :8089..."
 	cd backend && go run cmd/server/main.go
 
 # Run Vite frontend dev server
