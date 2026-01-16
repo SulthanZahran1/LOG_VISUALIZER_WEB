@@ -29,6 +29,13 @@ type MapXMLRoot struct {
 	Objects []ObjectElement `xml:"Object"`
 }
 
+// ObjectXMLRoot supports Object as root (Common in .NET serialized layouts)
+type ObjectXMLRoot struct {
+	XMLName xml.Name        `xml:"Object"`
+	Version string          `xml:"version,attr"`
+	Objects []ObjectElement `xml:"Object"`
+}
+
 type ObjectElement struct {
 	Name          string `xml:"name,attr"`
 	NameUpper     string `xml:"Name,attr"`
@@ -77,6 +84,9 @@ type ObjectElement struct {
 	EndCapChild        string `xml:"EndCap"`
 	StartCapChild      string `xml:"StartCap"`
 	DashStyleChild     string `xml:"DashStyle"`
+
+	// Nested objects
+	Objects []ObjectElement `xml:"Object"`
 }
 
 func (o ObjectElement) GetLineThick() string {
@@ -250,8 +260,15 @@ func ParseMapXML(filePath string) (*models.MapLayout, error) {
 			if errMap := xml.Unmarshal(data, &rootMap); errMap == nil && len(rootMap.Objects) > 0 {
 				raw.Version = rootMap.Version
 				raw.Objects = rootMap.Objects
-			} else if err != nil {
-				return nil, err
+			} else {
+				// Try alternative root <Object>
+				var rootObj ObjectXMLRoot
+				if errObj := xml.Unmarshal(data, &rootObj); errObj == nil && len(rootObj.Objects) > 0 {
+					raw.Version = rootObj.Version
+					raw.Objects = rootObj.Objects
+				} else if err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -261,27 +278,34 @@ func ParseMapXML(filePath string) (*models.MapLayout, error) {
 		Objects: make(map[string]models.MapObject),
 	}
 
-	for _, obj := range raw.Objects {
-		name := obj.GetName()
-		if name == "" {
-			continue // Skip objects without names
-		}
-
-		layout.Objects[name] = models.MapObject{
-			Name:          name,
-			Type:          obj.GetType(),
-			Text:          obj.GetText(),
-			Size:          obj.GetSize(),
-			Location:      obj.GetLocation(),
-			UnitId:        obj.GetUnitId(),
-			LineThick:     obj.GetLineThick(),
-			FlowDirection: obj.GetFlowDirection(),
-			ForeColor:     obj.GetForeColor(),
-			EndCap:        obj.GetEndCap(),
-			StartCap:      obj.GetStartCap(),
-			DashStyle:     obj.GetDashStyle(),
-		}
-	}
+	fillLayout(layout, raw.Objects)
 
 	return layout, nil
+}
+
+func fillLayout(layout *models.MapLayout, objects []ObjectElement) {
+	for _, obj := range objects {
+		name := obj.GetName()
+		if name != "" {
+			layout.Objects[name] = models.MapObject{
+				Name:          name,
+				Type:          obj.GetType(),
+				Text:          obj.GetText(),
+				Size:          obj.GetSize(),
+				Location:      obj.GetLocation(),
+				UnitId:        obj.GetUnitId(),
+				LineThick:     obj.GetLineThick(),
+				FlowDirection: obj.GetFlowDirection(),
+				ForeColor:     obj.GetForeColor(),
+				EndCap:        obj.GetEndCap(),
+				StartCap:      obj.GetStartCap(),
+				DashStyle:     obj.GetDashStyle(),
+			}
+		}
+
+		// Recurse into children
+		if len(obj.Objects) > 0 {
+			fillLayout(layout, obj.Objects)
+		}
+	}
 }

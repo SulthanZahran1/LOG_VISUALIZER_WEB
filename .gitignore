@@ -20,3 +20,4 @@ frontend/*.local
 frontend/test-results/
 frontend/playwright-report/
 frontend/coverage/
+example_map.xml
