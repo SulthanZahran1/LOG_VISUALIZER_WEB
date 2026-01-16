@@ -11,6 +11,7 @@ RUN go mod download
 COPY . .
 
 # Build
+RUN mkdir -p /app/config
 RUN CGO_ENABLED=0 GOOS=linux go build -o /server ./cmd/server
 
 # Production stage
@@ -22,7 +23,7 @@ WORKDIR /app
 COPY --from=builder /server .
 
 # Copy config if exists
-COPY --from=builder /app/config ./config 2>/dev/null || true
+COPY --from=builder /app/config* ./config/
 
 EXPOSE 8080
 
