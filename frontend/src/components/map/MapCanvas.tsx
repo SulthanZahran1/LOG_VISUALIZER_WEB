@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import {
     mapLayout, mapLoading, mapError, mapZoom, mapOffset, selectedUnitId, fetchMapLayout, mapObjectsArray,
-    unitCarrierCounts, getCarrierCountColor, getCarrierDisplayText,
+    getUnitColor, getCarrierDisplayText, latestSignalValues, mapRules,
     type MapObject
 } from '../../stores/mapStore';
 import { MapObjectComponent } from './MapObjectComponents';
@@ -59,8 +59,6 @@ export function MapCanvas() {
         return <div class="map-loading">Loading map...</div>;
     }
 
-    // Get carrier counts for coloring
-    const carrierCounts = unitCarrierCounts.value;
 
     return (
         <div
@@ -87,9 +85,18 @@ export function MapCanvas() {
                 </defs>
                 <g transform={`translate(${mapOffset.value.x}, ${mapOffset.value.y}) scale(${mapZoom.value})`}>
                     {mapObjectsArray.value.map((obj: MapObject) => {
-                        const count = obj.unitId ? (carrierCounts.get(obj.unitId) || 0) : 0;
-                        const carrierColor = count > 0 ? getCarrierCountColor(count) : undefined;
-                        const carrierText = obj.unitId ? getCarrierDisplayText(obj.unitId) : null;
+                        // Trigger re-render on signal value changes
+                        void mapRules.value;
+                        void latestSignalValues.value;
+
+                        let carrierColor: string | undefined;
+                        let carrierText: string | null = null;
+
+                        if (obj.unitId) {
+                            const result = getUnitColor(obj.unitId);
+                            carrierColor = result.color;
+                            carrierText = result.text || getCarrierDisplayText(obj.unitId);
+                        }
 
                         return (
                             <MapObjectComponent

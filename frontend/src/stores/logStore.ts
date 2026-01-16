@@ -183,7 +183,11 @@ async function pollStatus(sessionId: string) {
 
             if (session.status === 'complete') {
                 isLoadingLog.value = false;
-                fetchEntries(1, 1000); // Fetch more for initial view
+                await fetchEntries(1, 1000); // Fetch more for initial view
+
+                // Trigger map update if map viewer is open
+                const mapStore = await import('./mapStore');
+                mapStore.updateSignalValues(logEntries.value);
                 return;
             }
 
@@ -217,6 +221,10 @@ export async function fetchEntries(page: number, pageSize: number) {
 
         logEntries.value = res.entries as LogEntry[];
         totalEntries.value = res.total;
+
+        // Update map store with latest values
+        const mapStore = await import('./mapStore');
+        mapStore.updateSignalValues(logEntries.value);
     } catch (err: any) {
         if (err.status === 404) {
             console.warn('Session not found on server during fetchEntries, clearing local state');

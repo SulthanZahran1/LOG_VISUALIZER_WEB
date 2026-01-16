@@ -1,8 +1,13 @@
-# CHANGELOG.md — What's Been Done
+# CHANGELOG.md — Recent Changes
 
-> Append-only log. Add entries at the top.
-> Format: `## YYYY-MM-DD: Summary`
-> Older entries: [CHANGELOG_ARCHIVE.md](CHANGELOG_ARCHIVE.md)
+## [2026-01-16]
+- **Map Viewer**: Implemented Signal-based Coloring based on YAML rule presets.
+- **Carrier Tracking**: Integrated dual log system (PLC + MCS) for real-time carrier position visualization.
+- **Carrier Tracking**: Implemented wildcard-based device mapping (`DeviceToUnit`).
+- **Carrier Tracking**: Added multi-carrier count badges with color coding and truncated carrier ID display.
+- **Carrier Tracking**: Implemented Unit Info Panel to display detailed carrier lists per unit.
+- **Validation**: Added state validation to ensure XML Layout and YAML Rules are loaded before enabling tracking.
+- **Testing**: Added unit tests for map store logic and verified with full test suite.
 
 ---
 

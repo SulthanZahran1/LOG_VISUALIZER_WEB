@@ -6,7 +6,7 @@ import { FileUpload } from '../components/file/FileUpload';
 import { uploadMapLayout } from '../api/client';
 import {
     fetchMapLayout, fetchMapRules, mapLayout, mapRules,
-    carrierTrackingEnabled, toggleCarrierTracking
+    carrierTrackingEnabled, toggleCarrierTracking, canEnableRules
 } from '../stores/mapStore';
 
 export function MapViewer() {
@@ -65,6 +65,8 @@ export function MapViewer() {
                             <button
                                 class={`tracking-toggle ${carrierTrackingEnabled.value ? 'active' : ''}`}
                                 onClick={toggleCarrierTracking}
+                                disabled={!canEnableRules.value}
+                                title={!canEnableRules.value ? 'Load XML Layout and YAML Rules to enable tracking' : ''}
                             >
                                 {carrierTrackingEnabled.value ? '🟢 Tracking ON' : '⚪ Tracking OFF'}
                             </button>

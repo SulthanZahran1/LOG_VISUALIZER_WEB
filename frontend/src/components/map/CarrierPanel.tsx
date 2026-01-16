@@ -1,9 +1,13 @@
-import { selectedUnitId, getCarriersAtUnit, carrierTrackingEnabled } from '../../stores/mapStore';
+import { selectedUnitId, getCarriersAtUnit, carrierTrackingEnabled, latestSignalValues, carrierLocations } from '../../stores/mapStore';
 
 import './CarrierPanel.css';
 
 export function CarrierPanel() {
     const unitId = selectedUnitId.value;
+
+    // Trigger re-render on state changes
+    void latestSignalValues.value;
+    void carrierLocations.value;
 
     if (!unitId || !carrierTrackingEnabled.value) {
         return null;

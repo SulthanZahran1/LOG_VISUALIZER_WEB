@@ -10,9 +10,9 @@
 - [x] **XML Layout File** — Upload, select, recent list
 - [x] **YAML Rules File** — Parser, API, upload/select
 - [x] **File Association UI** — Dialog with XML + YAML selection
-- [ ] Store device-to-unit mappings for carrier tracking
-- [ ] Store color rules for signal-based coloring
-- [ ] Validate both files selected before activating tracking
+- [x] Store device-to-unit mappings for carrier tracking
+- [x] Store color rules for signal-based coloring
+- [x] Validate both files selected before activating tracking
 
 ### Map Rendering ✅
 - [x] Load layout from XML config
@@ -22,16 +22,16 @@
 - [x] Pan and zoom controls
 
 ### Carrier Tracking
-- [/] Implement Carrier Tracking logic (map `CurrentLocation` signals)
-- [ ] Display carriers on units
-- [ ] Show carrier ID (truncate long IDs from start)
-- [ ] Multi-carrier count display ("2x", "3x")
-- [ ] Carrier count colors: 0=default, 1=green, 2=yellow, 3=orange, 4+=red
+- [x] Implement Carrier Tracking logic (map `CurrentLocation` signals)
+- [x] Display carriers on units
+- [x] Show carrier ID (truncate long IDs from start)
+- [x] Multi-carrier count display ("2x", "3x")
+- [x] Carrier count colors: 0=default, 1=green, 2=yellow, 3=orange, 4+=red
 
 ### Unit Interaction
 - [x] Implement unit selection/highlighting
-- [ ] Click unit → show info panel
-- [ ] Info panel shows carrier list and current state
+- [x] Click unit → show info panel
+- [x] Info panel shows carrier list and current state
 - [x] Center view on unit (Reset button)
 
 ### Follow Feature

@@ -44,6 +44,8 @@ export const rulesError = signal<string | null>(null);
 export const recentMapFiles = signal<RecentMapFiles | null>(null);
 export const recentFilesLoading = signal(false);
 
+export const canEnableRules = computed(() => !!mapLayout.value && !!mapRules.value);
+
 // Carrier log state
 export const carrierLogInfo = signal<CarrierLogInfo | null>(null);
 export const carrierLogEntries = signal<CarrierEntry[]>([]);
@@ -102,6 +104,7 @@ export const mapObjectsArray = computed(() => {
 // Carrier tracking state
 export const carrierTrackingEnabled = signal(false);
 export const carrierLocations = signal<Map<string, string>>(new Map()); // carrierId -> unitId
+export const latestSignalValues = signal<Map<string, any>>(new Map()); // deviceId::signalName -> value
 
 // Computed: count carriers at each unit
 export const unitCarrierCounts = computed(() => {
@@ -123,6 +126,78 @@ export function getCarriersAtUnit(unitId: string): string[] {
     return carriers;
 }
 
+/**
+ * Maps a device ID to a unit ID using the current rules.
+ * Supports exact matches and wildcards (e.g. "PLC_*").
+ */
+export function applyDeviceMapping(deviceId: string): string | null {
+    if (!mapRules.value?.deviceToUnit) return null;
+
+    for (const mapping of mapRules.value.deviceToUnit) {
+        const pattern = mapping.pattern;
+        if (pattern.includes('*')) {
+            const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+            if (regex.test(deviceId)) {
+                return mapping.unitId;
+            }
+        } else if (pattern === deviceId) {
+            return mapping.unitId;
+        }
+    }
+    return null;
+}
+
+/**
+ * Returns the color and optional text label for a unit based on current state.
+ */
+export function getUnitColor(unitId: string): { color?: string, text?: string } {
+    // 1. If carrier tracking is enabled, use carrier count coloring
+    if (carrierTrackingEnabled.value) {
+        const count = unitCarrierCounts.value.get(unitId) || 0;
+        return { color: getCarrierCountColor(count) };
+    }
+
+    // 2. Otherwise, evaluate signal rules for this unit
+    if (!mapRules.value?.rules || mapRules.value.rules.length === 0) {
+        return { color: mapRules.value?.defaultColor || 'var(--bg-tertiary)' };
+    }
+
+    // Sort rules by priority (higher priority first)
+    const sortedRules = [...mapRules.value.rules].sort((a, b) => b.priority - a.priority);
+
+    // Evaluate rules
+    for (const rule of sortedRules) {
+        // Find if any device mapped to this unit has the signal specified in the rule matching the condition
+        for (const [key, value] of latestSignalValues.value.entries()) {
+            const [deviceId, signalName] = key.split('::');
+            if (signalName !== rule.signal) continue;
+
+            const targetUnitId = applyDeviceMapping(deviceId);
+            if (targetUnitId !== unitId) continue;
+
+            // Evaluate condition
+            let match = false;
+            switch (rule.op) {
+                case '==': match = String(value) === String(rule.value); break;
+                case '!=': match = String(value) !== String(rule.value); break;
+                case '>': match = Number(value) > Number(rule.value); break;
+                case '>=': match = Number(value) >= Number(rule.value); break;
+                case '<': match = Number(value) < Number(rule.value); break;
+                case '<=': match = Number(value) <= Number(rule.value); break;
+            }
+
+            if (match) {
+                return {
+                    color: rule.color || rule.bgColor,
+                    text: rule.text
+                };
+            }
+        }
+    }
+
+    return { color: mapRules.value.defaultColor || 'var(--bg-tertiary)' };
+}
+
 // Color utility based on carrier count
 export function getCarrierCountColor(count: number): string {
     if (count === 0) return '#3a3a3a'; // Default gray
@@ -138,16 +213,38 @@ export function getCarrierDisplayText(unitId: string): string | null {
     const carriers = getCarriersAtUnit(unitId);
     if (carriers.length === 0) return null;
     if (carriers.length === 1) {
-        // Truncate from start if too long (show last 8 chars)
+        // Truncate from start if too long (show last 6 chars)
         const id = carriers[0];
-        return id.length > 8 ? '...' + id.slice(-8) : id;
+        return id.length > 6 ? '...' + id.slice(-6) : id;
     }
     return `${carriers.length}x`;
 }
 
+// Bulk update signal values
+export function updateSignalValues(entries: { deviceId: string, signalName: string, value: any }[]): void {
+    const newValues = new Map(latestSignalValues.value);
+    let changed = false;
+
+    for (const entry of entries) {
+        const key = `${entry.deviceId}::${entry.signalName}`;
+        if (newValues.get(key) !== entry.value) {
+            newValues.set(key, entry.value);
+            changed = true;
+        }
+
+        // Also handle carrier tracking if it's a CurrentLocation signal
+        if (entry.signalName === 'CurrentLocation') {
+            processLogEntryForCarrier(entry.deviceId, entry.signalName, entry.value);
+        }
+    }
+
+    if (changed) {
+        latestSignalValues.value = newValues;
+    }
+}
+
 // Process a log entry for carrier tracking
 export function processLogEntryForCarrier(deviceId: string, signalName: string, value: unknown): void {
-    if (!carrierTrackingEnabled.value) return;
     if (signalName !== 'CurrentLocation') return;
 
     const carrierId = deviceId;
