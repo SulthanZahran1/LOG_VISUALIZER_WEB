@@ -4,9 +4,11 @@ interface ObjectProps {
     object: MapObject;
     selected?: boolean;
     onClick?: (unitId: string) => void;
+    carrierColor?: string;
+    carrierText?: string | null;
 }
 
-export function MapObjectComponent({ object, selected, onClick }: ObjectProps) {
+export function MapObjectComponent({ object, selected, onClick, carrierColor, carrierText }: ObjectProps) {
     const loc = parseLocation(object.location);
     const size = parseSize(object.size);
 
@@ -24,6 +26,8 @@ export function MapObjectComponent({ object, selected, onClick }: ObjectProps) {
     }
 
     // Default to rectangle (Belt, Diverter, Port)
+    const fillColor = carrierColor || (selected ? 'rgba(255, 0, 0, 0.2)' : 'var(--bg-tertiary)');
+
     return (
         <g onClick={() => object.unitId && onClick?.(object.unitId)} style={{ cursor: object.unitId ? 'pointer' : 'default' }}>
             <rect
@@ -31,17 +35,33 @@ export function MapObjectComponent({ object, selected, onClick }: ObjectProps) {
                 y={y}
                 width={width}
                 height={height}
-                fill={selected ? 'rgba(255, 0, 0, 0.2)' : 'var(--bg-tertiary)'}
+                fill={fillColor}
                 stroke={selected ? '#ff0000' : '#444'}
                 strokeWidth={selected ? 2 : 1}
             />
+            {/* Carrier text overlay (takes priority) */}
+            {carrierText && (
+                <text
+                    x={x + width / 2}
+                    y={y + height / 2 - 6}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill="#000"
+                    fontSize="9"
+                    fontWeight="bold"
+                    style={{ pointerEvents: 'none', userSelect: 'none' }}
+                >
+                    {carrierText}
+                </text>
+            )}
+            {/* Unit label */}
             {object.text && (
                 <text
                     x={x + width / 2}
-                    y={y + height / 2}
+                    y={y + height / 2 + (carrierText ? 6 : 0)}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fill="var(--text-secondary)"
+                    fill={carrierColor ? '#000' : 'var(--text-secondary)'}
                     fontSize="10"
                     style={{ pointerEvents: 'none', userSelect: 'none' }}
                 >

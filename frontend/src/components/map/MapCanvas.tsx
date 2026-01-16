@@ -1,6 +1,10 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
-import { mapLayout, mapLoading, mapError, mapZoom, mapOffset, selectedUnitId, fetchMapLayout, mapObjectsArray, type MapObject } from '../../stores/mapStore';
+import {
+    mapLayout, mapLoading, mapError, mapZoom, mapOffset, selectedUnitId, fetchMapLayout, mapObjectsArray,
+    unitCarrierCounts, getCarrierCountColor, getCarrierDisplayText,
+    type MapObject
+} from '../../stores/mapStore';
 import { MapObjectComponent } from './MapObjectComponents';
 
 export function MapCanvas() {
@@ -55,6 +59,9 @@ export function MapCanvas() {
         return <div class="map-loading">Loading map...</div>;
     }
 
+    // Get carrier counts for coloring
+    const carrierCounts = unitCarrierCounts.value;
+
     return (
         <div
             ref={containerRef}
@@ -79,14 +86,22 @@ export function MapCanvas() {
                     </marker>
                 </defs>
                 <g transform={`translate(${mapOffset.value.x}, ${mapOffset.value.y}) scale(${mapZoom.value})`}>
-                    {mapObjectsArray.value.map((obj: MapObject) => (
-                        <MapObjectComponent
-                            key={obj.name}
-                            object={obj}
-                            selected={selectedUnitId.value === obj.unitId}
-                            onClick={(id) => selectedUnitId.value = id}
-                        />
-                    ))}
+                    {mapObjectsArray.value.map((obj: MapObject) => {
+                        const count = obj.unitId ? (carrierCounts.get(obj.unitId) || 0) : 0;
+                        const carrierColor = count > 0 ? getCarrierCountColor(count) : undefined;
+                        const carrierText = obj.unitId ? getCarrierDisplayText(obj.unitId) : null;
+
+                        return (
+                            <MapObjectComponent
+                                key={obj.name}
+                                object={obj}
+                                selected={selectedUnitId.value === obj.unitId}
+                                onClick={(id) => selectedUnitId.value = id}
+                                carrierColor={carrierColor}
+                                carrierText={carrierText}
+                            />
+                        );
+                    })}
                 </g>
             </svg>
 

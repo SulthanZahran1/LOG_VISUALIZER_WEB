@@ -3,6 +3,16 @@
 > Append-only log. Add entries at the top as work is completed.
 > Format: `## YYYY-MM-DD: Summary`
 
+## 2026-01-16: Carrier Tracking UI
+
+### Frontend
+- Added carrier tracking state to `mapStore.ts`: signals, computed, utilities
+- Updated `MapObjectComponents.tsx` with carrier color and text overlay props
+- Updated `MapCanvas.tsx` to pass carrier data to components
+- Created `CarrierPanel.tsx` for viewing carriers at selected unit
+- Added "Tracking ON/OFF" toggle to `MapViewer.tsx` toolbar
+- Color coding: green (1), yellow (2), orange (3), red (4+)
+
 ## 2026-01-16: YAML Rules Parser & File Selection
 
 ### Backend

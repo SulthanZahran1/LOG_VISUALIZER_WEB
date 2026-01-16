@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'preact/hooks';
 import { MapCanvas } from '../components/map/MapCanvas';
 import { MapFileSelector } from '../components/map/MapFileSelector';
+import { CarrierPanel } from '../components/map/CarrierPanel';
 import { FileUpload } from '../components/file/FileUpload';
 import { uploadMapLayout } from '../api/client';
-import { fetchMapLayout, fetchMapRules, mapLayout, mapRules } from '../stores/mapStore';
+import {
+    fetchMapLayout, fetchMapRules, mapLayout, mapRules,
+    carrierTrackingEnabled, toggleCarrierTracking
+} from '../stores/mapStore';
 
 export function MapViewer() {
     const [initialized, setInitialized] = useState(false);
@@ -57,9 +61,18 @@ export function MapViewer() {
                                 <span class="rules-warning">⚠️ No rules loaded</span>
                             )}
                         </div>
+                        <div class="toolbar-center">
+                            <button
+                                class={`tracking-toggle ${carrierTrackingEnabled.value ? 'active' : ''}`}
+                                onClick={toggleCarrierTracking}
+                            >
+                                {carrierTrackingEnabled.value ? '🟢 Tracking ON' : '⚪ Tracking OFF'}
+                            </button>
+                        </div>
                         <MapFileSelector onFilesChanged={handleFilesChanged} />
                     </div>
                     <MapCanvas />
+                    <CarrierPanel />
                 </>
             )}
 
@@ -112,6 +125,33 @@ export function MapViewer() {
                     z-index: 10;
                     display: ${mapLayout.value ? 'none' : 'flex'}; 
                     flex-direction: column;
+                }
+                .toolbar-center {
+                    display: flex;
+                    gap: 0.5rem;
+                }
+                .tracking-toggle {
+                    padding: 0.4rem 0.8rem;
+                    background: var(--bg-tertiary);
+                    border: 1px solid var(--border-color);
+                    border-radius: 4px;
+                    color: var(--text-secondary);
+                    cursor: pointer;
+                    font-size: 0.85rem;
+                    transition: all 0.2s;
+                }
+                .tracking-toggle:hover {
+                    background: var(--bg-quaternary);
+                }
+                .tracking-toggle.active {
+                    background: rgba(144, 238, 144, 0.2);
+                    border-color: #90EE90;
+                    color: #90EE90;
+                }
+                .rules-warning {
+                    font-size: 0.85rem;
+                    margin-left: 1rem;
+                    color: #FFA500;
                 }
             `}</style>
         </div>
