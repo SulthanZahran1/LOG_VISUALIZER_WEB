@@ -111,10 +111,14 @@ sequenceDiagram
 
 ```typescript
 // Key signals in mapStore.ts
-mapLayout: Signal<MapLayout | null>       // XML layout data
-mapRules: Signal<MapRules | null>         // YAML rules data
-carrierLogInfo: Signal<FileInfo | null>   // Carrier log file info
-carrierLogEntries: Signal<LogEntry[]>     // Parsed carrier positions
-carrierTrackingEnabled: Signal<boolean>   // Toggle state
-carrierPositions: Computed<Map<string, string[]>>  // unit → carrier IDs
+mapLayout: Signal<MapLayout | null>          // XML layout data
+mapRules: Signal<MapRules | null>            // YAML rules data  
+carrierLogInfo: Signal<CarrierLogInfo | null>  // Carrier log file info
+carrierLogEntries: Signal<CarrierEntry[]>    // Parsed carrier entries
+carrierTrackingEnabled: Signal<boolean>      // Toggle state
+carrierLocations: Signal<Map<string, string>> // carrierId → unitId
+
+// Computed
+unitCarrierCounts: Computed<Map<string, number>>  // unitId → count
+mapObjectsArray: Computed<MapObject[]>            // Array of map objects
 ```

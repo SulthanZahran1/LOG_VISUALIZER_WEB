@@ -49,14 +49,14 @@ The registry reads the first few lines and matches patterns:
 
 ```go
 type Parser interface {
-    // Name returns the parser identifier
+    // Name returns the unique name of the parser
     Name() string
     
-    // CanParse checks if this parser can handle the file
-    CanParse(firstLines []string) bool
+    // CanParse returns true if this parser can handle the given file
+    CanParse(filePath string) (bool, error)
     
-    // Parse processes the entire file
-    Parse(reader io.Reader) (*ParsedLog, error)
+    // Parse parses the entire file and returns the result
+    Parse(filePath string) (*models.ParsedLog, []*models.ParseError, error)
 }
 ```
 

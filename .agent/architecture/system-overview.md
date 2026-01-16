@@ -42,70 +42,80 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    subgraph Views
+    subgraph Views["views/"]
         Home[HomeView]
-        Log[LogTableView]
-        Wave[WaveformView]
         Map[MapViewer]
     end
     
-    subgraph Stores["Signal Stores"]
+    subgraph Components["components/"]
+        subgraph log
+            LogTable
+        end
+        subgraph waveform
+            WaveformView
+            WaveformCanvas
+            SignalSidebar
+        end
+        subgraph map
+            MapCanvas
+            MapFileSelector
+        end
+        subgraph file
+            FileUpload
+        end
+    end
+    
+    subgraph Stores["stores/"]
         logStore[(logStore)]
         waveStore[(waveformStore)]
         mapStore[(mapStore)]
     end
     
-    subgraph Components
-        FileUpload
-        LogTable
-        WaveCanvas[WaveformCanvas]
-        MapCanvas
-        Toolbars
-    end
-    
     Home --> FileUpload
-    Log --> LogTable
-    Wave --> WaveCanvas
+    WaveformView --> WaveformCanvas
+    WaveformView --> SignalSidebar
     Map --> MapCanvas
     
     LogTable --> logStore
-    WaveCanvas --> waveStore
+    WaveformCanvas --> waveStore
     MapCanvas --> mapStore
     
-    logStore -->|signals| waveStore
-    logStore -->|signals| mapStore
+    logStore -.->|session| waveStore
+    logStore -.->|session| mapStore
 ```
 
 ## Backend Architecture
 
 ```mermaid
 flowchart TB
-    subgraph API["API Layer (Echo v4)"]
-        FileH[File Handlers]
-        ParseH[Parse Handlers]
-        MapH[Map Handlers]
+    subgraph API["internal/api/"]
+        H[handlers.go]
     end
     
-    subgraph Core["Core Services"]
-        SM[Session Manager]
-        PS[Parser Service]
-        FS[File Storage]
+    subgraph Session["internal/session/"]
+        SM[manager.go]
     end
     
-    subgraph Parsers["Log Parsers"]
-        PLC[PLCDebugParser]
-        MCS[MCSLogParser]
-        CSV[CSVSignalParser]
-        TAB[PLCTabParser]
+    subgraph Storage["internal/storage/"]
+        FS[store.go]
     end
     
-    FileH --> FS
-    ParseH --> SM
-    ParseH --> PS
-    MapH --> SM
+    subgraph Parsers["internal/parser/"]
+        Reg[registry.go]
+        PLC[plc_debug.go]
+        MCS[mcs.go]
+        CSV[csv.go]
+        TAB[plc_tab.go]
+    end
     
-    PS --> Parsers
-    SM -->|sessions| FS
+    H --> SM
+    H --> FS
+    H --> Reg
+    Reg --> PLC
+    Reg --> MCS
+    Reg --> CSV
+    Reg --> TAB
+    SM --> FS
 ```
 
 ## Technology Stack

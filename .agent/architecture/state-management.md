@@ -38,30 +38,42 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph Core
-        session[sessionId]
-        status[parseStatus]
-        entries[entries]
+        session[currentSession]
+        entries[logEntries]
+        total[totalEntries]
+        loading[isLoadingLog]
     end
     
     subgraph Filters
         search[searchQuery]
-        regex[regexEnabled]
-        types[signalTypes]
+        regex[searchRegex]
+        caseSens[searchCaseSensitive]
+        changed[showChangedOnly]
+        typeFilter[signalTypeFilter]
     end
     
     subgraph Views
         openViews[openViews]
-        activeView[activeView]
+        activeTab[activeTab]
+    end
+    
+    subgraph Sorting
+        sortCol[sortColumn]
+        sortDir[sortDirection]
     end
     
     subgraph Computed
         filtered[filteredEntries]
+        isParsing[isParsing]
     end
     
     entries --> filtered
     search --> filtered
     regex --> filtered
-    types --> filtered
+    caseSens --> filtered
+    changed --> filtered
+    typeFilter --> filtered
+    session --> isParsing
 ```
 
 ## waveformStore Signals
