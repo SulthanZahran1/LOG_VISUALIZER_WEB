@@ -141,6 +141,54 @@ Phase 3 is currently in progress. The backend XML parser, API endpoints, and ini
 
 ---
 
+## Map Viewer Architecture
+
+### Dual Log System
+
+The Map Viewer supports **two separate log files** for different visualization modes:
+
+```mermaid
+flowchart TD
+    subgraph "Log Files"
+        A[Main PLC Log<br/>Device signals]
+        B[Carrier Log<br/>MCS format]
+    end
+    
+    subgraph "Backend"
+        C[PLC Parser]
+        D[MCS Parser]
+        E[Session Manager]
+    end
+    
+    subgraph "Frontend"
+        F[mapStore]
+        G["Toggle: Tracking ON/OFF"]
+        H[MapCanvas]
+    end
+    
+    A --> C --> E
+    B --> D --> E
+    E --> F
+    F --> G
+    G -->|OFF| I[YAML Rules Coloring]
+    G -->|ON| J[Carrier Positions]
+    I --> H
+    J --> H
+```
+
+### Configuration Files
+- **XML Layout** — Defines unit positions, sizes, types
+- **YAML Rules** — Defines device-to-unit mappings and signal-based color rules
+- **Carrier Log** — MCS format log with `CurrentLocation` signals
+
+### Toggle Behavior
+| Tracking | Data Source | Visualization |
+|----------|-------------|---------------|
+| OFF | Main log + YAML rules | Signal-based colors |
+| ON | Carrier log (MCS) | Carrier positions + count colors |
+
+---
+
 ## Development Phases
 
 | Phase | Features | Status |
