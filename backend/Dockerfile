@@ -22,7 +22,8 @@ WORKDIR /app
 # Copy binary
 COPY --from=builder /server .
 
-# Copy config if exists
+# Copy config directory (create if it doesn't exist to avoid copy error)
+RUN mkdir -p config
 COPY --from=builder /app/config* ./config/
 
 EXPOSE 8080
