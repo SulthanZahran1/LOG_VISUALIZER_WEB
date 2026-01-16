@@ -47,6 +47,7 @@ When starting a session:
 ├── CONTEXT.md             ← You are here
 ├── TESTING_CHECKLIST.md   ← Test cases
 ├── .agent/
+│   ├── architecture/      ← Architecture diagrams
 │   ├── workflows/         ← Agent workflows
 │   ├── SCRATCHPAD.md      ← Current thinking, blockers
 │   ├── CHANGELOG.md       ← What's been done
@@ -80,32 +81,19 @@ Active work: Carrier tracking logic linking MCS log signals to map units.
 
 ---
 
-## Map Viewer Architecture
+## Architecture Documentation
 
-### Dual Log System
+Detailed architecture diagrams are in [.agent/architecture/](.agent/architecture/):
 
-The Map Viewer supports **two separate log files**:
+| Document | Contents |
+|----------|----------|
+| [system-overview.md](.agent/architecture/system-overview.md) | Component, frontend, backend architecture |
+| [data-flow.md](.agent/architecture/data-flow.md) | Upload, parsing, retrieval, sync flows |
+| [map-dual-log.md](.agent/architecture/map-dual-log.md) | Map Viewer dual log system (active) |
+| [parser-architecture.md](.agent/architecture/parser-architecture.md) | Log format detection and parsing |
+| [state-management.md](.agent/architecture/state-management.md) | Preact Signals store patterns |
 
-| Log | Purpose | Toggle State |
-|-----|---------|--------------|
-| Main PLC Log | Device signals + YAML color rules | Tracking OFF |
-| Carrier Log (MCS) | CurrentLocation signals | Tracking ON |
 
-```mermaid
-flowchart LR
-    A[Main Log] --> C[mapStore]
-    B[Carrier Log] --> C
-    C --> D{Tracking?}
-    D -->|OFF| E[YAML Colors]
-    D -->|ON| F[Carrier Positions]
-```
-
-### Configuration Files
-- **XML Layout** — Unit positions, sizes, types
-- **YAML Rules** — Device-to-unit mappings, color rules
-- **Carrier Log** — MCS format with `CurrentLocation` signals
-
----
 
 ## API Endpoints
 
