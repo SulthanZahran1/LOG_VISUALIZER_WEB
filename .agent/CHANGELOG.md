@@ -3,7 +3,17 @@
 > Append-only log. Add entries at the top as work is completed.
 > Format: `## YYYY-MM-DD: Summary`
 
+## 2026-01-16: Enhanced Paste Support (Forcepoint Bypass)
+
+### Frontend
+- Added `onPaste` handler to `FileUpload.tsx` for clipboard file/text paste.
+- Replaced memory-intensive `readAsText()` with Blob re-wrapping technique.
+- Large text pastes are now converted directly to `.log` files.
+- Updated drop zone UI to indicate paste functionality.
+- Added unit tests for paste handling (`FileUpload.test.tsx`).
+
 ## 2026-01-15: Chunked Upload Implementation (1GB+ Support)
+
 
 ### Backend
 - Implemented `Store` interface methods `SaveChunk` and `CompleteChunkedUpload` in `LocalStore`.

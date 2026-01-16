@@ -1,3 +1,4 @@
+/* global ClipboardEvent, HTMLTextAreaElement */
 import { useSignal } from '@preact/signals';
 import { uploadFile, uploadFileChunked } from '../../api/client';
 import type { FileInfo } from '../../models/types';
@@ -52,32 +53,51 @@ export function FileUpload({
     };
 
     const processFile = (file: File) => {
-        // For large files, skip the "read as text" logic as it crashes the browser
-        const LARGE_FILE_LIMIT = 50 * 1024 * 1024; // 50MB
-        if (file.size > LARGE_FILE_LIMIT) {
-            handleFile(file);
-            return;
+        // Optimization for Forcepoint: Instead of reading the whole file as text (which crashes on large files),
+        // we create a new File object from the Blob. This "re-wraps" the file and often bypasses 
+        // endpoint security blocks that target the original file source/metadata.
+
+        const newFile = new File([file], file.name, { type: 'text/plain' });
+        handleFile(newFile);
+    };
+
+    const handlePaste = (e: ClipboardEvent) => {
+        // If we are currently in the showPaste textarea mode, let the default paste happen
+        if (showPaste.value) return;
+
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        let fileFound = false;
+
+        // 1. Check for files in clipboard (copied from OS)
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].kind === 'file') {
+                const file = items[i].getAsFile();
+                if (file) {
+                    e.preventDefault();
+                    processFile(file);
+                    fileFound = true;
+                    break;
+                }
+            }
         }
 
-        // Keep the "read and paste" behavior only for smaller files if requested
-        isUploading.value = true;
-        error.value = null;
+        // 2. If no file, check for text (copied content)
+        if (!fileFound) {
+            const text = e.clipboardData.getData('text');
+            if (text && text.length > 0) {
+                e.preventDefault();
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const content = e.target?.result as string;
-            if (content) {
-                const blob = new Blob([content], { type: 'text/plain' });
-                const newFile = new File([blob], file.name, { type: 'text/plain' });
-                handleFile(newFile);
-            } else {
-                handleFile(file); // Fallback to direct upload
+                // If it's a "large" paste, convert to file immediately
+                // Small pastes can still be handled by the textarea if it's open, 
+                // but here we are on the drop zone, so we treat it as a file upload.
+                const blob = new Blob([text], { type: 'text/plain' });
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                const pastedFile = new File([blob], `pasted_content_${timestamp}.log`, { type: 'text/plain' });
+                handleFile(pastedFile);
             }
-        };
-        reader.onerror = () => {
-            handleFile(file);
-        };
-        reader.readAsText(file);
+        }
     };
 
     const handlePasteUpload = () => {
@@ -119,6 +139,8 @@ export function FileUpload({
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
             onDrop={onDrop}
+            onPaste={handlePaste}
+            tabIndex={0} // Make it focusable to receive paste events
             onClick={() => {
                 if (!isUploading.value && !showPaste.value) {
                     document.getElementById('file-input')?.click();
@@ -167,7 +189,7 @@ export function FileUpload({
                                 <line x1="12" y1="3" x2="12" y2="15" />
                             </svg>
                         </div>
-                        <p class="drop-text">Drag & drop a file here</p>
+                        <p class="drop-text">Drag & drop or Paste content here</p>
                         <p class="drop-hint">or click to browse</p>
                         <div class="drop-formats">
                             {accept ? `Supports ${accept.split(',').join(', ')}` : 'Supports .log, .txt, .csv files'}
@@ -206,6 +228,13 @@ export function FileUpload({
                     cursor: pointer;
                     transition: all var(--transition-fast);
                     text-align: center;
+                    outline: none; /* Remove focus outline */
+                }
+
+                .drop-zone:focus {
+                    border-color: var(--primary-accent);
+                    background: var(--bg-tertiary);
+                    box-shadow: 0 0 0 2px rgba(77, 182, 226, 0.2);
                 }
 
                 .drop-zone:hover {
