@@ -1,6 +1,6 @@
 import { signal, computed } from '@preact/signals';
 import {
-    getMapLayout, getMapRules, getRecentMapFiles, getCarrierLog, getCarrierEntries,
+    getMapLayout, getMapRules, getRecentMapFiles, getCarrierLog, getCarrierEntries, setActiveMap,
     type MapRules, type RecentMapFiles, type CarrierLogInfo, type CarrierEntry
 } from '../api/client';
 
@@ -105,6 +105,19 @@ export async function fetchRecentMapFiles() {
         console.error('Failed to fetch recent map files:', err);
     } finally {
         recentFilesLoading.value = false;
+    }
+}
+
+export async function loadMap(id: string) {
+    try {
+        mapLoading.value = true;
+        await setActiveMap(id);
+        await fetchMapLayout();
+    } catch (err: unknown) {
+        console.error('Failed to load map:', err);
+        mapError.value = err instanceof Error ? err.message : 'Failed to load map';
+    } finally {
+        mapLoading.value = false;
     }
 }
 

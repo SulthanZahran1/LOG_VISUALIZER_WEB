@@ -3,10 +3,13 @@ import { MapCanvas } from '../components/map/MapCanvas';
 import { MapFileSelector } from '../components/map/MapFileSelector';
 import { CarrierPanel } from '../components/map/CarrierPanel';
 import { FileUpload } from '../components/file/FileUpload';
+import { RecentFiles } from '../components/file/RecentFiles';
 import { uploadMapLayout } from '../api/client';
+import type { FileInfo } from '../models/types';
 import {
     fetchMapLayout, fetchMapRules, mapLayout, mapRules,
-    carrierTrackingEnabled, toggleCarrierTracking, canEnableRules
+    carrierTrackingEnabled, toggleCarrierTracking, canEnableRules,
+    recentMapFiles, fetchRecentMapFiles, loadMap
 } from '../stores/mapStore';
 
 export function MapViewer() {
@@ -14,7 +17,7 @@ export function MapViewer() {
 
     useEffect(() => {
         const init = async () => {
-            await Promise.all([fetchMapLayout(), fetchMapRules()]);
+            await Promise.all([fetchMapLayout(), fetchMapRules(), fetchRecentMapFiles()]);
             setInitialized(true);
         };
         init();
@@ -22,10 +25,16 @@ export function MapViewer() {
 
     const handleUploadSuccess = async () => {
         await fetchMapLayout();
+        await fetchRecentMapFiles();
     };
 
     const handleFilesChanged = () => {
         // Refresh data when files change
+        fetchRecentMapFiles();
+    };
+
+    const handleRecentMapSelect = async (file: FileInfo) => {
+        await loadMap(file.id);
     };
 
     if (!initialized) {
@@ -50,6 +59,17 @@ export function MapViewer() {
                             maxSize={50 * 1024 * 1024} // 50MB for maps
                         />
                     </div>
+                    {recentMapFiles.value?.xmlFiles && recentMapFiles.value.xmlFiles.length > 0 && (
+                        <div class="recent-maps-container">
+                            <RecentFiles
+                                files={recentMapFiles.value.xmlFiles}
+                                onFileSelect={handleRecentMapSelect}
+                                title="Recent Layouts"
+                                className="map-recent-files"
+                                hideIcon={true}
+                            />
+                        </div>
+                    )}
                     <p class="hint">You'll also need a YAML rules file for carrier tracking.</p>
                 </div>
             ) : (
@@ -99,6 +119,20 @@ export function MapViewer() {
                 .upload-container {
                     width: 100%;
                     max-width: 500px;
+                }
+                .recent-maps-container {
+                    width: 100%;
+                    max-width: 500px;
+                    margin-top: var(--spacing-lg);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--card-radius);
+                    background: var(--bg-secondary);
+                    max-height: 200px;
+                    overflow: hidden;
+                }
+                .map-recent-files {
+                    height: 100%;
+                    max-height: 200px;
                 }
                 .map-toolbar {
                     padding: var(--spacing-sm) var(--spacing-md);

@@ -62,11 +62,28 @@ func (h *Handler) HandleUploadFile(c echo.Context) error {
 
 // HandleRecentFiles returns a list of recently uploaded files.
 func (h *Handler) HandleRecentFiles(c echo.Context) error {
-	files, err := h.store.List(20)
+	files, err := h.store.List(50) // Fetch more to allow for filtering
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list files"})
 	}
-	return c.JSON(http.StatusOK, files)
+
+	var logFiles []*models.FileInfo
+	for _, f := range files {
+		nameLower := strings.ToLower(f.Name)
+		// Exclude map layouts and rules
+		if !strings.HasSuffix(nameLower, ".xml") &&
+			!strings.HasSuffix(nameLower, ".yaml") &&
+			!strings.HasSuffix(nameLower, ".yml") {
+			logFiles = append(logFiles, f)
+		}
+	}
+
+	// Limit to 20 after filtering
+	if len(logFiles) > 20 {
+		logFiles = logFiles[:20]
+	}
+
+	return c.JSON(http.StatusOK, logFiles)
 }
 
 // HandleGetFile returns metadata for a specific file.
@@ -261,6 +278,29 @@ func (h *Handler) HandleUploadMapLayout(c echo.Context) error {
 
 	h.currentMapID = info.ID
 	return c.JSON(http.StatusCreated, info)
+}
+
+// HandleSetActiveMap sets the currently active map layout by ID.
+func (h *Handler) HandleSetActiveMap(c echo.Context) error {
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if req.ID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id is required"})
+	}
+
+	// Verify file exists
+	_, err := h.store.Get(req.ID)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "map file not found"})
+	}
+
+	h.currentMapID = req.ID
+	return c.JSON(http.StatusOK, map[string]string{"status": "active map updated"})
 }
 
 // HandleUploadMapRules accepts a YAML rules file and sets it as the active rules.

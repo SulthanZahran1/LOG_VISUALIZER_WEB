@@ -5,11 +5,14 @@ import { useState } from 'preact/hooks';
 interface RecentFilesProps {
   files: FileInfo[];
   onFileSelect: (file: FileInfo) => void;
-  onFileDelete: (id: string) => void;
+  onFileDelete?: (id: string) => void;
   onFileRename?: (id: string, newName: string) => Promise<void>;
+  title?: string;
+  className?: string;
+  hideIcon?: boolean;
 }
 
-export function RecentFiles({ files, onFileSelect, onFileDelete, onFileRename }: RecentFilesProps) {
+export function RecentFiles({ files, onFileSelect, onFileDelete, onFileRename, title = "Recent Files", className = "", hideIcon = false }: RecentFilesProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
 
@@ -53,13 +56,15 @@ export function RecentFiles({ files, onFileSelect, onFileDelete, onFileRename }:
   };
 
   return (
-    <div class="recent-files">
+    <div class={`recent-files ${className}`}>
       <div class="recent-header">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" />
-          <polyline points="12,6 12,12 16,14" />
-        </svg>
-        Recent Files
+        {!hideIcon && (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12,6 12,12 16,14" />
+          </svg>
+        )}
+        {title}
       </div>
       <div class="file-list">
         {files.length === 0 ? (
@@ -67,7 +72,7 @@ export function RecentFiles({ files, onFileSelect, onFileDelete, onFileRename }:
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
-            <span>No recent files</span>
+            <span>No {title.toLowerCase()}</span>
           </div>
         ) : (
           files.map((file) => (
@@ -126,16 +131,18 @@ export function RecentFiles({ files, onFileSelect, onFileDelete, onFileRename }:
                       </svg>
                     </button>
                   )}
-                  <button
-                    class="btn-action btn-delete"
-                    onClick={(e) => { e.stopPropagation(); onFileDelete(file.id); }}
-                    title="Delete file"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
+                  {onFileDelete && (
+                    <button
+                      class="btn-action btn-delete"
+                      onClick={(e) => { e.stopPropagation(); onFileDelete(file.id); }}
+                      title="Delete file"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               )}
             </div>

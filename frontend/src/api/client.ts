@@ -276,6 +276,13 @@ export async function getMapRules(): Promise<MapRules> {
     return request<MapRules>('/map/rules');
 }
 
+export async function setActiveMap(id: string): Promise<void> {
+    await request<void>('/map/active', {
+        method: 'POST',
+        body: JSON.stringify({ id }),
+    });
+}
+
 export interface RecentMapFiles {
     xmlFiles: FileInfo[];
     yamlFiles: FileInfo[];

@@ -2,10 +2,12 @@ package api
 
 import (
 	"bytes"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/plc-visualizer/backend/internal/session"
@@ -113,5 +115,86 @@ func TestChunkedUpload(t *testing.T) {
 		assert.Equal(t, http.StatusCreated, rec3.Code)
 		assert.Contains(t, rec3.Body.String(), `"name":"combined.txt"`)
 		assert.Contains(t, rec3.Body.String(), `"size":19`) // 10 + 9
+	}
+}
+
+func TestRecentFilesFiltering(t *testing.T) {
+	e := echo.New()
+	tmpDir := t.TempDir()
+	store, _ := storage.NewLocalStore(tmpDir)
+	sessionMgr := session.NewManager()
+	h := NewHandler(store, sessionMgr)
+
+	// Upload files with different extensions using the store directly
+	// to avoid mocking the multipart file creation repeatedly
+	files := []struct {
+		name string
+	}{
+		{"test.log"},
+		{"layout.xml"},
+		{"rules.yaml"},
+		{"config.yml"},
+		{"another.log"},
+	}
+
+	for _, f := range files {
+		data := bytes.NewBufferString("dummy content")
+		_, err := store.Save(f.name, data)
+		assert.NoError(t, err)
+		// Small sleep to ensure order if needed, but store.List usually orders by time
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Call HandleRecentFiles
+	req := httptest.NewRequest(http.MethodGet, "/api/files/recent", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if assert.NoError(t, h.HandleRecentFiles(c)) {
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		body := rec.Body.String()
+		// Should contain logs
+		assert.Contains(t, body, "test.log")
+		assert.Contains(t, body, "another.log")
+
+		// Should NOT contain maps/rules
+		assert.NotContains(t, body, "layout.xml")
+		assert.NotContains(t, body, "rules.yaml")
+		assert.NotContains(t, body, "config.yml")
+	}
+}
+
+func TestSetActiveMap(t *testing.T) {
+	e := echo.New()
+	tmpDir := t.TempDir()
+	store, _ := storage.NewLocalStore(tmpDir)
+	sessionMgr := session.NewManager()
+	h := NewHandler(store, sessionMgr)
+
+	// 1. Upload a map
+	data := bytes.NewBufferString(`<?xml version="1.0" ?><ConveyorMap><Object name="O1" type="T"><Size>1,1</Size><Location>0,0</Location></Object></ConveyorMap>`)
+	info, err := store.Save("map1.xml", data)
+	assert.NoError(t, err)
+
+	// 2. Set active map
+	reqBody := bytes.NewBufferString(fmt.Sprintf(`{"id":"%s"}`, info.ID))
+	req := httptest.NewRequest(http.MethodPost, "/api/map/active", reqBody)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if assert.NoError(t, h.HandleSetActiveMap(c)) {
+		assert.Equal(t, http.StatusOK, rec.Code)
+	}
+
+	// 3. Verify active map via GetMapLayout (mocking currentMapID behavior)
+	// Since HandleGetMapLayout uses h.currentMapID which we just set
+	reqGet := httptest.NewRequest(http.MethodGet, "/api/map/layout", nil)
+	recGet := httptest.NewRecorder()
+	cGet := e.NewContext(reqGet, recGet)
+	if assert.NoError(t, h.HandleGetMapLayout(cGet)) {
+		assert.Equal(t, http.StatusOK, recGet.Code)
+		assert.Contains(t, recGet.Body.String(), info.ID)
 	}
 }
