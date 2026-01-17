@@ -2,6 +2,7 @@ import { signal, computed, effect } from '@preact/signals';
 import { startParse, getParseStatus, getParseEntries } from '../api/client';
 import type { LogEntry, ParseSession } from '../models/types';
 import { saveSession, getSessions } from '../utils/persistence';
+import { selectedSignals } from './waveformStore';
 
 export const currentSession = signal<ParseSession | null>(null);
 export const logEntries = signal<LogEntry[]>([]);
@@ -87,11 +88,7 @@ export const filteredEntries = computed(() => {
 
     // 2.05 Filter by Selected Signals (Waveform Selection)
     if (filterBySelected.value) {
-        const { selectedSignals } = require('./waveformStore'); // Late import to avoid circular dependency issues if possible, though 'import' at top level is standard. 
-        // Note: In signals, accessing .value tracks dependencies.
-        // We will assume waveformStore is available. If circular dependency is an issue, we might need to move selection state to a common store.
-        // For now, let's try direct access if we can, or use the imported symbol if we add it to imports.
-        // Ideally, 'selectedSignals' should be imported at top level.
+        // Use imported selectedSignals (ESM handles circular dependency by hoisting)
         const selected = new Set(selectedSignals.value);
         if (selected.size > 0) {
             entries = entries.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
