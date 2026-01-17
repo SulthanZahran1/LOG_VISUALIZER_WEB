@@ -183,7 +183,7 @@ async function pollStatus(sessionId: string) {
 
             if (session.status === 'complete') {
                 isLoadingLog.value = false;
-                await fetchEntries(1, 1000); // Fetch more for initial view
+                await fetchEntries(1, 1000000); // Fetch all entries (up to 1M) for full visualization
 
                 // Trigger map update if map viewer is open
                 const mapStore = await import('./mapStore');
