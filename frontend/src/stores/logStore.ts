@@ -83,9 +83,11 @@ export const filteredEntries = computed(() => {
         });
     }
 
-    // 3. Selection Filter (Implicit)
+    // 3. Selection Filter (Strict)
     const selected = new Set(selectedSignals.value);
-    if (selected.size > 0) {
+    if (selected.size === 0) {
+        entries = [];
+    } else {
         entries = entries.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
     }
 

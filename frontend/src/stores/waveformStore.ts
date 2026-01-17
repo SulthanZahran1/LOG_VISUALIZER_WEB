@@ -185,6 +185,10 @@ effect(() => {
     if (session && session.status === 'complete' && allSignals.value.length === 0) {
         getParseSignals(session.id).then(signals => {
             allSignals.value = signals;
+            // Default to selecting ALL signals if none selected
+            if (selectedSignals.value.length === 0) {
+                selectedSignals.value = signals;
+            }
         }).catch(err => {
             if (err.status === 404) {
                 console.warn('Session not found on server during getParseSignals, clearing local state');
