@@ -118,7 +118,40 @@ carrierLogEntries: Signal<CarrierEntry[]>    // Parsed carrier entries
 carrierTrackingEnabled: Signal<boolean>      // Toggle state
 carrierLocations: Signal<Map<string, string>> // carrierId → unitId
 
+// Signal Log Linkage (for time-based coloring)
+signalLogSessionId: Signal<string | null>    // Linked session ID
+signalLogFileName: Signal<string | null>     // Session name for display
+signalLogEntryCount: Signal<number>          // Entry count for display
+latestSignalValues: Signal<Map<string, any>> // deviceId::signalName → value
+signalHistory: Signal<Map<string, Array<{timestamp, value}>>> // For playback
+
 // Computed
 unitCarrierCounts: Computed<Map<string, number>>  // unitId → count
 mapObjectsArray: Computed<MapObject[]>            // Array of map objects
 ```
+
+## Signal Log Linkage
+
+Users can link their log table session data to the Map Viewer via the "Use Current Session" button in the file selector dialog:
+
+```mermaid
+sequenceDiagram
+    participant LT as Log Table
+    participant MS as mapStore
+    participant FS as MapFileSelector
+    participant MC as MapCanvas
+
+    LT->>LT: Parse log file
+    LT->>MS: updateSignalValues(entries)
+    
+    Note over FS: User clicks "Use Current Session"
+    FS->>MS: linkSignalLogSession(id, name, entries)
+    MS->>MS: Update signalHistory + playbackRange
+    MS-->>FS: signalLogEntryCount updated
+    
+    Note over MC: During playback
+    MC->>MS: getSignalValueAtTime(key, time)
+    MS-->>MC: Return value at time
+    MC->>MC: Apply YAML rule coloring
+```
+

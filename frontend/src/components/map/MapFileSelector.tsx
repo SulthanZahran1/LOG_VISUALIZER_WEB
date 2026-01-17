@@ -10,7 +10,12 @@ import {
     carrierLogInfo,
     carrierLogFileName,
     fetchCarrierLog,
+    signalLogSessionId,
+    signalLogFileName,
+    signalLogEntryCount,
+    linkSignalLogSession,
 } from '../../stores/mapStore';
+import { currentSession, logEntries } from '../../stores/logStore';
 import { uploadMapLayout, uploadMapRules, uploadCarrierLog } from '../../api/client';
 import type { FileInfo } from '../../models/types';
 
@@ -104,9 +109,20 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
 
     const currentXML = mapLayout.value?.name || 'No XML loaded';
     const currentYAML = mapRules.value?.name || 'No rules loaded';
-    const currentCarrier = carrierLogInfo.value?.loaded
-        ? (carrierLogFileName.value || 'Carrier log loaded')
-        : 'No carrier log';
+    const currentSignalLog = signalLogSessionId.value
+        ? `${signalLogFileName.value || 'Session'} (${signalLogEntryCount.value})`
+        : 'No signal log';
+
+    const handleUseCurrentSession = () => {
+        if (!currentSession.value || currentSession.value.status !== 'complete') return;
+        linkSignalLogSession(
+            currentSession.value.id,
+            currentSession.value.fileId || 'Unnamed session',
+            logEntries.value
+        );
+    };
+
+    const sessionAvailable = currentSession.value?.status === 'complete';
 
     return (
         <div className="map-file-selector">
@@ -117,8 +133,8 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
                 <span className="file-label" title={currentYAML}>
                     <strong>Rules:</strong> {currentYAML}
                 </span>
-                <span className="file-label" title={currentCarrier}>
-                    <strong>Carriers:</strong> {currentCarrier}
+                <span className="file-label" title={currentSignalLog}>
+                    <strong>Signals:</strong> {currentSignalLog}
                 </span>
             </div>
 
@@ -195,6 +211,25 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
                                     !recentFilesLoading.value && <div className="no-files">No YAML files uploaded</div>
                                 )}
                             </div>
+                        </div>
+
+                        <div className="file-section">
+                            <h4>Signal Log (PLC)</h4>
+                            <p className="section-hint">Use your loaded log session for time-based coloring</p>
+                            <button
+                                className={`use-session-btn ${sessionAvailable ? '' : 'disabled'}`}
+                                onClick={handleUseCurrentSession}
+                                disabled={!sessionAvailable}
+                            >
+                                {sessionAvailable
+                                    ? `Use: ${currentSession.value?.fileId || 'Current Session'}`
+                                    : 'No session loaded'}
+                            </button>
+                            {signalLogSessionId.value && (
+                                <div className="signal-log-info">
+                                    ✓ Linked: {signalLogEntryCount.value} entries
+                                </div>
+                            )}
                         </div>
 
                         <div className="file-section">

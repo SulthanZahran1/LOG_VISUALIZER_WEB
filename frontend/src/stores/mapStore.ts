@@ -52,6 +52,11 @@ export const carrierLogEntries = signal<CarrierEntry[]>([]);
 export const carrierLogLoading = signal(false);
 export const carrierLogFileName = signal<string | null>(null);
 
+// Signal log (PLC log) linkage state
+export const signalLogSessionId = signal<string | null>(null);
+export const signalLogFileName = signal<string | null>(null);
+export const signalLogEntryCount = signal<number>(0);
+
 // ======================
 // Playback State
 // ======================
@@ -367,6 +372,36 @@ export async function toggleCarrierTracking(): Promise<void> {
     } else {
         // Clear all carrier locations when disabled
         carrierLocations.value = new Map();
+    }
+}
+
+/**
+ * Link a log table session's entries to the map viewer for signal-based coloring.
+ * This populates latestSignalValues, signalHistory, and sets the playback range.
+ */
+export function linkSignalLogSession(
+    sessionId: string,
+    sessionName: string,
+    entries: { deviceId: string; signalName: string; value: any; timestamp?: string | number }[]
+): void {
+    // Update linkage state
+    signalLogSessionId.value = sessionId;
+    signalLogFileName.value = sessionName;
+    signalLogEntryCount.value = entries.length;
+
+    // Push data to signal stores
+    updateSignalValues(entries);
+
+    // Set playback time range from entries
+    if (entries.length > 0) {
+        const timestamps = entries
+            .map(e => e.timestamp ? new Date(e.timestamp as string).getTime() : null)
+            .filter((t): t is number => t !== null && !isNaN(t));
+        if (timestamps.length > 0) {
+            const startTime = Math.min(...timestamps);
+            const endTime = Math.max(...timestamps);
+            setPlaybackRange(startTime, endTime);
+        }
     }
 }
 

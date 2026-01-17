@@ -175,3 +175,41 @@
     color: #90EE90;
     font-size: 0.85rem;
 }
+
+.use-session-btn {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background: var(--accent, #4a90d9);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    margin-bottom: 0.75rem;
+    transition: background 0.2s;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.use-session-btn:hover:not(:disabled) {
+    background: var(--accent-hover, #5ba0e9);
+}
+
+.use-session-btn:disabled,
+.use-session-btn.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: var(--surface-3, #3a3a3a);
+}
+
+.signal-log-info {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(74, 144, 217, 0.2);
+    border: 1px solid #4a90d9;
+    border-radius: 4px;
+    color: #4a90d9;
+    font-size: 0.85rem;
+}

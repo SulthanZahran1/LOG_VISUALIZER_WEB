@@ -1,6 +1,9 @@
 # CHANGELOG.md — Recent Changes
 
 ## [2026-01-17]
+- **Signal Log Integration**: Added "Signal Log (PLC)" section to Map File Selector
+- **Use Current Session**: Links log table session data to Map Viewer for time-based coloring
+- **UI Enhancement**: Toolbar shows linked signal log status with entry count
 - **Map Media Player**: Implemented time-based playback controls (Play/Pause, Skip, Speed, Timeline)
 - **Signal History**: Added timestamped signal storage for playback
 - **Time-based Coloring**: Map colors now update based on playback time slider position

@@ -10,6 +10,7 @@
 - [x] **XML Layout File** — Upload, select, recent list
 - [x] **YAML Rules File** — Parser, API, upload/select
 - [x] **File Association UI** — Dialog with XML + YAML selection
+- [x] **Signal Log Link** — "Use Current Session" to link log table data
 - [x] Store device-to-unit mappings for carrier tracking
 - [x] Store color rules for signal-based coloring
 - [x] Validate both files selected before activating tracking
