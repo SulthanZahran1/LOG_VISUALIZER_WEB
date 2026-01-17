@@ -92,6 +92,7 @@ export async function fetchMapRules() {
         rulesError.value = err instanceof Error ? err.message : 'Failed to fetch rules';
     } finally {
         rulesLoading.value = false;
+        clearCaches(); // New rules -> invalid cache
     }
 }
 
@@ -145,6 +146,16 @@ export function getCarriersAtUnit(unitId: string): string[] {
     return carriers;
 }
 
+// Cache for identifying relevant signals for a unit
+// Map<UnitID, Map<SignalName, DeviceID>>
+const unitSignalCache = new Map<string, Map<string, string>>();
+const regexCache = new Map<string, RegExp>();
+
+export function clearCaches() {
+    unitSignalCache.clear();
+    regexCache.clear();
+}
+
 /**
  * Maps a device ID to a unit ID using the current rules.
  * Supports exact matches and wildcards (e.g. "PLC_*").
@@ -154,7 +165,13 @@ export function applyDeviceMapping(deviceId: string): string | null {
         for (const mapping of mapRules.value.deviceToUnit) {
             const pattern = mapping.pattern;
             if (pattern.includes('*')) {
-                const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+                // Use cached regex
+                let regex = regexCache.get(pattern);
+                if (!regex) {
+                    regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+                    regexCache.set(pattern, regex);
+                }
+
                 if (regex.test(deviceId)) {
                     return mapping.unitId;
                 }
@@ -204,48 +221,69 @@ export function getUnitColor(unitId: string): { color?: string, text?: string } 
     const sortedRules = [...mapRules.value.rules].sort((a, b) => b.priority - a.priority);
 
     // Evaluate rules
-    for (const rule of sortedRules) {
-        // Find if any device mapped to this unit has the signal specified in the rule matching the condition
+    // Check cache first
+    let signalMap = unitSignalCache.get(unitId);
+    if (!signalMap) {
+        // Cache miss - compute and store
+        signalMap = new Map<string, string>(); // SignalName -> DeviceID
+
+        // Find which devices map to this unit and have signals we care about
+        // We iterate ALL known signals once per unit (expensive, but only done once per unit)
         for (const key of latestSignalValues.value.keys()) {
             const [deviceId, signalName] = key.split('::');
-            if (signalName !== rule.signal) continue;
+
+            // Optimization: Only check if this signal is actually used in a rule
+            const isRelevantSignal = sortedRules.some(r => r.signal === signalName);
+            if (!isRelevantSignal) continue;
 
             const targetUnitId = applyDeviceMapping(deviceId);
-            if (targetUnitId !== unitId) continue;
+            if (targetUnitId === unitId) {
+                signalMap.set(signalName, deviceId); // Key: Name (e.g. I_BUFFER_STATUS), Value: DeviceID
+            }
+        }
+        unitSignalCache.set(unitId, signalMap);
+    }
 
-            // Get value at playback time or latest
-            const value = getSignalValueAtTime(key, playbackTime.value);
-            if (value === undefined) continue;
+    // Evaluate rules using cached mapping
+    for (const rule of sortedRules) {
+        // Look up the device ID for this rule's signal
+        const deviceId = signalMap.get(rule.signal);
+        if (!deviceId) continue; // This unit doesn't have this signal
 
-            // Normalize values for comparison
-            const normalizeValue = (v: any) => {
-                if (v === null || v === undefined) return '';
-                const s = String(v).trim().toLowerCase();
-                if (s === 'on' || s === 'true' || s === '1') return 'true';
-                if (s === 'off' || s === 'false' || s === '0') return 'false';
-                return s;
+        const key = `${deviceId}::${rule.signal}`;
+
+        // Get value at playback time or latest
+        const value = getSignalValueAtTime(key, playbackTime.value);
+        if (value === undefined) continue;
+
+        // Normalize values for comparison
+        const normalizeValue = (v: any) => {
+            if (v === null || v === undefined) return '';
+            const s = String(v).trim().toLowerCase();
+            if (s === 'on' || s === 'true' || s === '1') return 'true';
+            if (s === 'off' || s === 'false' || s === '0') return 'false';
+            return s;
+        };
+
+        const valNorm = normalizeValue(value);
+        const ruleNorm = normalizeValue(rule.value);
+
+        // Evaluate condition
+        let match = false;
+        switch (rule.op) {
+            case '==': match = valNorm === ruleNorm; break;
+            case '!=': match = valNorm !== ruleNorm; break;
+            case '>': match = Number(value) > Number(rule.value); break;
+            case '>=': match = Number(value) >= Number(rule.value); break;
+            case '<': match = Number(value) < Number(rule.value); break;
+            case '<=': match = Number(value) <= Number(rule.value); break;
+        }
+
+        if (match) {
+            return {
+                color: rule.color || rule.bgColor,
+                text: rule.text
             };
-
-            const valNorm = normalizeValue(value);
-            const ruleNorm = normalizeValue(rule.value);
-
-            // Evaluate condition
-            let match = false;
-            switch (rule.op) {
-                case '==': match = valNorm === ruleNorm; break;
-                case '!=': match = valNorm !== ruleNorm; break;
-                case '>': match = Number(value) > Number(rule.value); break;
-                case '>=': match = Number(value) >= Number(rule.value); break;
-                case '<': match = Number(value) < Number(rule.value); break;
-                case '<=': match = Number(value) <= Number(rule.value); break;
-            }
-
-            if (match) {
-                return {
-                    color: rule.color || rule.bgColor,
-                    text: rule.text
-                };
-            }
         }
     }
 
@@ -427,6 +465,9 @@ export function linkSignalLogSession(
     signalLogSessionId.value = sessionId;
     signalLogFileName.value = sessionName;
     signalLogEntryCount.value = totalCount ?? entries.length;
+
+    // Clear caches as we have new data which might introduce new devices/signals
+    clearCaches();
 
     // Push data to signal stores
     updateSignalValues(entries);
