@@ -510,13 +510,13 @@ function stopPlaybackLoop(): void {
     }
 }
 
-// Format playback time for display
+// Format playback time for display (use UTC to match log timestamps)
 export function formatPlaybackTime(timeMs: number | null): string {
     if (timeMs === null) return '--:--:--';
     const date = new Date(timeMs);
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const seconds = date.getSeconds().toString().padStart(2, '0');
-    const ms = date.getMilliseconds().toString().padStart(3, '0');
+    const hours = date.getUTCHours().toString().padStart(2, '0');
+    const minutes = date.getUTCMinutes().toString().padStart(2, '0');
+    const seconds = date.getUTCSeconds().toString().padStart(2, '0');
+    const ms = date.getUTCMilliseconds().toString().padStart(3, '0');
     return `${hours}:${minutes}:${seconds}.${ms}`;
 }
