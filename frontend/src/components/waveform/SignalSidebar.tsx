@@ -216,6 +216,12 @@ export function SignalSidebar() {
                     >.*</button>
                 </div>
                 <div class="filter-actions-bar">
+                    <button class="action-btn" onClick={() => {
+                        const all: string[] = [];
+                        devices.forEach(([d, sigs]) => sigs.forEach(s => all.push(`${d}::${s}`)));
+                        selectedSignals.value = all;
+                    }} title="Select All Signals">All</button>
+                    <button class="action-btn" onClick={() => selectedSignals.value = []} title="Deselect All Signals">None</button>
                     <select
                         class="type-select"
                         value={signalTypeFilter.value}
@@ -447,6 +453,29 @@ export function SignalSidebar() {
                 .type-filter-bar {
                     margin-top: var(--spacing-sm);
                 }
+                
+                .filter-actions-bar {
+                    display: flex;
+                    gap: 6px;
+                    margin-top: var(--spacing-sm);
+                }
+
+                .action-btn {
+                    padding: 4px 8px;
+                    background: var(--bg-primary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--border-radius);
+                    color: var(--text-secondary);
+                    font-size: 11px;
+                    cursor: pointer;
+                    transition: all var(--transition-fast);
+                }
+
+                .action-btn:hover {
+                    border-color: var(--primary-accent);
+                    color: var(--text-primary);
+                    background: var(--bg-hover);
+                }
 
                 .type-select {
                     width: 100%;
@@ -459,6 +488,7 @@ export function SignalSidebar() {
                     cursor: pointer;
                     outline: none;
                     transition: all var(--transition-fast);
+                    flex: 1; /* Make it fill remaining space */
                 }
 
                 .type-select:hover {

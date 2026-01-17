@@ -88,6 +88,17 @@ export function LogTable() {
             case 'PageDown': next = Math.min(total - 1, curr + 20); break;
             case 'Home': next = 0; break;
             case 'End': next = total - 1; break;
+            case 'a':
+                if (e.ctrlKey || e.metaKey) {
+                    // Select All Visible
+                    e.preventDefault();
+                    const newSet = new Set<number>();
+                    for (let i = 0; i < total; i++) newSet.add(i);
+                    selectedRows.value = newSet;
+                    return;
+                }
+                handled = false;
+                break;
             case 'c':
                 if (e.ctrlKey || e.metaKey) {
                     handleCopy();

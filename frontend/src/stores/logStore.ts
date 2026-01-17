@@ -95,6 +95,8 @@ export const filteredEntries = computed(() => {
         const selected = new Set(selectedSignals.value);
         if (selected.size > 0) {
             entries = entries.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
+        } else {
+            entries = []; // No selection means empty table when filter enabled
         }
     }
 
