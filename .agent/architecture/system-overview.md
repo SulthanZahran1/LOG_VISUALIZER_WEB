@@ -59,6 +59,8 @@ flowchart LR
         subgraph map
             MapCanvas
             MapFileSelector
+            MapMediaControls
+            MapDetailPanel
         end
         subgraph file
             FileUpload
@@ -75,6 +77,8 @@ flowchart LR
     WaveformView --> WaveformCanvas
     WaveformView --> SignalSidebar
     Map --> MapCanvas
+    Map --> MapMediaControls
+    Map --> MapDetailPanel
     
     LogTable --> logStore
     WaveformCanvas --> waveStore

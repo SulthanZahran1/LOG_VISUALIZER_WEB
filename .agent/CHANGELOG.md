@@ -1,4 +1,22 @@
-# CHANGELOG.md — Recent Changes
+# Changelog
+
+## [0.4.0] - 2026-01-17
+
+### Added
+- **Map Media Player**: Time-based playback for PLC signals on the map layout.
+- **Signal-based Map Coloring**: Units change color based on real-time (or playback-time) signal values.
+- **Map Detail Panel**: Side panel showing detailed properties of selected map objects.
+- **Recursive Map Parsing**: Support for complex nested `<Object>` tags in XML map layouts.
+- **Playback Controls**: Play/pause, skip ±10s, and variable playback speed (0.5x to 10x).
+
+### Changed
+- Improved Map Viewer rendering performance using decentralized signal reactivity.
+- Optimized map upload to handle large layouts (>10,000 objects) more efficiently.
+- Refactored backend server to port 8089 to avoid common conflicts.
+
+### Fixed
+- Map loading "500 Internal Server Error" for complex recursive XML structures.
+- Carrier tracking state synchronization across application tabs.
 
 ## [2026-01-17]
 - **Signal Log Integration**: Added "Signal Log (PLC)" section to Map File Selector

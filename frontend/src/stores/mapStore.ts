@@ -378,11 +378,19 @@ export async function toggleCarrierTracking(): Promise<void> {
 /**
  * Link a log table session's entries to the map viewer for signal-based coloring.
  * This populates latestSignalValues, signalHistory, and sets the playback range.
+ * 
+ * @param sessionId - The session ID
+ * @param sessionName - Display name for the session
+ * @param entries - Log entries to populate signal values
+ * @param startTime - Optional: Session start time from backend (Unix ms)
+ * @param endTime - Optional: Session end time from backend (Unix ms)
  */
 export function linkSignalLogSession(
     sessionId: string,
     sessionName: string,
-    entries: { deviceId: string; signalName: string; value: any; timestamp?: string | number }[]
+    entries: { deviceId: string; signalName: string; value: any; timestamp?: string | number }[],
+    startTime?: number,
+    endTime?: number
 ): void {
     // Update linkage state
     signalLogSessionId.value = sessionId;
@@ -392,23 +400,26 @@ export function linkSignalLogSession(
     // Push data to signal stores
     updateSignalValues(entries);
 
-    // Set playback time range from entries
+    // Use provided time range from session metadata (preferred)
+    if (startTime !== undefined && endTime !== undefined && startTime > 0 && endTime > 0) {
+        setPlaybackRange(startTime, endTime);
+        return;
+    }
+
+    // Fallback: compute time range from entries (for backwards compatibility)
     if (entries.length > 0) {
         const timestamps = entries
             .map(e => {
                 if (e.timestamp === undefined || e.timestamp === null) return null;
-                // Handle both numeric (Unix ms) and string (ISO date) timestamps
-                if (typeof e.timestamp === 'number') {
-                    return e.timestamp;
-                }
+                if (typeof e.timestamp === 'number') return e.timestamp;
                 const parsed = new Date(e.timestamp).getTime();
                 return isNaN(parsed) ? null : parsed;
             })
             .filter((t): t is number => t !== null);
         if (timestamps.length > 0) {
-            const startTime = Math.min(...timestamps);
-            const endTime = Math.max(...timestamps);
-            setPlaybackRange(startTime, endTime);
+            const computedStart = Math.min(...timestamps);
+            const computedEnd = Math.max(...timestamps);
+            setPlaybackRange(computedStart, computedEnd);
         }
     }
 }

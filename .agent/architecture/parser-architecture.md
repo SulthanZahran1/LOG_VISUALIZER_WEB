@@ -113,6 +113,33 @@ flowchart LR
     E2 --> Entries
 ```
 
+## Recursive Map Parsing
+
+Map XML layouts support nested `<Object>` tags, representing parent-child relationships (e.g., a Rack containing Shelves).
+
+```mermaid
+flowchart TD
+    subgraph XML
+        Root[ConveyorMap/MapLayout]
+        P1[Parent Object]
+        C1[Child Object 1]
+        C2[Child Object 2]
+    end
+    
+    subgraph Parser["map_parser.go"]
+        Parse[ParseMapXML]
+        Flatten[fillLayout Helper]
+    end
+    
+    Root --> P1
+    P1 --> C1
+    P1 --> C2
+    
+    Parse --> Flatten
+    Flatten -->|Recursive| Flatten
+    Flatten -->|Flat List| GUI[Frontend MapCanvas]
+```
+
 ## Backend File Structure
 
 ```

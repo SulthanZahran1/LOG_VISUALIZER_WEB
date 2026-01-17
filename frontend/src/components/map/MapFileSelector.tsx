@@ -118,7 +118,9 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
         linkSignalLogSession(
             currentSession.value.id,
             currentSession.value.fileId || 'Unnamed session',
-            logEntries.value
+            logEntries.value,
+            currentSession.value.startTime,  // From backend session metadata
+            currentSession.value.endTime     // From backend session metadata
         );
     };
 

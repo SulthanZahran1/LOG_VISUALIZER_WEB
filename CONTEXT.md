@@ -23,7 +23,7 @@ When starting a session:
 4. Work on the next task
 5. Update `.agent/CHANGELOG.md` with completed work
 6. Update `.agent/TODO.md` to reflect progress
-7. **Update `.agent/architecture/` if adding new systems or changing data flow**
+7. **Update `.agent/architecture/` if adding new systems, data flows, or significant features.**
 
 ---
 
@@ -74,11 +74,18 @@ When starting a session:
 
 ---
 
-## Current Phase
+## Project Status
 
-**Phase 3 — Map Viewer + Media Player** 🚧
+**Phase 3 — Map Viewer + Media Player** [DONE]
+- Time-based playback controls for replaying signal states.
+- Signal-based real-time coloring logic.
+- Recursive map layout support.
+- Side panel for detailed object inspection.
 
-Active work: Time-based playback controls for replaying signal states over time.
+Next: **Phase 4 — Data Analysis & Export** (Planned)
+- Advanced statistics view.
+- Export to Excel/CSV.
+- Signal correlation tools.
 
 ---
 

@@ -131,6 +131,7 @@ flowchart TB
         isPlay[isPlaying]
         speed[playbackSpeed]
         history[signalHistory]
+        getVal[getSignalValueAtTime]
     end
 ```
 

@@ -100,6 +100,28 @@ flowchart TB
     mapStore --> MapCanvas
 ```
 
+## Map Playback Flow
+
+```mermaid
+sequenceDiagram
+    participant LT as LogTable/Waveform
+    participant MS as mapStore
+    participant MC as MapCanvas
+    participant MOC as MapObjectComponent
+
+    LT->>MS: setPlaybackTime(time)
+    MS->>MS: Update playbackTime.value
+    
+    loop For each object
+        MC->>MOC: Re-render (reactive signal)
+        MOC->>MS: getSignalValueAtTime(key, time)
+        MS->>MS: Binary search in signalHistory
+        MS-->>MOC: signal value
+        MOC->>MOC: Evaluate rules (getUnitColor)
+        MOC->>MOC: Update SVG fill/text
+    end
+```
+
 ## State Synchronization
 
 ```mermaid

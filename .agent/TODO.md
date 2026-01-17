@@ -43,10 +43,10 @@
 - [x] Sync with log data timestamps
 
 ### Follow Feature
-- [ ] Follow button with search input
-- [ ] Fuzzy matching for carrier search
-- [ ] Selection dialog for multiple matches
-- [ ] View follows carrier on move
+- [x] Follow button with search input
+- [x] Fuzzy matching for carrier search
+- [x] Selection dialog for multiple matches
+- [x] View follows carrier on move
 
 ---
 
