@@ -188,6 +188,18 @@ async function pollStatus(sessionId: string) {
                 // Trigger map update if map viewer is open
                 const mapStore = await import('./mapStore');
                 mapStore.updateSignalValues(logEntries.value);
+
+                // Set playback time range from log entries
+                if (logEntries.value.length > 0) {
+                    const timestamps = logEntries.value
+                        .map(e => e.timestamp ? new Date(e.timestamp).getTime() : null)
+                        .filter((t): t is number => t !== null && !isNaN(t));
+                    if (timestamps.length > 0) {
+                        const startTime = Math.min(...timestamps);
+                        const endTime = Math.max(...timestamps);
+                        mapStore.setPlaybackRange(startTime, endTime);
+                    }
+                }
                 return;
             }
 

@@ -23,6 +23,7 @@ When starting a session:
 4. Work on the next task
 5. Update `.agent/CHANGELOG.md` with completed work
 6. Update `.agent/TODO.md` to reflect progress
+7. **Update `.agent/architecture/` if adding new systems or changing data flow**
 
 ---
 
@@ -75,9 +76,9 @@ When starting a session:
 
 ## Current Phase
 
-**Phase 3 — Map Viewer + Carrier Tracking** 🚧
+**Phase 3 — Map Viewer + Media Player** 🚧
 
-Active work: Carrier tracking logic linking MCS log signals to map units.
+Active work: Time-based playback controls for replaying signal states over time.
 
 ---
 

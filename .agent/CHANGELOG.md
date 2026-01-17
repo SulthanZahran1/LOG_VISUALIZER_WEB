@@ -1,5 +1,12 @@
 # CHANGELOG.md — Recent Changes
 
+## [2026-01-17]
+- **Map Media Player**: Implemented time-based playback controls (Play/Pause, Skip, Speed, Timeline)
+- **Signal History**: Added timestamped signal storage for playback
+- **Time-based Coloring**: Map colors now update based on playback time slider position
+
+---
+
 ## [2026-01-16]
 - **Map Viewer**: Implemented Signal-based Coloring based on YAML rule presets.
 - **Carrier Tracking**: Integrated dual log system (PLC + MCS) for real-time carrier position visualization.

@@ -34,6 +34,13 @@
 - [x] Info panel shows carrier list and current state
 - [x] Center view on unit (Reset button)
 
+### Map Media Player (Playback) ✅
+- [x] Play/pause button, speed control (0.5x–10x)
+- [x] Time scrubber/slider, current time display
+- [x] Skip forward/backward buttons
+- [x] Map colors update based on playback time
+- [x] Sync with log data timestamps
+
 ### Follow Feature
 - [ ] Follow button with search input
 - [ ] Fuzzy matching for carrier search
@@ -43,11 +50,6 @@
 ---
 
 ## 📋 Backlog: Future Phases
-
-### Phase 3.5: Playback Feature
-- [ ] Play/pause button, speed control (0.5x–10x)
-- [ ] Time scrubber/slider, current time display
-- [ ] All views sync to playback time
 
 ### Phase 4: Bookmarks + Time Sync
 - [ ] Ctrl+B add bookmark, Ctrl+Shift+B bookmark list

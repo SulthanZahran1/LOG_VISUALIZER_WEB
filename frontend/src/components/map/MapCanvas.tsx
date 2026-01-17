@@ -6,6 +6,7 @@ import {
 } from '../../stores/mapStore';
 import { MapObjectComponent } from './MapObjectComponents';
 import { MapDetailPanel } from './MapDetailPanel';
+import { MapMediaControls } from './MapMediaControls';
 
 export function MapCanvas() {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -61,49 +62,50 @@ export function MapCanvas() {
 
 
     return (
-        <div
-            ref={containerRef}
-            class="map-container"
-            onWheel={handleWheel}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-        >
-            <svg class="map-svg" width="100%" height="100%">
-                <defs>
-                    <marker
-                        id="arrowhead"
-                        markerWidth="10"
-                        markerHeight="7"
-                        refX="10"
-                        refY="3.5"
-                        orient="auto"
-                    >
-                        <polygon points="0 0, 10 3.5, 0 7" fill="#888" />
-                    </marker>
-                </defs>
-                <g transform={`translate(${mapOffset.value.x}, ${mapOffset.value.y}) scale(${mapZoom.value})`}>
-                    {mapObjectsArray.value.map((obj: MapObject) => (
-                        <MapObjectComponent
-                            key={obj.name}
-                            object={obj}
-                            onClick={(id) => selectedUnitId.value = id}
-                        />
-                    ))}
-                </g>
-            </svg>
+        <>
+            <div
+                ref={containerRef}
+                class="map-container"
+                onWheel={handleWheel}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+            >
+                <svg class="map-svg" width="100%" height="100%">
+                    <defs>
+                        <marker
+                            id="arrowhead"
+                            markerWidth="10"
+                            markerHeight="7"
+                            refX="10"
+                            refY="3.5"
+                            orient="auto"
+                        >
+                            <polygon points="0 0, 10 3.5, 0 7" fill="#888" />
+                        </marker>
+                    </defs>
+                    <g transform={`translate(${mapOffset.value.x}, ${mapOffset.value.y}) scale(${mapZoom.value})`}>
+                        {mapObjectsArray.value.map((obj: MapObject) => (
+                            <MapObjectComponent
+                                key={obj.name}
+                                object={obj}
+                                onClick={(id) => selectedUnitId.value = id}
+                            />
+                        ))}
+                    </g>
+                </svg>
 
-            <MapDetailPanel />
+                <MapDetailPanel />
 
-            {/* Controls */}
-            <div class="map-controls">
-                <button onClick={() => mapZoom.value *= 1.2}>+</button>
-                <button onClick={() => mapZoom.value /= 1.2}>-</button>
-                <button onClick={() => { mapZoom.value = 1; mapOffset.value = { x: 0, y: 0 }; }}>Reset</button>
-            </div>
+                {/* Controls */}
+                <div class="map-controls">
+                    <button onClick={() => mapZoom.value *= 1.2}>+</button>
+                    <button onClick={() => mapZoom.value /= 1.2}>-</button>
+                    <button onClick={() => { mapZoom.value = 1; mapOffset.value = { x: 0, y: 0 }; }}>Reset</button>
+                </div>
 
-            <style>{`
+                <style>{`
                 .map-container {
                     flex: 1;
                     height: 100%;
@@ -145,6 +147,8 @@ export function MapCanvas() {
                     color: var(--text-secondary);
                 }
             `}</style>
-        </div>
+            </div>
+            <MapMediaControls />
+        </>
     );
 }

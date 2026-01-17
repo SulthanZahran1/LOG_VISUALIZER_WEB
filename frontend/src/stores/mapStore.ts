@@ -52,6 +52,17 @@ export const carrierLogEntries = signal<CarrierEntry[]>([]);
 export const carrierLogLoading = signal(false);
 export const carrierLogFileName = signal<string | null>(null);
 
+// ======================
+// Playback State
+// ======================
+export const playbackTime = signal<number | null>(null); // Unix timestamp ms
+export const isPlaying = signal(false);
+export const playbackSpeed = signal(1);
+export const playbackStartTime = signal<number | null>(null); // Log start timestamp
+export const playbackEndTime = signal<number | null>(null); // Log end timestamp
+
+let playbackIntervalId: number | null = null;
+
 // Actions
 export async function fetchMapLayout() {
     mapLoading.value = true;
@@ -106,6 +117,9 @@ export const carrierTrackingEnabled = signal(false);
 export const carrierLocations = signal<Map<string, string>>(new Map()); // carrierId -> unitId
 export const latestSignalValues = signal<Map<string, any>>(new Map()); // deviceId::signalName -> value
 
+// Signal history for time-based playback (key -> array of {timestamp, value})
+export const signalHistory = signal<Map<string, Array<{ timestamp: number, value: any }>>>(new Map());
+
 // Computed: count carriers at each unit
 export const unitCarrierCounts = computed(() => {
     const counts = new Map<string, number>();
@@ -149,6 +163,7 @@ export function applyDeviceMapping(deviceId: string): string | null {
 
 /**
  * Returns the color and optional text label for a unit based on current state.
+ * Uses playbackTime if set, otherwise uses latest values.
  */
 export function getUnitColor(unitId: string): { color?: string, text?: string } {
     // 1. If carrier tracking is enabled, use carrier count coloring
@@ -168,12 +183,16 @@ export function getUnitColor(unitId: string): { color?: string, text?: string } 
     // Evaluate rules
     for (const rule of sortedRules) {
         // Find if any device mapped to this unit has the signal specified in the rule matching the condition
-        for (const [key, value] of latestSignalValues.value.entries()) {
+        for (const key of latestSignalValues.value.keys()) {
             const [deviceId, signalName] = key.split('::');
             if (signalName !== rule.signal) continue;
 
             const targetUnitId = applyDeviceMapping(deviceId);
             if (targetUnitId !== unitId) continue;
+
+            // Get value at playback time or latest
+            const value = getSignalValueAtTime(key, playbackTime.value);
+            if (value === undefined) continue;
 
             // Evaluate condition
             let match = false;
@@ -198,6 +217,33 @@ export function getUnitColor(unitId: string): { color?: string, text?: string } 
     return { color: mapRules.value.defaultColor || 'var(--bg-tertiary)' };
 }
 
+/**
+ * Get signal value at a specific time, or latest if time is null.
+ */
+export function getSignalValueAtTime(key: string, time: number | null): any {
+    // If no playback time, use latest value
+    if (time === null) {
+        return latestSignalValues.value.get(key);
+    }
+
+    // Look up in history
+    const history = signalHistory.value.get(key);
+    if (!history || history.length === 0) {
+        return latestSignalValues.value.get(key);
+    }
+
+    // Binary search for the value at or before the target time
+    let result: any = undefined;
+    for (const entry of history) {
+        if (entry.timestamp <= time) {
+            result = entry.value;
+        } else {
+            break; // History is sorted, no need to continue
+        }
+    }
+    return result;
+}
+
 // Color utility based on carrier count
 export function getCarrierCountColor(count: number): string {
     if (count === 0) return '#3a3a3a'; // Default gray
@@ -220,16 +266,30 @@ export function getCarrierDisplayText(unitId: string): string | null {
     return `${carriers.length}x`;
 }
 
-// Bulk update signal values
-export function updateSignalValues(entries: { deviceId: string, signalName: string, value: any }[]): void {
+// Bulk update signal values (with optional timestamps for history)
+export function updateSignalValues(entries: { deviceId: string, signalName: string, value: any, timestamp?: string | number }[]): void {
     const newValues = new Map(latestSignalValues.value);
+    const newHistory = new Map(signalHistory.value);
     let changed = false;
 
     for (const entry of entries) {
         const key = `${entry.deviceId}::${entry.signalName}`;
+
+        // Update latest value
         if (newValues.get(key) !== entry.value) {
             newValues.set(key, entry.value);
             changed = true;
+        }
+
+        // Add to history if timestamp is provided
+        if (entry.timestamp) {
+            const ts = new Date(entry.timestamp).getTime();
+            if (!isNaN(ts)) {
+                const existing = newHistory.get(key) || [];
+                // Append (assume entries come in order)
+                existing.push({ timestamp: ts, value: entry.value });
+                newHistory.set(key, existing);
+            }
         }
 
         // Also handle carrier tracking if it's a CurrentLocation signal
@@ -241,6 +301,7 @@ export function updateSignalValues(entries: { deviceId: string, signalName: stri
     if (changed) {
         latestSignalValues.value = newValues;
     }
+    signalHistory.value = newHistory;
 }
 
 // Process a log entry for carrier tracking
@@ -307,4 +368,100 @@ export async function toggleCarrierTracking(): Promise<void> {
         // Clear all carrier locations when disabled
         carrierLocations.value = new Map();
     }
+}
+
+// ======================
+// Playback Controls
+// ======================
+
+export function play(): void {
+    if (isPlaying.value) return;
+    if (playbackTime.value === null && playbackStartTime.value !== null) {
+        playbackTime.value = playbackStartTime.value;
+    }
+    isPlaying.value = true;
+    startPlaybackLoop();
+}
+
+export function pause(): void {
+    isPlaying.value = false;
+    stopPlaybackLoop();
+}
+
+export function togglePlayback(): void {
+    if (isPlaying.value) {
+        pause();
+    } else {
+        play();
+    }
+}
+
+export function skipForward(seconds: number = 10): void {
+    if (playbackTime.value === null) return;
+    const newTime = playbackTime.value + seconds * 1000;
+    if (playbackEndTime.value !== null && newTime > playbackEndTime.value) {
+        playbackTime.value = playbackEndTime.value;
+    } else {
+        playbackTime.value = newTime;
+    }
+}
+
+export function skipBackward(seconds: number = 10): void {
+    if (playbackTime.value === null) return;
+    const newTime = playbackTime.value - seconds * 1000;
+    if (playbackStartTime.value !== null && newTime < playbackStartTime.value) {
+        playbackTime.value = playbackStartTime.value;
+    } else {
+        playbackTime.value = newTime;
+    }
+}
+
+export function setPlaybackTime(time: number): void {
+    playbackTime.value = time;
+}
+
+export function setPlaybackSpeed(speed: number): void {
+    playbackSpeed.value = speed;
+}
+
+export function setPlaybackRange(startTime: number, endTime: number): void {
+    playbackStartTime.value = startTime;
+    playbackEndTime.value = endTime;
+    if (playbackTime.value === null) {
+        playbackTime.value = startTime;
+    }
+}
+
+function startPlaybackLoop(): void {
+    if (playbackIntervalId !== null) return;
+    const tickInterval = 100; // 100ms ticks
+    playbackIntervalId = window.setInterval(() => {
+        if (!isPlaying.value || playbackTime.value === null) return;
+        const delta = tickInterval * playbackSpeed.value;
+        const newTime = playbackTime.value + delta;
+        if (playbackEndTime.value !== null && newTime >= playbackEndTime.value) {
+            playbackTime.value = playbackEndTime.value;
+            pause(); // Auto-pause at end
+        } else {
+            playbackTime.value = newTime;
+        }
+    }, tickInterval);
+}
+
+function stopPlaybackLoop(): void {
+    if (playbackIntervalId !== null) {
+        window.clearInterval(playbackIntervalId);
+        playbackIntervalId = null;
+    }
+}
+
+// Format playback time for display
+export function formatPlaybackTime(timeMs: number | null): string {
+    if (timeMs === null) return '--:--:--';
+    const date = new Date(timeMs);
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    const ms = date.getMilliseconds().toString().padStart(3, '0');
+    return `${hours}:${minutes}:${seconds}.${ms}`;
 }

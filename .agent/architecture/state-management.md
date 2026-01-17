@@ -125,6 +125,13 @@ flowchart TB
         entries[carrierLogEntries]
         positions[carrierPositions <computed>]
     end
+    
+    subgraph Playback
+        playTime[playbackTime]
+        isPlay[isPlaying]
+        speed[playbackSpeed]
+        history[signalHistory]
+    end
 ```
 
 ## Signal Reactivity
