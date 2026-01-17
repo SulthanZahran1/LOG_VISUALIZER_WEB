@@ -335,7 +335,7 @@ export function LogTable() {
                             <input
                                 type="checkbox"
                                 checked={searchRegex.value}
-                                onChange={(e) => searchRegex.value = (e.target as HTMLInputElement).checked}
+                                onClick={(e) => searchRegex.value = (e.currentTarget as HTMLInputElement).checked}
                             />
                             Regex
                         </label>
@@ -343,7 +343,7 @@ export function LogTable() {
                             <input
                                 type="checkbox"
                                 checked={searchCaseSensitive.value}
-                                onChange={(e) => searchCaseSensitive.value = (e.target as HTMLInputElement).checked}
+                                onClick={(e) => searchCaseSensitive.value = (e.currentTarget as HTMLInputElement).checked}
                             />
                             Aa
                         </label>
@@ -351,7 +351,7 @@ export function LogTable() {
                             <input
                                 type="checkbox"
                                 checked={showChangedOnly.value}
-                                onChange={(e) => showChangedOnly.value = (e.target as HTMLInputElement).checked}
+                                onClick={(e) => showChangedOnly.value = (e.currentTarget as HTMLInputElement).checked}
                             />
                             Changes Only
                         </label>
@@ -359,7 +359,7 @@ export function LogTable() {
                             <input
                                 type="checkbox"
                                 checked={filterBySelected.value}
-                                onChange={(e) => filterBySelected.value = (e.target as HTMLInputElement).checked}
+                                onClick={(e) => filterBySelected.value = (e.currentTarget as HTMLInputElement).checked}
                             />
                             Filter to Selected
                         </label>
