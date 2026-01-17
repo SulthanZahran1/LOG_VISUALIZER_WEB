@@ -113,15 +113,42 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
         ? `${signalLogFileName.value || 'Session'} (${signalLogEntryCount.value})`
         : 'No signal log';
 
-    const handleUseCurrentSession = () => {
+    const handleUseCurrentSession = async () => {
         if (!currentSession.value || currentSession.value.status !== 'complete') return;
+
+        const sessionId = currentSession.value.id;
+        const sessionName = currentSession.value.fileId || 'Unnamed session';
+        const startTime = currentSession.value.startTime;
+        const endTime = currentSession.value.endTime;
+        const totalCount = currentSession.value.entryCount;
+
+        // First link with existing (partial) entries for immediate feedback
         linkSignalLogSession(
-            currentSession.value.id,
-            currentSession.value.fileId || 'Unnamed session',
+            sessionId,
+            sessionName,
             logEntries.value,
-            currentSession.value.startTime,  // From backend session metadata
-            currentSession.value.endTime     // From backend session metadata
+            startTime,
+            endTime,
+            totalCount
         );
+
+        // Then fetch ALL entries to ensure map has full data across the entire range
+        try {
+            const { fetchAllEntries } = await import('../../stores/logStore');
+            const allEntries = await fetchAllEntries(sessionId);
+
+            // Re-link with full data (this will update history and entry count)
+            linkSignalLogSession(
+                sessionId,
+                sessionName,
+                allEntries,
+                startTime,
+                endTime,
+                totalCount
+            );
+        } catch (err) {
+            console.error('Failed to load full session data for map:', err);
+        }
     };
 
     const sessionAvailable = currentSession.value?.status === 'complete';

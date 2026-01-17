@@ -189,8 +189,11 @@ async function pollStatus(sessionId: string) {
                 const mapStore = await import('./mapStore');
                 mapStore.updateSignalValues(logEntries.value);
 
-                // Set playback time range from log entries
-                if (logEntries.value.length > 0) {
+                // Set playback time range from session metadata (preferred)
+                if (session.startTime && session.endTime) {
+                    mapStore.setPlaybackRange(session.startTime, session.endTime);
+                } else if (logEntries.value.length > 0) {
+                    // Fallback: Set playback time range from log entries
                     const timestamps = logEntries.value
                         .map(e => e.timestamp ? new Date(e.timestamp).getTime() : null)
                         .filter((t): t is number => t !== null && !isNaN(t));
@@ -244,6 +247,25 @@ export async function fetchEntries(page: number, pageSize: number) {
         } else {
             logError.value = (err as Error).message;
         }
+    } finally {
+        isLoadingLog.value = false;
+    }
+}
+
+/**
+ * Fetches all entries for a session. 
+ * Used by Map Viewer to ensure full signal history is available.
+ */
+export async function fetchAllEntries(sessionId: string): Promise<LogEntry[]> {
+    try {
+        isLoadingLog.value = true;
+        // Fetch with a large page size. 
+        // Backend handles this by returning all records if pageSize is large.
+        const res = await getParseEntries(sessionId, 1, 1000000);
+        return res.entries as LogEntry[];
+    } catch (err: any) {
+        console.error('Failed to fetch all entries:', err);
+        throw err;
     } finally {
         isLoadingLog.value = false;
     }

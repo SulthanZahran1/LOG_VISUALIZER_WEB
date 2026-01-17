@@ -390,12 +390,13 @@ export function linkSignalLogSession(
     sessionName: string,
     entries: { deviceId: string; signalName: string; value: any; timestamp?: string | number }[],
     startTime?: number,
-    endTime?: number
+    endTime?: number,
+    totalCount?: number
 ): void {
     // Update linkage state
     signalLogSessionId.value = sessionId;
     signalLogFileName.value = sessionName;
-    signalLogEntryCount.value = entries.length;
+    signalLogEntryCount.value = totalCount ?? entries.length;
 
     // Push data to signal stores
     updateSignalValues(entries);
