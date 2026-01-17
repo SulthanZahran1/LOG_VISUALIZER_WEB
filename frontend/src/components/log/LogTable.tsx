@@ -1,5 +1,6 @@
+
 import { useSignal } from '@preact/signals';
-import { useRef } from 'preact/hooks';
+import { useRef, useEffect, useState } from 'preact/hooks';
 import {
     filteredEntries,
     isLoadingLog,
@@ -11,23 +12,29 @@ import {
     showChangedOnly,
     signalTypeFilter,
     fetchEntries,
-    openView
+    openView,
+    filterBySelected
 } from '../../stores/logStore';
 import { toggleSignal } from '../../stores/waveformStore';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
 import type { LogEntry } from '../../models/types';
+import { SignalSidebar } from '../waveform/SignalSidebar';
 import './LogTable.css';
 
-const ROW_HEIGHT = 24;
+const ROW_HEIGHT = 28; // Increased for better readability
 const BUFFER = 10;
 
 /**
- * Performant Log Table with Virtual Scrolling
+ * Performant Log Table with Virtual Scrolling and Premium UX
  */
 export function LogTable() {
     const tableRef = useRef<HTMLDivElement>(null);
     const scrollSignal = useSignal(0);
     const selectedRows = useSignal<Set<number>>(new Set());
+    // For drag selection
+    const isDragging = useSignal(false);
+    const dragStartIndex = useSignal<number | null>(null);
+
     const columnWidths = useSignal({
         ts: 220,
         dev: 180,
@@ -37,10 +44,87 @@ export function LogTable() {
     });
     const contextMenu = useSignal<{ x: number, y: number, visible: boolean }>({ x: 0, y: 0, visible: false });
 
+    // --- Debounced Search ---
+    const [localQuery, setLocalQuery] = useState(searchQuery.value);
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            searchQuery.value = localQuery;
+        }, 300);
+        return () => clearTimeout(handler);
+    }, [localQuery]);
+
+    // Keep local query in sync if external change happens
+    useEffect(() => {
+        if (searchQuery.value !== localQuery) {
+            setLocalQuery(searchQuery.value);
+        }
+    }, [searchQuery.value]);
+
     const onScroll = (e: Event) => {
         scrollSignal.value = (e.target as HTMLDivElement).scrollTop;
         if (contextMenu.value.visible) contextMenu.value = { ...contextMenu.value, visible: false };
     };
+
+    // --- Keyboard Navigation ---
+    const handleKeyDown = (e: KeyboardEvent) => {
+        if (selectedRows.value.size === 0) return;
+
+        // Get the last selected index (anchor)
+        const indices = Array.from(selectedRows.value).sort((a, b) => a - b);
+        let curr = indices[indices.length - 1]; // Move from last selected
+        if (indices.length > 1 && e.shiftKey) {
+            // If range selecting, rely on dragStartIndex if avail, or just last
+            if (dragStartIndex.value !== null) curr = dragStartIndex.value;
+        }
+
+        const total = filteredEntries.value.length;
+        let next = curr;
+        let handled = true;
+
+        switch (e.key) {
+            case 'ArrowUp': next = Math.max(0, curr - 1); break;
+            case 'ArrowDown': next = Math.min(total - 1, curr + 1); break;
+            case 'PageUp': next = Math.max(0, curr - 20); break;
+            case 'PageDown': next = Math.min(total - 1, curr + 20); break;
+            case 'Home': next = 0; break;
+            case 'End': next = total - 1; break;
+            case 'c':
+                if (e.ctrlKey || e.metaKey) {
+                    handleCopy();
+                    return; // Default copy handler will fire too, but we interrupt
+                }
+                handled = false;
+                break;
+            default: handled = false;
+        }
+
+        if (handled) {
+            e.preventDefault();
+            // Scroll into view
+            const rowTop = next * ROW_HEIGHT;
+            const rowBottom = rowTop + ROW_HEIGHT;
+            const viewport = tableRef.current;
+            if (viewport) {
+                if (rowTop < viewport.scrollTop) viewport.scrollTop = rowTop;
+                else if (rowBottom > viewport.scrollTop + viewport.clientHeight) viewport.scrollTop = rowBottom - viewport.clientHeight;
+            }
+
+            // Selection Logic
+            if (e.shiftKey) {
+                // Range select from dragStartIndex or original curr
+                const anchor = dragStartIndex.value ?? curr;
+                const newSet = new Set<number>();
+                const start = Math.min(anchor, next);
+                const end = Math.max(anchor, next);
+                for (let i = start; i <= end; i++) newSet.add(i);
+                selectedRows.value = newSet;
+            } else {
+                selectedRows.value = new Set([next]);
+                dragStartIndex.value = next; // Reset anchor
+            }
+        }
+    };
+
 
     const handleHeaderClick = (col: keyof LogEntry) => {
         if (sortColumn.value === col) {
@@ -74,23 +158,58 @@ export function LogTable() {
         window.addEventListener('mouseup', onMouseUp);
     };
 
-    const handleRowClick = (idx: number, e: MouseEvent) => {
+    // --- Mouse Interaction (Click & Drag) ---
+    const handleMouseDown = (idx: number, e: MouseEvent) => {
+        // Right click doesn't start selection drag usually, just context menu
+        if (e.button === 2) return;
+
         contextMenu.value = { ...contextMenu.value, visible: false };
-        const newSelection = new Set(selectedRows.value);
+
         if (e.shiftKey) {
-            const lastIdx = Array.from(newSelection).pop() || 0;
-            const start = Math.min(lastIdx, idx);
-            const end = Math.max(lastIdx, idx);
+            // Range select
+            const newSelection = new Set(selectedRows.value);
+            const anchor = dragStartIndex.value ?? idx;
+            const start = Math.min(anchor, idx);
+            const end = Math.max(anchor, idx);
+            // If ctrl not held, clear others (standard OS behavior usually clears, but let's be additive if they want? No, standard is clear unless Ctrl)
+            if (!e.ctrlKey && !e.metaKey) newSelection.clear();
+
             for (let i = start; i <= end; i++) newSelection.add(i);
-        } else if (e.metaKey || e.ctrlKey) {
+            selectedRows.value = newSelection;
+        } else if (e.ctrlKey || e.metaKey) {
+            // Toggle
+            const newSelection = new Set(selectedRows.value);
             if (newSelection.has(idx)) newSelection.delete(idx);
             else newSelection.add(idx);
+            selectedRows.value = newSelection;
+            dragStartIndex.value = idx;
         } else {
-            newSelection.clear();
-            newSelection.add(idx);
+            // Single select / Start of drag
+            isDragging.value = true;
+            dragStartIndex.value = idx;
+            selectedRows.value = new Set([idx]);
         }
-        selectedRows.value = newSelection;
     };
+
+    const handleMouseEnter = (idx: number) => {
+        if (isDragging.value && dragStartIndex.value !== null) {
+            const start = Math.min(dragStartIndex.value, idx);
+            const end = Math.max(dragStartIndex.value, idx);
+            const newSet = new Set<number>();
+            for (let i = start; i <= end; i++) newSet.add(i);
+            selectedRows.value = newSet;
+        }
+    };
+
+    const handleMouseUp = () => {
+        isDragging.value = false;
+    };
+
+    useEffect(() => {
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => window.removeEventListener('mouseup', handleMouseUp);
+    }, []);
+
 
     const handleContextMenu = (e: MouseEvent) => {
         e.preventDefault();
@@ -128,6 +247,50 @@ export function LogTable() {
         contextMenu.value = { ...contextMenu.value, visible: false };
     };
 
+    // --- Search Highlight Helper ---
+    const HighlightText = ({ text }: { text: string }) => {
+        const query = searchQuery.value;
+        if (!query) return <span>{text}</span>;
+
+        if (searchRegex.value) {
+            try {
+                const flags = searchCaseSensitive.value ? 'g' : 'gi';
+                const regex = new RegExp(`(${query})`, flags);
+                const parts = text.split(regex);
+                return (
+                    <span>
+                        {parts.map((part, i) =>
+                            regex.test(part) ? <mark key={i} className="highlight-match">{part}</mark> : part
+                        )}
+                    </span>
+                );
+            } catch {
+                return <span>{text}</span>;
+            }
+        } else {
+            // Simple string highlight
+            if (!text) return <span></span>;
+            const lowerText = searchCaseSensitive.value ? text : text.toLowerCase();
+            const lowerQuery = searchCaseSensitive.value ? query : query.toLowerCase();
+            const index = lowerText.indexOf(lowerQuery);
+
+            if (index === -1) return <span>{text}</span>;
+
+            const before = text.substring(0, index);
+            const match = text.substring(index, index + query.length);
+            const after = text.substring(index + query.length);
+
+            return (
+                <span>
+                    {before}
+                    <mark className="highlight-match">{match}</mark>
+                    <HighlightText text={after} />
+                </span>
+            );
+        }
+    };
+
+
     // Viewport calculations
     const viewportHeight = tableRef.current?.clientHeight || 600;
     const totalCount = filteredEntries.value.length;
@@ -141,7 +304,7 @@ export function LogTable() {
 
     return (
         <div className="log-table-container"
-            onKeyDown={(e) => e.ctrlKey && e.key === 'c' && handleCopy()}
+            onKeyDown={handleKeyDown}
             onClick={() => contextMenu.value = { ...contextMenu.value, visible: false }}
             tabIndex={0}>
 
@@ -152,8 +315,8 @@ export function LogTable() {
                         <input
                             type="text"
                             placeholder="Filter signals, devices, values..."
-                            value={searchQuery.value}
-                            onInput={(e) => searchQuery.value = (e.target as HTMLInputElement).value}
+                            value={localQuery}
+                            onInput={(e) => setLocalQuery((e.target as HTMLInputElement).value)}
                         />
                     </div>
                     <div className="filter-options">
@@ -181,6 +344,14 @@ export function LogTable() {
                             />
                             Changes Only
                         </label>
+                        <label className="filter-toggle" title="Show Only Selected Signals">
+                            <input
+                                type="checkbox"
+                                checked={filterBySelected.value}
+                                onChange={(e) => filterBySelected.value = (e.target as HTMLInputElement).checked}
+                            />
+                            Filter to Selected
+                        </label>
                         <select
                             className="type-filter"
                             value={signalTypeFilter.value || ''}
@@ -203,71 +374,84 @@ export function LogTable() {
                 </div>
             </div>
 
-            <div className="log-table-header">
-                <div className="log-col" style={{ width: columnWidths.value.ts }} onClick={() => handleHeaderClick('timestamp')}>
-                    TIMESTAMP {sortColumn.value === 'timestamp' && (sortDirection.value === 'asc' ? '↑' : '↓')}
-                    <div className="resize-handle" onMouseDown={(e) => handleResize('ts', e)} />
-                </div>
-                <div className="log-col" style={{ width: columnWidths.value.dev }} onClick={() => handleHeaderClick('deviceId')}>
-                    DEVICE ID {sortColumn.value === 'deviceId' && (sortDirection.value === 'asc' ? '↑' : '↓')}
-                    <div className="resize-handle" onMouseDown={(e) => handleResize('dev', e)} />
-                </div>
-                <div className="log-col" style={{ width: columnWidths.value.sig }} onClick={() => handleHeaderClick('signalName')}>
-                    SIGNAL NAME {sortColumn.value === 'signalName' && (sortDirection.value === 'asc' ? '↑' : '↓')}
-                    <div className="resize-handle" onMouseDown={(e) => handleResize('sig', e)} />
-                </div>
-                <div className="log-col" style={{ width: columnWidths.value.val }}>
-                    VALUE
-                    <div className="resize-handle" onMouseDown={(e) => handleResize('val', e)} />
-                </div>
-                <div className="log-col" style={{ width: columnWidths.value.type }}>TYPE</div>
-            </div>
-
-            <div className="log-table-viewport" ref={tableRef} onScroll={onScroll}>
-                <div className="log-table-spacer" style={{ height: `${totalHeight}px` }}>
-                    <div className="log-table-rows" style={{ transform: `translateY(${offsetTop}px)` }}>
-                        {visibleEntries.map((entry, i) => {
-                            const actualIdx = startIdx + i;
-                            const isSelected = selectedRows.value.has(actualIdx);
-                            return (
-                                <div
-                                    key={actualIdx}
-                                    className={`log-table-row ${isSelected ? 'selected' : ''}`}
-                                    onClick={(e) => handleRowClick(actualIdx, e)}
-                                    onContextMenu={handleContextMenu}
-                                >
-                                    <div className="log-col" style={{ width: columnWidths.value.ts }}>{formatDateTime(entry.timestamp)}</div>
-                                    <div className="log-col" style={{ width: columnWidths.value.dev }}>{entry.deviceId}</div>
-                                    <div className="log-col" style={{ width: columnWidths.value.sig }}>{entry.signalName}</div>
-                                    <div className="log-col" style={{ width: columnWidths.value.val }}>{String(entry.value)}</div>
-                                    <div className="log-col" style={{ width: columnWidths.value.type }}>{entry.signalType}</div>
-                                </div>
-                            );
-                        })}
+            <div className="log-table-view-split">
+                <SignalSidebar />
+                <div className="log-table-content">
+                    <div className="log-table-header">
+                        <div className="log-col col-ts" style={{ width: columnWidths.value.ts }} onClick={() => handleHeaderClick('timestamp')}>
+                            TIMESTAMP {sortColumn.value === 'timestamp' && (sortDirection.value === 'asc' ? '↑' : '↓')}
+                            <div className="resize-handle" onMouseDown={(e) => handleResize('ts', e)} />
+                        </div>
+                        <div className="log-col col-dev" style={{ width: columnWidths.value.dev }} onClick={() => handleHeaderClick('deviceId')}>
+                            DEVICE ID {sortColumn.value === 'deviceId' && (sortDirection.value === 'asc' ? '↑' : '↓')}
+                            <div className="resize-handle" onMouseDown={(e) => handleResize('dev', e)} />
+                        </div>
+                        <div className="log-col col-sig" style={{ width: columnWidths.value.sig }} onClick={() => handleHeaderClick('signalName')}>
+                            SIGNAL NAME {sortColumn.value === 'signalName' && (sortDirection.value === 'asc' ? '↑' : '↓')}
+                            <div className="resize-handle" onMouseDown={(e) => handleResize('sig', e)} />
+                        </div>
+                        <div className="log-col col-val" style={{ width: columnWidths.value.val }}>
+                            VALUE
+                            <div className="resize-handle" onMouseDown={(e) => handleResize('val', e)} />
+                        </div>
+                        <div className="log-col col-type" style={{ width: columnWidths.value.type }}>TYPE</div>
                     </div>
+
+                    <div className="log-table-viewport" ref={tableRef} onScroll={onScroll}>
+                        <div className="log-table-spacer" style={{ height: `${totalHeight}px` }}>
+                            <div className="log-table-rows" style={{ transform: `translateY(${offsetTop}px)` }}>
+                                {visibleEntries.map((entry, i) => {
+                                    const actualIdx = startIdx + i;
+                                    const isSelected = selectedRows.value.has(actualIdx);
+                                    return (
+                                        <div
+                                            key={actualIdx}
+                                            className={`log-table-row ${isSelected ? 'selected' : ''}`}
+                                            onMouseDown={(e) => handleMouseDown(actualIdx, e)}
+                                            onMouseEnter={() => handleMouseEnter(actualIdx)}
+                                            onContextMenu={handleContextMenu}
+                                        >
+                                            <div className="log-col" style={{ width: columnWidths.value.ts }}>{formatDateTime(entry.timestamp)}</div>
+                                            <div className="log-col" style={{ width: columnWidths.value.dev }}>
+                                                <HighlightText text={entry.deviceId} />
+                                            </div>
+                                            <div className="log-col" style={{ width: columnWidths.value.sig }}>
+                                                <HighlightText text={entry.signalName} />
+                                            </div>
+                                            <div className={`log-col val-${entry.signalType}`} style={{ width: columnWidths.value.val }}>
+                                                <HighlightText text={String(entry.value)} />
+                                            </div>
+                                            <div className="log-col" style={{ width: columnWidths.value.type }}>{entry.signalType}</div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+
+                    {isLoadingLog.value && (
+                        <div className="log-loading-overlay">
+                            <div className="loader"></div>
+                            <span>Processing Log...</span>
+                        </div>
+                    )}
+
+                    {!isLoadingLog.value && totalCount === 0 && (
+                        <div className="log-empty-state">
+                            {searchQuery.value ? 'No entries match your filter' : 'No entries found'}
+                        </div>
+                    )}
+
+                    {contextMenu.value.visible && (
+                        <div className="context-menu" style={{ top: contextMenu.value.y, left: contextMenu.value.x }}>
+                            <div className="menu-item" onClick={handleAddToWaveform}>Add to Waveform</div>
+                            <div className="menu-item" onClick={handleCopy}>Copy Selected Rows</div>
+                            <div className="menu-item" onClick={() => { selectedRows.value = new Set(); contextMenu.value = { ...contextMenu.value, visible: false }; }}>Clear Selection</div>
+                        </div>
+                    )}
                 </div>
             </div>
-
-            {isLoadingLog.value && (
-                <div className="log-loading-overlay">
-                    <div className="loader"></div>
-                    <span>Processing Log...</span>
-                </div>
-            )}
-
-            {!isLoadingLog.value && totalCount === 0 && (
-                <div className="log-empty-state">
-                    {searchQuery.value ? 'No entries match your filter' : 'No entries found'}
-                </div>
-            )}
-
-            {contextMenu.value.visible && (
-                <div className="context-menu" style={{ top: contextMenu.value.y, left: contextMenu.value.x }}>
-                    <div className="menu-item" onClick={handleAddToWaveform}>Add to Waveform</div>
-                    <div className="menu-item" onClick={handleCopy}>Copy Selected Rows</div>
-                    <div className="menu-item" onClick={() => { selectedRows.value = new Set(); contextMenu.value = { ...contextMenu.value, visible: false }; }}>Clear Selection</div>
-                </div>
-            )}
         </div>
     );
 }
+

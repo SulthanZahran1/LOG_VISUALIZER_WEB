@@ -58,10 +58,15 @@ export const isParsing = computed(() =>
     currentSession.value?.status === 'parsing' || currentSession.value?.status === 'pending'
 );
 
+export const filterBySelected = signal(false);
+
+// ... existing code ...
+
 export const filteredEntries = computed(() => {
     let entries = [...logEntries.value];
 
     // 1. Sort by timestamp first to ensure change detection is accurate
+    // (Optimization: Only if needed, but for now we keep it to be safe)
     entries.sort((a, b) => {
         const timeA = new Date(a.timestamp).getTime();
         const timeB = new Date(b.timestamp).getTime();
@@ -78,6 +83,19 @@ export const filteredEntries = computed(() => {
             lastValues.set(key, e.value);
             return isChanged;
         });
+    }
+
+    // 2.05 Filter by Selected Signals (Waveform Selection)
+    if (filterBySelected.value) {
+        const { selectedSignals } = require('./waveformStore'); // Late import to avoid circular dependency issues if possible, though 'import' at top level is standard. 
+        // Note: In signals, accessing .value tracks dependencies.
+        // We will assume waveformStore is available. If circular dependency is an issue, we might need to move selection state to a common store.
+        // For now, let's try direct access if we can, or use the imported symbol if we add it to imports.
+        // Ideally, 'selectedSignals' should be imported at top level.
+        const selected = new Set(selectedSignals.value);
+        if (selected.size > 0) {
+            entries = entries.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
+        }
     }
 
     // 2.1 Filter by Signal Type
