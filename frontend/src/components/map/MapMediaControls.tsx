@@ -3,6 +3,7 @@ import {
     togglePlayback, skipForward, skipBackward, setPlaybackTime, setPlaybackSpeed,
     formatPlaybackTime
 } from '../../stores/mapStore';
+import { sortedBookmarks, jumpToBookmark } from '../../stores/bookmarkStore';
 import './MapMediaControls.css';
 
 const SPEED_OPTIONS = [0.5, 1, 2, 4, 10];
@@ -92,16 +93,32 @@ export function MapMediaControls() {
 
             {/* Timeline Slider */}
             <div class="timeline-row">
-                <input
-                    type="range"
-                    class="timeline-slider"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    value={sliderValue}
-                    onInput={handleSliderChange}
-                    disabled={!hasData}
-                />
+                <div class="timeline-container">
+                    <input
+                        type="range"
+                        class="timeline-slider"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={sliderValue}
+                        onInput={handleSliderChange}
+                        disabled={!hasData}
+                    />
+                    {/* Bookmark markers on timeline */}
+                    {hasData && sortedBookmarks.value.map(bookmark => {
+                        const percent = ((bookmark.time - startTime!) / (endTime! - startTime!)) * 100;
+                        if (percent < 0 || percent > 100) return null;
+                        return (
+                            <div
+                                key={bookmark.id}
+                                class="bookmark-marker"
+                                style={{ left: `${percent}%` }}
+                                onClick={() => jumpToBookmark(bookmark)}
+                                title={bookmark.name}
+                            />
+                        );
+                    })}
+                </div>
             </div>
 
             {!hasData && (

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0] - 2026-01-17
+
+### Added
+- **Bookmarks**: Press Ctrl+B to add time bookmarks, Ctrl+Shift+B to open bookmark panel
+- **Bookmark Navigation**: Ctrl+] and Ctrl+[ to jump between bookmarks
+- **Bookmark Markers**: Visual markers on waveform canvas (orange flags) and map timeline (dots)
+- **Bidirectional Time Sync**: "Sync Views" now propagates time between Waveform and Map viewers
+
+### Changed
+- Sync button now uses centralized `bookmarkStore` for state management
+- Help modal updated with bookmark keyboard shortcuts
+
+---
+
 ## [0.4.0] - 2026-01-17
 
 ### Added

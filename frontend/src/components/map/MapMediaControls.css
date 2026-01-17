@@ -75,6 +75,30 @@
     width: 100%;
 }
 
+.timeline-container {
+    position: relative;
+    width: 100%;
+}
+
+.bookmark-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 10px;
+    height: 10px;
+    background: #f0883e;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 2;
+    transition: all 0.2s;
+    box-shadow: 0 0 4px rgba(240, 136, 62, 0.5);
+}
+
+.bookmark-marker:hover {
+    transform: translate(-50%, -50%) scale(1.3);
+    box-shadow: 0 0 8px rgba(240, 136, 62, 0.8);
+}
+
 .timeline-slider {
     width: 100%;
     height: 8px;

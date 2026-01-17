@@ -1,4 +1,4 @@
-import { signal, computed } from '@preact/signals';
+import { signal, computed, effect } from '@preact/signals';
 import {
     getMapLayout, getMapRules, getRecentMapFiles, getCarrierLog, getCarrierEntries, setActiveMap,
     type MapRules, type RecentMapFiles, type CarrierLogInfo, type CarrierEntry
@@ -604,3 +604,29 @@ export function formatPlaybackTime(timeMs: number | null): string {
     const ms = date.getUTCMilliseconds().toString().padStart(3, '0');
     return `${hours}:${minutes}:${seconds}.${ms}`;
 }
+
+// ======================
+// Bidirectional Time Sync
+// ======================
+
+// Import sync function from bookmarkStore (avoiding circular deps by importing lazily)
+let syncFromMapFn: ((time: number) => void) | null = null;
+let isSyncEnabledFn: (() => boolean) | null = null;
+let lastSyncedTime: number | null = null;
+
+export function initMapSync(syncFromMap: (time: number) => void, isSyncEnabled: () => boolean): void {
+    syncFromMapFn = syncFromMap;
+    isSyncEnabledFn = isSyncEnabled;
+}
+
+// Effect: sync playbackTime changes to waveform
+effect(() => {
+    const time = playbackTime.value;
+    if (time === null) return;
+    if (!syncFromMapFn || !isSyncEnabledFn) return;
+    if (!isSyncEnabledFn()) return;
+    if (time === lastSyncedTime) return; // Avoid echo
+
+    lastSyncedTime = time;
+    syncFromMapFn(time);
+});

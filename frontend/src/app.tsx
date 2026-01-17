@@ -3,10 +3,25 @@ import { useEffect } from 'preact/hooks'
 import { checkHealth, getRecentFiles, deleteFile, renameFile } from './api/client'
 import { LogTable } from './components/log/LogTable'
 import { WaveformView } from './components/waveform/WaveformView'
-import { currentSession, startParsing, logError, initLogStore, isSyncEnabled, activeTab, openViews, openView, closeView, type ViewType } from './stores/logStore'
+import { currentSession, startParsing, logError, initLogStore, activeTab, openViews, openView, closeView, type ViewType } from './stores/logStore'
 import { HomeView } from './views/HomeView'
 import { MapViewer } from './views/MapViewer'
+import { BookmarkPanel } from './components/BookmarkPanel'
+import {
+  addBookmark,
+  getCurrentTime,
+  toggleBookmarkPanel,
+  jumpToNextBookmark,
+  jumpToPrevBookmark,
+  isSyncEnabled,
+  toggleSync,
+  syncFromMap
+} from './stores/bookmarkStore'
+import { initMapSync } from './stores/mapStore'
 import type { FileInfo } from './models/types'
+
+// Initialize bidirectional sync between mapStore and bookmarkStore
+initMapSync(syncFromMap, () => isSyncEnabled.value);
 
 /**
  * Main App Shell
@@ -42,6 +57,35 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Global keyboard shortcuts for bookmarks
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if user is typing in an input
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      if (e.ctrlKey && e.key === 'b' && !e.shiftKey) {
+        e.preventDefault();
+        if (currentSession.value) {
+          addBookmark(getCurrentTime());
+        }
+      } else if (e.ctrlKey && e.shiftKey && e.key === 'B') {
+        e.preventDefault();
+        toggleBookmarkPanel();
+      } else if (e.ctrlKey && e.key === ']') {
+        e.preventDefault();
+        jumpToNextBookmark();
+      } else if (e.ctrlKey && e.key === '[') {
+        e.preventDefault();
+        jumpToPrevBookmark();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const handleUploadSuccess = (file: FileInfo) => {
     recentFiles.value = [file, ...recentFiles.value]
   }
@@ -70,7 +114,7 @@ export function App() {
   }
 
   const handleSyncViews = () => {
-    isSyncEnabled.value = !isSyncEnabled.value;
+    toggleSync();
   }
 
   const handleClearSession = () => {
@@ -216,6 +260,8 @@ export function App() {
         {activeTab.value === 'waveform' && <WaveformView />}
         {activeTab.value === 'map-viewer' && <MapViewer />}
 
+        <BookmarkPanel />
+
         {showHelp.value && (
           <div class="help-overlay" onClick={() => showHelp.value = false}>
             <div class="help-modal" onClick={(e) => e.stopPropagation()}>
@@ -230,9 +276,16 @@ export function App() {
                   <li><kbd>Ctrl</kbd> + Click — Individual selection</li>
                   <li><kbd>Shift</kbd> + Click — Range selection</li>
                 </ul>
+                <h3>Bookmarks</h3>
+                <ul>
+                  <li><kbd>Ctrl</kbd> + <kbd>B</kbd> — Add bookmark at current time</li>
+                  <li><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> — Open bookmark panel</li>
+                  <li><kbd>Ctrl</kbd> + <kbd>]</kbd> — Jump to next bookmark</li>
+                  <li><kbd>Ctrl</kbd> + <kbd>[</kbd> — Jump to previous bookmark</li>
+                </ul>
                 <h3>View Controls</h3>
                 <ul>
-                  <li><strong>Sync Views:</strong> Synchronizes scroll position across split panes.</li>
+                  <li><strong>Sync Views:</strong> Synchronizes time across Waveform and Map views.</li>
                   <li><strong>Clear:</strong> Closes the current session and resets layout.</li>
                 </ul>
                 <h3>Waveform View</h3>

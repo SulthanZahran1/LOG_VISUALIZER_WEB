@@ -76,16 +76,14 @@ When starting a session:
 
 ## Project Status
 
-**Phase 3 — Map Viewer + Media Player** [DONE]
-- Time-based playback controls for replaying signal states.
-- Signal-based real-time coloring logic.
-- Recursive map layout support.
-- Side panel for detailed object inspection.
+**Phase 4 — Bookmarks + Time Sync** [DONE]
+- Ctrl+B adds bookmarks, Ctrl+Shift+B opens panel
+- Ctrl+]/[ navigates between bookmarks
+- Bidirectional time sync between Waveform and Map
 
-Next: **Phase 4 — Data Analysis & Export** (Planned)
-- Advanced statistics view.
-- Export to Excel/CSV.
-- Signal correlation tools.
+Next: **Phase 5 — Multi-File Merge** (Planned)
+- Merge multiple log files by timestamp
+- Display source file indicators
 
 ---
 

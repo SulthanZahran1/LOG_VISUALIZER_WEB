@@ -52,18 +52,12 @@
 
 ## 📋 Backlog: Future Phases
 
-### Phase 4: Bookmarks + Time Sync
-- [ ] Ctrl+B add bookmark, Ctrl+Shift+B bookmark list
-- [ ] Click bookmark → jump to time
-- [ ] Ctrl+]/[ next/prev bookmark
-- [ ] Sync Views button (master/slave sync)
-
-### Phase 4.5: Multi-File Merge
+### Phase 5: Multi-File Merge
 - [ ] Select multiple files for upload
 - [ ] Merge log entries by timestamp
 - [ ] Display source file indicator
 
-### Phase 5: Signal Validation (Post-MVP)
+### Phase 6: Signal Validation (Post-MVP)
 - [ ] Load validation rules from YAML
 - [ ] Sequence, timing, value range validators
 - [ ] YAML editor with syntax highlighting

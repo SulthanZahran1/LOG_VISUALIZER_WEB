@@ -13,6 +13,7 @@ import {
     focusedSignal,
     deviceColors
 } from '../../stores/waveformStore';
+import { sortedBookmarks, type Bookmark } from '../../stores/bookmarkStore';
 import type { LogEntry } from '../../models/types';
 import { formatTimestamp, getTickIntervals, findFirstIndexAtTime } from '../../utils/TimeAxisUtils';
 
@@ -59,6 +60,11 @@ const COLORS = {
     selectionBg: 'rgba(77, 182, 226, 0.25)',
     selectionBorder: '#4db6e2',
     selectionLabelBg: 'rgba(13, 17, 23, 0.8)',
+
+    // Bookmark colors
+    bookmarkLine: '#f0883e',
+    bookmarkFlag: 'rgba(240, 136, 62, 0.9)',
+    bookmarkText: '#ffffff',
 };
 
 export function WaveformCanvas() {
@@ -201,6 +207,9 @@ export function WaveformCanvas() {
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
+
+            // Draw bookmark markers
+            drawBookmarks(ctx, sortedBookmarks.value, range.start, pixelsPerMs, height, width);
 
             animationFrameId = requestAnimationFrame(render);
         };
@@ -611,4 +620,40 @@ function drawSelection(ctx: CanvasRenderingContext2D, range: { start: number, en
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, labelX + labelWidth / 2, labelY + 10);
+}
+
+function drawBookmarks(ctx: CanvasRenderingContext2D, bookmarks: Bookmark[], startTime: number, pixelsPerMs: number, height: number, width: number) {
+    bookmarks.forEach(bookmark => {
+        const x = (bookmark.time - startTime) * pixelsPerMs;
+
+        // Skip if bookmark is outside visible area
+        if (x < -20 || x > width + 20) return;
+
+        // Draw vertical line
+        ctx.strokeStyle = COLORS.bookmarkLine;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(x, AXIS_HEIGHT);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+
+        // Draw flag at top
+        const flagWidth = 12;
+        const flagHeight = 16;
+
+        ctx.fillStyle = COLORS.bookmarkFlag;
+        ctx.beginPath();
+        ctx.moveTo(x, AXIS_HEIGHT - 2);
+        ctx.lineTo(x + flagWidth, AXIS_HEIGHT - 2 + flagHeight / 2);
+        ctx.lineTo(x, AXIS_HEIGHT - 2 + flagHeight);
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw small dot at the base of the line as an anchor point
+        ctx.fillStyle = COLORS.bookmarkLine;
+        ctx.beginPath();
+        ctx.arc(x, AXIS_HEIGHT, 4, 0, Math.PI * 2);
+        ctx.fill();
+    });
 }
