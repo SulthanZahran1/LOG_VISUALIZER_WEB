@@ -21,3 +21,4 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/coverage/
 example_map.xml
+mapping_and_rules.yaml

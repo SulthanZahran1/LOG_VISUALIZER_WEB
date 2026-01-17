@@ -150,20 +150,38 @@ export function getCarriersAtUnit(unitId: string): string[] {
  * Supports exact matches and wildcards (e.g. "PLC_*").
  */
 export function applyDeviceMapping(deviceId: string): string | null {
-    if (!mapRules.value?.deviceToUnit) return null;
-
-    for (const mapping of mapRules.value.deviceToUnit) {
-        const pattern = mapping.pattern;
-        if (pattern.includes('*')) {
-            const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
-            if (regex.test(deviceId)) {
+    if (mapRules.value?.deviceToUnit) {
+        for (const mapping of mapRules.value.deviceToUnit) {
+            const pattern = mapping.pattern;
+            if (pattern.includes('*')) {
+                const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+                if (regex.test(deviceId)) {
+                    return mapping.unitId;
+                }
+            } else if (pattern === deviceId) {
                 return mapping.unitId;
             }
-        } else if (pattern === deviceId) {
-            return mapping.unitId;
         }
     }
-    return null;
+
+    // 2. Fallback Heuristic: extract unit portion from device ID
+    // Pattern: "...Belts.B1ACNV13301-102@B13" -> "B1ACNV13301-102"
+    // Heuristic: Take the part between the last dot and the '@' symbol.
+    let unitPortion = deviceId;
+
+    // Extract part after last dot if present
+    const lastDotIndex = deviceId.lastIndexOf('.');
+    if (lastDotIndex !== -1) {
+        unitPortion = deviceId.substring(lastDotIndex + 1);
+    }
+
+    // Extract part before '@' if present
+    const atIndex = unitPortion.indexOf('@');
+    if (atIndex !== -1) {
+        unitPortion = unitPortion.substring(0, atIndex);
+    }
+
+    return unitPortion;
 }
 
 /**
@@ -199,11 +217,23 @@ export function getUnitColor(unitId: string): { color?: string, text?: string } 
             const value = getSignalValueAtTime(key, playbackTime.value);
             if (value === undefined) continue;
 
+            // Normalize values for comparison
+            const normalizeValue = (v: any) => {
+                if (v === null || v === undefined) return '';
+                const s = String(v).trim().toLowerCase();
+                if (s === 'on' || s === 'true' || s === '1') return 'true';
+                if (s === 'off' || s === 'false' || s === '0') return 'false';
+                return s;
+            };
+
+            const valNorm = normalizeValue(value);
+            const ruleNorm = normalizeValue(rule.value);
+
             // Evaluate condition
             let match = false;
             switch (rule.op) {
-                case '==': match = String(value) === String(rule.value); break;
-                case '!=': match = String(value) !== String(rule.value); break;
+                case '==': match = valNorm === ruleNorm; break;
+                case '!=': match = valNorm !== ruleNorm; break;
                 case '>': match = Number(value) > Number(rule.value); break;
                 case '>=': match = Number(value) >= Number(rule.value); break;
                 case '<': match = Number(value) < Number(rule.value); break;
