@@ -59,15 +59,12 @@ export const isParsing = computed(() =>
     currentSession.value?.status === 'parsing' || currentSession.value?.status === 'pending'
 );
 
-export const filterBySelected = signal(false);
-
-// ... existing code ...
-
+// 2.05 Filter by Selected Signals (Waveform Selection)
+// Implicit mode: If signals are selected, filter to them. If empty, show all.
 export const filteredEntries = computed(() => {
     let entries = [...logEntries.value];
 
     // 1. Sort by timestamp first to ensure change detection is accurate
-    // (Optimization: Only if needed, but for now we keep it to be safe)
     entries.sort((a, b) => {
         const timeA = new Date(a.timestamp).getTime();
         const timeB = new Date(b.timestamp).getTime();
@@ -86,15 +83,10 @@ export const filteredEntries = computed(() => {
         });
     }
 
-    // 2.05 Filter by Selected Signals (Waveform Selection)
-    if (filterBySelected.value) {
-        // Use imported selectedSignals (ESM handles circular dependency by hoisting)
-        const selected = new Set(selectedSignals.value);
-        if (selected.size > 0) {
-            entries = entries.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
-        } else {
-            entries = []; // No selection means empty table when filter enabled
-        }
+    // 3. Selection Filter (Implicit)
+    const selected = new Set(selectedSignals.value);
+    if (selected.size > 0) {
+        entries = entries.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
     }
 
     // 2.1 Filter by Signal Type
@@ -102,7 +94,7 @@ export const filteredEntries = computed(() => {
         entries = entries.filter(e => e.signalType === signalTypeFilter.value);
     }
 
-    // 3. Search Filter
+    // 4. Search Filter
     if (searchQuery.value) {
         let matcher: (text: string) => boolean;
 
@@ -112,7 +104,6 @@ export const filteredEntries = computed(() => {
                 const regex = new RegExp(searchQuery.value, flags);
                 matcher = (text) => regex.test(text);
             } catch {
-                // Invalid regex, fallback to string includes
                 matcher = (text) => text.toLowerCase().includes(searchQuery.value.toLowerCase());
             }
         } else {
@@ -130,7 +121,7 @@ export const filteredEntries = computed(() => {
         );
     }
 
-    // 4. Final Sort (User selection)
+    // 5. Final Sort (User selection)
     if (sortColumn.value) {
         const col = sortColumn.value;
         const dir = sortDirection.value === 'asc' ? 1 : -1;

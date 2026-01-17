@@ -12,8 +12,7 @@ import {
     showChangedOnly,
     signalTypeFilter,
     fetchEntries,
-    openView,
-    filterBySelected
+    openView
 } from '../../stores/logStore';
 import { toggleSignal } from '../../stores/waveformStore';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
@@ -355,18 +354,10 @@ export function LogTable() {
                             />
                             Changes Only
                         </label>
-                        <label className="filter-toggle" title="Show Only Selected Signals">
-                            <input
-                                type="checkbox"
-                                checked={filterBySelected.value}
-                                onClick={(e) => filterBySelected.value = (e.currentTarget as HTMLInputElement).checked}
-                            />
-                            Filter to Selected
-                        </label>
                         <select
                             className="type-filter"
                             value={signalTypeFilter.value || ''}
-                            onChange={(e) => signalTypeFilter.value = (e.target as HTMLSelectElement).value || null}
+                            onChange={(e) => signalTypeFilter.value = (e.currentTarget as HTMLSelectElement).value || null}
                         >
                             <option value="">All Types</option>
                             <option value="boolean">Boolean</option>
