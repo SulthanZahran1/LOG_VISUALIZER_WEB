@@ -395,8 +395,16 @@ export function linkSignalLogSession(
     // Set playback time range from entries
     if (entries.length > 0) {
         const timestamps = entries
-            .map(e => e.timestamp ? new Date(e.timestamp as string).getTime() : null)
-            .filter((t): t is number => t !== null && !isNaN(t));
+            .map(e => {
+                if (e.timestamp === undefined || e.timestamp === null) return null;
+                // Handle both numeric (Unix ms) and string (ISO date) timestamps
+                if (typeof e.timestamp === 'number') {
+                    return e.timestamp;
+                }
+                const parsed = new Date(e.timestamp).getTime();
+                return isNaN(parsed) ? null : parsed;
+            })
+            .filter((t): t is number => t !== null);
         if (timestamps.length > 0) {
             const startTime = Math.min(...timestamps);
             const endTime = Math.max(...timestamps);
