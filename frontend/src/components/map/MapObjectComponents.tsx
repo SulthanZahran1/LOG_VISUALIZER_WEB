@@ -62,7 +62,7 @@ export function MapObjectComponent({ object, onClick }: ObjectProps) {
                     {carrierText}
                 </text>
             )}
-            {/* Unit label */}
+            {/* Unit label - Removed to reduce clutter per user feedback
             {object.text && (
                 <text
                     x={x + width / 2}
@@ -76,6 +76,7 @@ export function MapObjectComponent({ object, onClick }: ObjectProps) {
                     {object.text}
                 </text>
             )}
+            */}
         </g>
     );
 }
