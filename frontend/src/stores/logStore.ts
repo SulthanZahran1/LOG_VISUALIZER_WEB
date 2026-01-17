@@ -2,7 +2,7 @@ import { signal, computed, effect } from '@preact/signals';
 import { startParse, getParseStatus, getParseEntries } from '../api/client';
 import type { LogEntry, ParseSession } from '../models/types';
 import { saveSession, getSessions } from '../utils/persistence';
-import { selectedSignals } from './waveformStore';
+import { selectedSignals } from './selectionStore';
 
 export const currentSession = signal<ParseSession | null>(null);
 export const logEntries = signal<LogEntry[]>([]);

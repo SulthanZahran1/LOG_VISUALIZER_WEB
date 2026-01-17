@@ -1,7 +1,11 @@
 import { signal, computed, effect } from '@preact/signals';
 import { getParseChunk, getParseSignals } from '../api/client';
 import { currentSession, logEntries, clearSession } from './logStore';
+import { selectedSignals, focusedSignal, isSignalSelected, toggleSignal } from './selectionStore';
 import type { LogEntry, TimeRange, SignalType } from '../models/types';
+
+// Re-export for convenience if needed, but components should import from selectionStore
+export { selectedSignals, focusedSignal, isSignalSelected, toggleSignal };
 
 // Viewport State
 export const scrollOffset = signal(0); // start timestamp in ms
@@ -10,10 +14,8 @@ export const viewportWidth = signal(800); // Updated by resize observer
 export const hoverTime = signal<number | null>(null);
 export const selectionRange = signal<{ start: number, end: number } | null>(null);
 
-// Signal Selection
-export const selectedSignals = signal<string[]>([]); // "DeviceId::SignalName"
+// Signal Selection - State moved to selectionStore.ts to fix circular dependency
 export const waveformEntries = signal<Record<string, LogEntry[]>>({});
-export const focusedSignal = signal<string | null>(null); // "DeviceId::SignalName"
 
 // Full signal list from backend
 export const allSignals = signal<string[]>([]);
@@ -110,9 +112,7 @@ export function removeSignal(deviceId: string, signalName: string) {
     selectedSignals.value = selectedSignals.value.filter(s => s !== key);
 }
 
-export function isSignalSelected(deviceId: string, signalName: string): boolean {
-    return selectedSignals.value.includes(`${deviceId}::${signalName}`);
-}
+// isSignalSelected is imported/exported from selectionStore
 
 export function selectAllSignalsForDevice(deviceId: string) {
     const signals = availableSignals.value.get(deviceId) || [];
@@ -293,18 +293,7 @@ effect(() => {
     updateWaveformEntries();
 });
 
-/**
- * Add or remove a signal from the waveform
- */
-export function toggleSignal(deviceId: string, signalName: string) {
-    const key = `${deviceId}::${signalName}`;
-    if (selectedSignals.value.includes(key)) {
-        selectedSignals.value = selectedSignals.value.filter(s => s !== key);
-    } else {
-        selectedSignals.value = [...selectedSignals.value, key];
-    }
-    // The effect will automatically reset hasFetchedForCurrentSignals when selectedSignals changes
-}
+// toggleSignal is imported/exported from selectionStore
 
 /**
  * Zoom centered on a specific relative x position
