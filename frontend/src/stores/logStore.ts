@@ -10,6 +10,9 @@ export const totalEntries = signal(0);
 export const isLoadingLog = signal(false);
 export const logError = signal<string | null>(null);
 
+// Selected log entry time - used for bookmarking from Log Table view
+export const selectedLogTime = signal<number | null>(null);
+
 // Sorting and Filtering
 export const sortColumn = signal<keyof LogEntry | null>('timestamp');
 export const sortDirection = signal<'asc' | 'desc'>('asc');

@@ -12,7 +12,8 @@ import {
     showChangedOnly,
     signalTypeFilter,
     fetchEntries,
-    openView
+    openView,
+    selectedLogTime
 } from '../../stores/logStore';
 import { toggleSignal } from '../../stores/waveformStore';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
@@ -58,6 +59,21 @@ export function LogTable() {
             setLocalQuery(searchQuery.value);
         }
     }, [searchQuery.value]);
+
+    // Update selectedLogTime for bookmark functionality
+    useEffect(() => {
+        const indices = Array.from(selectedRows.value);
+        if (indices.length > 0) {
+            // Use the last selected row's timestamp
+            const lastIdx = indices[indices.length - 1];
+            const entry = filteredEntries.value[lastIdx];
+            if (entry?.timestamp) {
+                selectedLogTime.value = new Date(entry.timestamp).getTime();
+            }
+        } else {
+            selectedLogTime.value = null;
+        }
+    }, [selectedRows.value]);
 
     const onScroll = (e: Event) => {
         scrollSignal.value = (e.target as HTMLDivElement).scrollTop;

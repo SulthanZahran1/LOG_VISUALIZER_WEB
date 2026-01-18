@@ -117,6 +117,7 @@
 - Bookmark markers on waveform canvas and map timeline
 - Ctrl+]/[ to navigate between bookmarks
 - Bidirectional time sync between Waveform and Map views
+- View-aware bookmarking: Log Table bookmarks selected row, Waveform bookmarks view center, Map bookmarks playback time
 
 </details>
 

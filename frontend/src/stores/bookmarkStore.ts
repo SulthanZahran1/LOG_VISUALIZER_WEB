@@ -3,7 +3,7 @@
  * Bookmarks are file-scoped (persist per log file ID)
  */
 import { signal, computed, effect } from '@preact/signals';
-import { currentSession } from './logStore';
+import { currentSession, activeTab, selectedLogTime } from './logStore';
 import { jumpToTime as waveformJumpToTime, scrollOffset, viewRange } from './waveformStore';
 import { playbackTime, playbackStartTime, playbackEndTime } from './mapStore';
 
@@ -144,16 +144,83 @@ export function getPrevBookmark(currentTime: number): Bookmark | null {
     return null;
 }
 
-/** Get the current playback/view time from whichever view is active */
+/** 
+ * Get the current playback/view time from the currently active view.
+ * Prioritizes time source based on which tab is active.
+ */
 export function getCurrentTime(): number {
-    // Prefer map playback time if available, else use waveform center
+    const currentView = activeTab.value;
+
+    // Log Table: Use selected row's timestamp
+    if (currentView === 'log-table') {
+        if (selectedLogTime.value !== null) {
+            return selectedLogTime.value;
+        }
+        // Fallback to session start if no row selected
+        const session = currentSession.value;
+        if (session?.startTime !== undefined) {
+            return session.startTime;
+        }
+    }
+
+    // Map Viewer: Use playback time
+    if (currentView === 'map-viewer') {
+        if (playbackTime.value !== null) {
+            return playbackTime.value;
+        }
+        // Fallback to playback range start
+        if (playbackStartTime.value !== null) {
+            return playbackStartTime.value;
+        }
+    }
+
+    // Waveform: Use viewRange center
+    if (currentView === 'waveform') {
+        const range = viewRange.value;
+        if (range) {
+            return (range.start + range.end) / 2;
+        }
+        // Fallback to scrollOffset if valid
+        if (scrollOffset.value > 1000000000) {
+            return scrollOffset.value;
+        }
+    }
+
+    // General fallbacks (for any view without specific time)
+
+    // Try map playback time
     if (playbackTime.value !== null) {
         return playbackTime.value;
     }
+
+    // Try waveform viewRange
     const range = viewRange.value;
     if (range) {
         return (range.start + range.end) / 2;
     }
+
+    // Try selectedLogTime
+    if (selectedLogTime.value !== null) {
+        return selectedLogTime.value;
+    }
+
+    // Try scrollOffset if valid
+    if (scrollOffset.value > 1000000000) {
+        return scrollOffset.value;
+    }
+
+    // Try session start time
+    const session = currentSession.value;
+    if (session?.startTime !== undefined) {
+        return session.startTime;
+    }
+
+    // Try playback range start
+    if (playbackStartTime.value !== null) {
+        return playbackStartTime.value;
+    }
+
+    // Absolute fallback
     return scrollOffset.value;
 }
 

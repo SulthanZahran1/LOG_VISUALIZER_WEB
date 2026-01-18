@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.1] - 2026-01-18
+
+### Fixed
+- **Bookmarks now view-aware**: Fixed bug where bookmarks were always created at timestamp 0 instead of the current view time
+- **Log Table bookmarks**: Pressing Ctrl+B in Log Table now bookmarks the selected row's timestamp (instead of session start)
+- **Multi-view clarity**: `getCurrentTime()` now prioritizes time sources based on active tab:
+  - Log Table → Selected row timestamp
+  - Map Viewer → Playback position
+  - Waveform → View center
+
+### Added
+- `selectedLogTime` signal in `logStore.ts` to track selected log entry for bookmarking
+- View-aware time detection in `bookmarkStore.ts`
+
+---
+
 ## [0.6.0] - 2026-01-18
 
 ### Added
