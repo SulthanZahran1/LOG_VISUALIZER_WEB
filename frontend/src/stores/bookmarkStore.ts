@@ -4,8 +4,7 @@
  */
 import { signal, computed, effect } from '@preact/signals';
 import { currentSession, activeTab, selectedLogTime } from './logStore';
-import { jumpToTime as waveformJumpToTime, scrollOffset, viewRange, hoverTime, waveformEntries } from './waveformStore';
-import { focusedSignal } from './selectionStore';
+import { jumpToTime as waveformJumpToTime, scrollOffset, viewRange, hoverTime } from './waveformStore';
 import { playbackTime, playbackStartTime, playbackEndTime } from './mapStore';
 
 // ============================================================================
@@ -124,47 +123,6 @@ function showNotification(message: string, time: number): void {
     }, 2000);
 }
 
-/**
- * Find the nearest signal change to a given time.
- * If focusedSignal is set, prioritize that signal.
- * Returns the snapped time, or the original time if no nearby change found.
- */
-function snapToNearestChange(time: number, snapThresholdMs: number = 500): number {
-    const entries = waveformEntries.value;
-    const focused = focusedSignal.value;
-
-    let closestTime = time;
-    let closestDiff = snapThresholdMs;
-
-    // If there's a focused signal, prefer snapping to its changes
-    if (focused && entries[focused]) {
-        for (const entry of entries[focused]) {
-            const entryTime = new Date(entry.timestamp).getTime();
-            const diff = Math.abs(entryTime - time);
-            if (diff < closestDiff) {
-                closestDiff = diff;
-                closestTime = entryTime;
-            }
-        }
-    }
-
-    // If no focused signal or no match found, check all visible signals
-    if (closestTime === time) {
-        for (const key in entries) {
-            for (const entry of entries[key]) {
-                const entryTime = new Date(entry.timestamp).getTime();
-                const diff = Math.abs(entryTime - time);
-                if (diff < closestDiff) {
-                    closestDiff = diff;
-                    closestTime = entryTime;
-                }
-            }
-        }
-    }
-
-    return closestTime;
-}
-
 /** Add a bookmark at the given time */
 export function addBookmark(time: number, name?: string): Bookmark {
     const bookmark: Bookmark = {
@@ -240,17 +198,16 @@ export function getCurrentTime(): number {
         }
     }
 
-    // Waveform: Use cursor (hoverTime) with snap to signal change
+    // Waveform: Use cursor (hoverTime) - already snapped by WaveformCanvas
     if (currentView === 'waveform') {
-        // First priority: cursor position with snap
+        // First priority: cursor position (already snapped to signal changes)
         if (hoverTime.value !== null) {
-            return snapToNearestChange(hoverTime.value);
+            return hoverTime.value;
         }
-        // Second: view center with snap
+        // Second: view center
         const range = viewRange.value;
         if (range) {
-            const center = (range.start + range.end) / 2;
-            return snapToNearestChange(center);
+            return (range.start + range.end) / 2;
         }
         // Fallback to scrollOffset if valid
         if (scrollOffset.value > 1000000000) {

@@ -285,7 +285,7 @@ export function WaveformCanvas() {
         if (!rect) return;
 
         const x = e.clientX - rect.left;
-        hoverXRef.current = x;
+        const y = e.clientY - rect.top;
 
         // Handle panning
         if (isPanningRef.current) {
@@ -306,12 +306,50 @@ export function WaveformCanvas() {
             }
         }
 
-        // Update hover time for toolbar readout
+        // Calculate raw time and possibly snap to signal
         const range = viewRange.value;
-        if (range) {
-            const time = range.start + (x / zoomLevel.value);
-            hoverTime.value = time;
+        if (!range) {
+            hoverXRef.current = x;
+            return;
         }
+
+        const rawTime = range.start + (x / zoomLevel.value);
+        let snappedTime = rawTime;
+        let snappedX = x;
+
+        // Snap to signal transitions if hovering over a signal row (below time axis)
+        if (y > AXIS_HEIGHT) {
+            const rowIndex = Math.floor((y - AXIS_HEIGHT) / ROW_HEIGHT);
+            const signalKey = selectedSignals.value[rowIndex];
+
+            if (signalKey) {
+                const entries = waveformEntries.value[signalKey] || [];
+
+                // Find nearest signal change within snap threshold (in pixels, ~20px)
+                const snapThresholdPx = 20;
+                const snapThresholdMs = snapThresholdPx / zoomLevel.value;
+
+                let closestDiff = snapThresholdMs;
+
+                for (const entry of entries) {
+                    const entryTime = typeof entry.timestamp === 'number'
+                        ? entry.timestamp
+                        : new Date(entry.timestamp).getTime();
+                    const diff = Math.abs(entryTime - rawTime);
+
+                    if (diff < closestDiff) {
+                        closestDiff = diff;
+                        snappedTime = entryTime;
+                    }
+                }
+
+                // Calculate snapped X position
+                snappedX = (snappedTime - range.start) * zoomLevel.value;
+            }
+        }
+
+        hoverXRef.current = snappedX;
+        hoverTime.value = snappedTime;
     };
 
     const handleMouseLeave = () => {
