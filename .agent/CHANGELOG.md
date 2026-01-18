@@ -5,14 +5,17 @@
 ### Fixed
 - **Bookmarks now view-aware**: Fixed bug where bookmarks were always created at timestamp 0 instead of the current view time
 - **Log Table bookmarks**: Pressing Ctrl+B in Log Table now bookmarks the selected row's timestamp (instead of session start)
+- **Waveform cursor bookmarks**: Bookmarks now use cursor position (hoverTime) with snap to nearest signal change
 - **Multi-view clarity**: `getCurrentTime()` now prioritizes time sources based on active tab:
   - Log Table → Selected row timestamp
   - Map Viewer → Playback position
-  - Waveform → View center
+  - Waveform → Cursor position with signal snap (or view center if no cursor)
 
 ### Added
 - `selectedLogTime` signal in `logStore.ts` to track selected log entry for bookmarking
-- View-aware time detection in `bookmarkStore.ts`
+- `snapToNearestChange()` function to snap bookmark time to nearest signal transition
+- `bookmarkNotification` signal and `BookmarkNotification.tsx` component for visual feedback
+- Toast notification appears when bookmarks are added (auto-dismisses after 2s)
 
 ---
 

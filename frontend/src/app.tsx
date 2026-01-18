@@ -7,6 +7,7 @@ import { currentSession, startParsing, logError, initLogStore, activeTab, openVi
 import { HomeView } from './views/HomeView'
 import { MapViewer } from './views/MapViewer'
 import { BookmarkPanel } from './components/BookmarkPanel'
+import { BookmarkNotification } from './components/BookmarkNotification'
 import {
   addBookmark,
   getCurrentTime,
@@ -281,6 +282,7 @@ export function App() {
         {activeTab.value === 'map-viewer' && <MapViewer />}
 
         <BookmarkPanel />
+        <BookmarkNotification />
 
         {showHelp.value && (
           <div class="help-overlay" onClick={() => showHelp.value = false}>
