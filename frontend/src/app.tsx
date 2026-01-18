@@ -72,7 +72,7 @@ export function App() {
         if (currentSession.value) {
           addBookmark(getCurrentTime());
         }
-      } else if (e.ctrlKey && e.shiftKey && e.key === 'B') {
+      } else if (e.ctrlKey && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
         e.preventDefault();
         toggleBookmarkPanel();
       } else if (e.ctrlKey && e.key === ']') {

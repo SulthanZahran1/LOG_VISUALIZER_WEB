@@ -19,6 +19,10 @@
 - `bookmarkNotification` signal and `BookmarkNotification.tsx` component for visual feedback
 - Toast notification appears when bookmarks are added (auto-dismisses after 2s)
 
+### Testing
+- **Unit Tests**: Created `bookmarkStore.test.ts` (14 tests) covering all store logic
+- **E2E Tests**: Created `bookmarks.spec.ts` (7 tests) covering keyboard shortcuts, panel operations, and waveform cursor snapping
+
 ---
 
 ## [0.6.0] - 2026-01-18
