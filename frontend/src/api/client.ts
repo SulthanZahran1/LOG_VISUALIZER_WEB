@@ -137,6 +137,17 @@ export async function startParse(fileId: string): Promise<ParseSession> {
     });
 }
 
+/**
+ * Start a merged parse session with multiple files.
+ * Files will be parsed individually and merged with deduplication.
+ */
+export async function startParseMerge(fileIds: string[]): Promise<ParseSession> {
+    return request<ParseSession>('/parse', {
+        method: 'POST',
+        body: JSON.stringify({ fileIds }),
+    });
+}
+
 export async function getParseStatus(sessionId: string): Promise<ParseSession> {
     return request<ParseSession>(`/parse/${sessionId}/status`);
 }

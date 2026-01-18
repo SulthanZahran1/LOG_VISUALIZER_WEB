@@ -52,11 +52,6 @@
 
 ## 📋 Backlog: Future Phases
 
-### Phase 5: Multi-File Merge
-- [ ] Select multiple files for upload
-- [ ] Merge log entries by timestamp
-- [ ] Display source file indicator
-
 ### Phase 6: Signal Validation (Post-MVP)
 - [ ] Load validation rules from YAML
 - [ ] Sequence, timing, value range validators
@@ -112,5 +107,25 @@
 - Playwright for E2E tests
 - ESLint with TypeScript plugins
 - `/testing` workflow for agents
+
+</details>
+
+<details>
+<summary>Phase 4: Bookmarks + Time Sync</summary>
+
+- Ctrl+B to add bookmarks, Ctrl+Shift+B to open panel
+- Bookmark markers on waveform canvas and map timeline
+- Ctrl+]/[ to navigate between bookmarks
+- Bidirectional time sync between Waveform and Map views
+
+</details>
+
+<details>
+<summary>Phase 5: Multi-File Merge</summary>
+
+- Multi-file selection via Ctrl+Click or checkboxes
+- Backend merger with 1s fuzzy deduplication
+- SourceID tracking for merged entries
+- "Merge & Visualize" button in Recent Files
 
 </details>

@@ -10,11 +10,27 @@ interface RecentFilesProps {
   title?: string;
   className?: string;
   hideIcon?: boolean;
+  // Multi-select mode
+  multiSelect?: boolean;
+  onMultiSelect?: (files: FileInfo[]) => void;
+  multiSelectLabel?: string;
 }
 
-export function RecentFiles({ files, onFileSelect, onFileDelete, onFileRename, title = "Recent Files", className = "", hideIcon = false }: RecentFilesProps) {
+export function RecentFiles({
+  files,
+  onFileSelect,
+  onFileDelete,
+  onFileRename,
+  title = "Recent Files",
+  className = "",
+  hideIcon = false,
+  multiSelect = false,
+  onMultiSelect,
+  multiSelectLabel = "Merge Selected"
+}: RecentFilesProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const handleStartEdit = (e: Event, file: FileInfo) => {
     e.stopPropagation();
@@ -33,6 +49,26 @@ export function RecentFiles({ files, onFileSelect, onFileDelete, onFileRename, t
   const handleCancelEdit = (e: Event) => {
     e.stopPropagation();
     setEditingId(null);
+  };
+
+  const toggleSelection = (fileId: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(fileId)) {
+        next.delete(fileId);
+      } else {
+        next.add(fileId);
+      }
+      return next;
+    });
+  };
+
+  const handleMerge = () => {
+    if (onMultiSelect && selectedIds.size > 0) {
+      const selectedFiles = files.filter(f => selectedIds.has(f.id));
+      onMultiSelect(selectedFiles);
+      setSelectedIds(new Set());
+    }
   };
 
   const formatSize = (bytes: number) => {
@@ -76,7 +112,33 @@ export function RecentFiles({ files, onFileSelect, onFileDelete, onFileRename, t
           </div>
         ) : (
           files.map((file) => (
-            <div key={file.id} class={`file-item ${editingId === file.id ? 'editing' : ''}`} onClick={() => !editingId && onFileSelect(file)}>
+            <div
+              key={file.id}
+              class={`file-item ${editingId === file.id ? 'editing' : ''} ${selectedIds.has(file.id) ? 'selected' : ''}`}
+              onClick={(e: MouseEvent) => {
+                if (editingId) return;
+
+                // Ctrl+Click or checkbox click for multi-select
+                if (multiSelect && (e.ctrlKey || e.metaKey)) {
+                  toggleSelection(file.id);
+                } else if (selectedIds.size > 0 && multiSelect) {
+                  // If items are already selected, clicking adds to selection
+                  toggleSelection(file.id);
+                } else {
+                  // Normal single-click: open file immediately
+                  onFileSelect(file);
+                }
+              }}
+            >
+              {multiSelect && (
+                <input
+                  type="checkbox"
+                  class="file-checkbox"
+                  checked={selectedIds.has(file.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={() => toggleSelection(file.id)}
+                />
+              )}
               <div class="file-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -149,6 +211,15 @@ export function RecentFiles({ files, onFileSelect, onFileDelete, onFileRename, t
           ))
         )}
       </div>
+
+      {multiSelect && selectedIds.size > 0 && (
+        <div class="merge-bar">
+          <span class="merge-count">{selectedIds.size} file{selectedIds.size > 1 ? 's' : ''} selected</span>
+          <button class="btn-merge" onClick={handleMerge}>
+            {multiSelectLabel}
+          </button>
+        </div>
+      )}
 
       <style>{`
                 .recent-files {
@@ -319,6 +390,47 @@ export function RecentFiles({ files, onFileSelect, onFileDelete, onFileRename, t
                 .btn-cancel:hover {
                     background: var(--bg-tertiary);
                     color: var(--text-primary);
+                }
+
+                .file-checkbox {
+                    width: 16px;
+                    height: 16px;
+                    accent-color: var(--primary-accent);
+                    cursor: pointer;
+                    flex-shrink: 0;
+                }
+
+                .file-item.selected {
+                    background: rgba(77, 182, 226, 0.1);
+                    border-left: 2px solid var(--primary-accent);
+                }
+
+                .merge-bar {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: var(--spacing-sm) var(--spacing-md);
+                    background: var(--bg-tertiary);
+                    border-top: 1px solid var(--border-color);
+                }
+
+                .merge-count {
+                    font-size: 12px;
+                    color: var(--text-muted);
+                }
+
+                .btn-merge {
+                    padding: 6px 12px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    border: none;
+                    background: var(--primary-accent);
+                    color: white;
+                }
+                .btn-merge:hover {
+                    filter: brightness(1.1);
                 }
             `}</style>
     </div>

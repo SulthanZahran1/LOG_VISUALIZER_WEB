@@ -1,6 +1,6 @@
 import { useSignal } from '@preact/signals'
 import { useEffect } from 'preact/hooks'
-import { checkHealth, getRecentFiles, deleteFile, renameFile } from './api/client'
+import { checkHealth, getRecentFiles, deleteFile, renameFile, startParseMerge } from './api/client'
 import { LogTable } from './components/log/LogTable'
 import { WaveformView } from './components/waveform/WaveformView'
 import { currentSession, startParsing, logError, initLogStore, activeTab, openViews, openView, closeView, type ViewType } from './stores/logStore'
@@ -93,6 +93,25 @@ export function App() {
   const handleFileSelect = (file: FileInfo) => {
     startParsing(file.id)
     openView('log-table')
+  }
+
+  const handleFileMerge = async (files: FileInfo[]) => {
+    if (files.length === 0) return;
+    if (files.length === 1) {
+      // Single file - use normal flow
+      handleFileSelect(files[0]);
+      return;
+    }
+
+    try {
+      const fileIds = files.map(f => f.id);
+      const session = await startParseMerge(fileIds);
+      currentSession.value = session;
+      openView('log-table');
+    } catch (err) {
+      console.error('Failed to start merge session', err);
+      logError.value = err instanceof Error ? err.message : 'Failed to merge files';
+    }
   }
 
   const handleFileDelete = async (id: string) => {
@@ -251,6 +270,7 @@ export function App() {
             recentFiles={recentFiles.value}
             onUploadSuccess={handleUploadSuccess}
             onFileSelect={handleFileSelect}
+            onFileMerge={handleFileMerge}
             onFileDelete={handleFileDelete}
             onFileRename={handleRename}
             onOpenView={handleOpenView}

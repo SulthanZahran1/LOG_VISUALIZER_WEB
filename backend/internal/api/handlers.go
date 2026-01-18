@@ -128,30 +128,47 @@ func (h *Handler) HandleRenameFile(c echo.Context) error {
 	return c.JSON(http.StatusOK, info)
 }
 
-// HandleStartParse starts a parsing session for a file.
+// HandleStartParse starts a parsing session for one or more files.
+// Accepts either {"fileId": "id"} or {"fileIds": ["id1", "id2", ...]}.
 func (h *Handler) HandleStartParse(c echo.Context) error {
 	var req struct {
-		FileID string `json:"fileId"`
+		FileID  string   `json:"fileId"`
+		FileIDs []string `json:"fileIds"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	if req.FileID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "fileId is required"})
+	// Normalize to array
+	var fileIDs []string
+	if len(req.FileIDs) > 0 {
+		fileIDs = req.FileIDs
+	} else if req.FileID != "" {
+		fileIDs = []string{req.FileID}
+	} else {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "fileId or fileIds is required"})
 	}
 
-	info, err := h.store.Get(req.FileID)
-	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "file not found"})
+	// Get file paths for all files
+	var filePaths []string
+	var validFileIDs []string
+
+	for _, fid := range fileIDs {
+		info, err := h.store.Get(fid)
+		if err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": fmt.Sprintf("file not found: %s", fid)})
+		}
+
+		path, err := h.store.GetFilePath(fid)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to get file path for: %s", fid)})
+		}
+
+		validFileIDs = append(validFileIDs, info.ID)
+		filePaths = append(filePaths, path)
 	}
 
-	path, err := h.store.GetFilePath(req.FileID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get file path"})
-	}
-
-	sess, err := h.session.StartSession(info.ID, path)
+	sess, err := h.session.StartMultiSession(validFileIDs, filePaths)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to start session: %v", err)})
 	}

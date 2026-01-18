@@ -76,14 +76,14 @@ When starting a session:
 
 ## Project Status
 
-**Phase 4 — Bookmarks + Time Sync** [DONE]
-- Ctrl+B adds bookmarks, Ctrl+Shift+B opens panel
-- Ctrl+]/[ navigates between bookmarks
-- Bidirectional time sync between Waveform and Map
+**Phase 5 — Multi-File Merge** [DONE]
+- Ctrl+Click or checkboxes to select multiple files
+- Merge with 1s fuzzy deduplication
+- SourceID tracking for merged entries
 
-Next: **Phase 5 — Multi-File Merge** (Planned)
-- Merge multiple log files by timestamp
-- Display source file indicators
+Next: **Phase 6 — Signal Validation** (Planned)
+- Load validation rules from YAML
+- Sequence, timing, value range validators
 
 ---
 

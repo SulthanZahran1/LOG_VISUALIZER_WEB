@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.6.0] - 2026-01-18
+
+### Added
+- **Multi-File Merge**: Select multiple log files to merge into a single session
+- **Fuzzy Deduplication**: Entries with same signal/value within 1s are deduplicated
+- **SourceID Tracking**: Merged entries track their origin file
+- **Ctrl+Click Selection**: Use Ctrl+Click or checkboxes to select multiple files
+- **Merge & Visualize Button**: Appears when files are selected
+
+### Backend
+- Added `merger.go` with `MergeLogs()` function and deduplication logic
+- Added `SourceID` field to `LogEntry` model
+- Added `StartMultiSession()` to session manager
+- Extended `/api/parse` to accept `fileIds[]` array
+
+### Frontend
+- Updated `RecentFiles.tsx` with multi-select mode (Ctrl+Click or checkboxes)
+- Added `startParseMerge()` API function
+- Wired `onFileMerge` handler in App.tsx and HomeView.tsx
+
+---
+
 ## [0.5.0] - 2026-01-17
 
 ### Added

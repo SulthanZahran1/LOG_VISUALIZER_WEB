@@ -203,3 +203,104 @@ func (m *Manager) GetSignals(id string) ([]string, bool) {
 
 	return signals, true
 }
+
+// StartMultiSession begins the parsing process for multiple files and merges them.
+func (m *Manager) StartMultiSession(fileIDs []string, filePaths []string) (*models.ParseSession, error) {
+	if len(fileIDs) == 0 || len(fileIDs) != len(filePaths) {
+		return nil, fmt.Errorf("mismatched fileIDs and filePaths")
+	}
+
+	// For single file, delegate to StartSession
+	if len(fileIDs) == 1 {
+		return m.StartSession(fileIDs[0], filePaths[0])
+	}
+
+	sessionID := uuid.New().String()
+
+	// Use first file ID as primary, but indicate merged
+	session := models.NewParseSession(sessionID, fileIDs[0])
+	session.Status = models.SessionStatusParsing
+
+	state := &SessionState{
+		Session: session,
+	}
+
+	m.mu.Lock()
+	m.sessions[sessionID] = state
+	m.mu.Unlock()
+
+	// Run parsing in a background goroutine
+	go m.runMultiParse(sessionID, fileIDs, filePaths)
+
+	return session, nil
+}
+
+func (m *Manager) runMultiParse(sessionID string, fileIDs, filePaths []string) {
+	start := time.Now()
+
+	// Parse all files
+	parsedLogs := make([]*models.ParsedLog, 0, len(filePaths))
+	var allErrors []models.ParseError
+	var parserName string
+
+	for i, filePath := range filePaths {
+		p, err := m.registry.FindParser(filePath)
+		if err != nil {
+			m.updateSessionError(sessionID, fmt.Sprintf("failed to find parser for file %d: %v", i, err))
+			return
+		}
+
+		if parserName == "" {
+			parserName = p.Name()
+		}
+
+		result, parseErrors, err := p.Parse(filePath)
+		if err != nil {
+			m.updateSessionError(sessionID, fmt.Sprintf("parse failed for file %d: %v", i, err))
+			return
+		}
+
+		parsedLogs = append(parsedLogs, result)
+
+		for _, e := range parseErrors {
+			if e != nil {
+				allErrors = append(allErrors, *e)
+			}
+		}
+
+		// Update progress
+		progress := (float64(i+1) / float64(len(filePaths))) * 80.0
+		m.mu.Lock()
+		if state, ok := m.sessions[sessionID]; ok {
+			state.Session.Progress = progress
+		}
+		m.mu.Unlock()
+	}
+
+	// Merge all parsed logs
+	merged := parser.MergeLogs(parsedLogs, fileIDs, parser.DefaultMergeConfig())
+
+	elapsed := time.Since(start).Milliseconds()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	state, ok := m.sessions[sessionID]
+	if !ok {
+		return
+	}
+
+	state.Result = merged
+	state.Session.Status = models.SessionStatusComplete
+	state.Session.Progress = 100
+	state.Session.EntryCount = len(merged.Entries)
+	state.Session.SignalCount = len(merged.Signals)
+	state.Session.ProcessingTimeMs = elapsed
+	state.Session.ParserName = parserName
+	state.Session.Errors = allErrors
+
+	if merged.TimeRange != nil {
+		state.Session.StartTime = merged.TimeRange.Start.UnixMilli()
+		state.Session.EndTime = merged.TimeRange.End.UnixMilli()
+	}
+}
