@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import {
     mapLayout, mapLoading, mapError, mapZoom, mapOffset, selectedUnitId, fetchMapLayout, mapObjectsArray,
+    viewportSize, followedCarrierId,
     type MapObject
 } from '../../stores/mapStore';
 import { MapObjectComponent } from './MapObjectComponents';
@@ -15,6 +16,16 @@ export function MapCanvas() {
 
     useEffect(() => {
         fetchMapLayout();
+
+        // Report viewport size
+        if (containerRef.current) {
+            const observer = new ResizeObserver(entries => {
+                const { width, height } = entries[0].contentRect;
+                viewportSize.value = { width, height };
+            });
+            observer.observe(containerRef.current);
+            return () => observer.disconnect();
+        }
     }, []);
 
     const handleWheel = (e: WheelEvent) => {
@@ -40,6 +51,11 @@ export function MapCanvas() {
                 y: mapOffset.value.y + dy
             };
             lastMousePos.value = { x: e.clientX, y: e.clientY };
+
+            // Manual pan breaks follow mode
+            if (followedCarrierId.value) {
+                followedCarrierId.value = null;
+            }
         }
     };
 

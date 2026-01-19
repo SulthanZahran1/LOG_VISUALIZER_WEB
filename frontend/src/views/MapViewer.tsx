@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { MapCanvas } from '../components/map/MapCanvas';
 import { MapFileSelector } from '../components/map/MapFileSelector';
+import { MapFollowControls } from '../components/map/MapFollowControls';
 import { CarrierPanel } from '../components/map/CarrierPanel';
 import { FileUpload } from '../components/file/FileUpload';
 import { RecentFiles } from '../components/file/RecentFiles';
@@ -90,6 +91,7 @@ export function MapViewer() {
                             >
                                 {carrierTrackingEnabled.value ? '🟢 Tracking ON' : '⚪ Tracking OFF'}
                             </button>
+                            {carrierTrackingEnabled.value && <MapFollowControls />}
                         </div>
                         <MapFileSelector onFilesChanged={handleFilesChanged} />
                     </div>

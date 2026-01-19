@@ -44,6 +44,9 @@ export const rulesError = signal<string | null>(null);
 export const recentMapFiles = signal<RecentMapFiles | null>(null);
 export const recentFilesLoading = signal(false);
 
+// Viewport state for centering
+export const viewportSize = signal({ width: 0, height: 0 });
+
 export const canEnableRules = computed(() => !!mapLayout.value && !!mapRules.value);
 
 // Carrier log state
@@ -56,6 +59,9 @@ export const carrierLogFileName = signal<string | null>(null);
 export const signalLogSessionId = signal<string | null>(null);
 export const signalLogFileName = signal<string | null>(null);
 export const signalLogEntryCount = signal<number>(0);
+
+// Follow state
+export const followedCarrierId = signal<string | null>(null);
 
 // ======================
 // Playback State
@@ -138,6 +144,44 @@ export const latestSignalValues = signal<Map<string, any>>(new Map()); // device
 
 // Signal history for time-based playback (key -> array of {timestamp, value})
 export const signalHistory = signal<Map<string, Array<{ timestamp: number, value: any }>>>(new Map());
+
+// Centering and Viewport
+export function centerOnUnit(unitId: string) {
+    if (!mapLayout.value) return;
+    const obj = mapLayout.value.objects[unitId];
+    if (!obj || !obj.location) return;
+
+    const [x, y] = obj.location.split(',').map(Number);
+    if (isNaN(x) || isNaN(y)) return;
+
+    // Center on (x, y) relative to viewport size
+    const z = mapZoom.value;
+    const w = viewportSize.value.width;
+    const h = viewportSize.value.height;
+
+    mapOffset.value = {
+        x: w / 2 - x * z,
+        y: h / 2 - y * z
+    };
+}
+
+export function centerOnCarrier(carrierId: string) {
+    const unitId = carrierLocations.value.get(carrierId);
+    if (unitId) {
+        centerOnUnit(unitId);
+    }
+}
+
+// Effect: auto-center on followed carrier
+effect(() => {
+    const cid = followedCarrierId.value;
+    if (!cid) return;
+
+    const uid = carrierLocations.value.get(cid);
+    if (uid) {
+        centerOnUnit(uid);
+    }
+});
 
 // Computed: count carriers at each unit
 export const unitCarrierCounts = computed(() => {

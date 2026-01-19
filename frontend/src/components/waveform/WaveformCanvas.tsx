@@ -71,6 +71,7 @@ export function WaveformCanvas() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const hoverXRef = useRef<number | null>(null);
+    const hoverRowRef = useRef<number | null>(null);
 
     // Panning state refs
     const isPanningRef = useRef(false);
@@ -211,6 +212,25 @@ export function WaveformCanvas() {
             // Draw bookmark markers
             drawBookmarks(ctx, sortedBookmarks.value, range.start, pixelsPerMs, height, width);
 
+            // Draw hover tooltip
+            const currentHoverX = hoverXRef.current;
+            const hoverRow = hoverRowRef.current;
+            if (currentHoverX !== null && hoverRow !== null && hoverRow >= 0 && hoverRow < selectedSignals.value.length) {
+                const signalKey = selectedSignals.value[hoverRow];
+                const entries = waveformEntries.value[signalKey] || [];
+                const hTime = hoverTime.value;
+                if (hTime !== null && entries.length > 0) {
+                    // Find the value at hoverTime
+                    let valueAtTime: any = entries[0].value;
+                    for (const e of entries) {
+                        const t = typeof e.timestamp === 'number' ? e.timestamp : new Date(e.timestamp).getTime();
+                        if (t <= hTime) valueAtTime = e.value;
+                        else break;
+                    }
+                    drawTooltip(ctx, currentHoverX, AXIS_HEIGHT + hoverRow * ROW_HEIGHT, signalKey, valueAtTime, width);
+                }
+            }
+
             animationFrameId = requestAnimationFrame(render);
         };
 
@@ -350,10 +370,18 @@ export function WaveformCanvas() {
 
         hoverXRef.current = snappedX;
         hoverTime.value = snappedTime;
+
+        // Track row for tooltip
+        if (y > AXIS_HEIGHT) {
+            hoverRowRef.current = Math.floor((y - AXIS_HEIGHT) / ROW_HEIGHT);
+        } else {
+            hoverRowRef.current = null;
+        }
     };
 
     const handleMouseLeave = () => {
         hoverXRef.current = null;
+        hoverRowRef.current = null;
         hoverTime.value = null;
         isPanningRef.current = false;
         if (containerRef.current) {
@@ -577,21 +605,26 @@ function drawStateSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], sta
 
         // Background box with colored fill
         ctx.fillStyle = COLORS.stateColors[colorIndex];
-        ctx.fillRect(x, 0, nextX - x, height);
+        ctx.fillRect(Math.max(0, x), 0, Math.min(nextX, width) - Math.max(0, x), height);
 
         // Border
         ctx.strokeStyle = COLORS.stateBorder;
-        ctx.strokeRect(x, 0, nextX - x, height);
+        ctx.strokeRect(Math.max(0, x), 0, Math.min(nextX, width) - Math.max(0, x), height);
 
-        // Text
-        if (nextX - x > 30) {
-            ctx.fillStyle = COLORS.stateText;
-            ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'middle';
-            const textWidth = ctx.measureText(valStr).width;
-            if (textWidth < (nextX - x - 12)) {
-                ctx.fillText(valStr, x + 6, height / 2);
+        // Text - "sticky" label logic
+        ctx.fillStyle = COLORS.stateText;
+        ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        const textWidth = ctx.measureText(valStr).width;
+        const visibleWidth = Math.min(nextX, width) - Math.max(0, x);
+
+        if (visibleWidth > textWidth + 12) {
+            // If the start is off-screen to the left, "stick" the label to the left edge
+            const labelX = x < 0 ? 6 : x + 6;
+            // Only draw if there's room and it's within the segment
+            if (labelX + textWidth < Math.min(nextX, width) - 6) {
+                ctx.fillText(valStr, labelX, height / 2);
             }
         }
     });
@@ -694,4 +727,45 @@ function drawBookmarks(ctx: CanvasRenderingContext2D, bookmarks: Bookmark[], sta
         ctx.arc(x, AXIS_HEIGHT, 4, 0, Math.PI * 2);
         ctx.fill();
     });
+}
+
+function drawTooltip(ctx: CanvasRenderingContext2D, x: number, rowY: number, signalKey: string, value: any, width: number) {
+    const [device, signal] = signalKey.split('::');
+    const valStr = String(value);
+    const displayText = `${signal}: ${valStr}`;
+
+    ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, sans-serif';
+    const textWidth = ctx.measureText(displayText).width;
+    const padding = 8;
+    const tooltipWidth = textWidth + padding * 2;
+    const tooltipHeight = 24;
+
+    // Position tooltip to the right of cursor, unless it would go off-screen
+    let tooltipX = x + 12;
+    if (tooltipX + tooltipWidth > width) {
+        tooltipX = x - tooltipWidth - 12;
+    }
+    const tooltipY = rowY + 8;
+
+    // Background
+    ctx.fillStyle = 'rgba(22, 27, 34, 0.95)';
+    ctx.beginPath();
+    ctx.roundRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4);
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = 'rgba(77, 182, 226, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Text
+    ctx.fillStyle = '#e6edf3';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(displayText, tooltipX + padding, tooltipY + tooltipHeight / 2);
+
+    // Device name (smaller, dimmed)
+    ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillStyle = '#8b949e';
+    ctx.fillText(device, tooltipX + padding, tooltipY - 8);
 }
