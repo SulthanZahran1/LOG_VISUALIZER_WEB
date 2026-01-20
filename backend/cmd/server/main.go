@@ -25,6 +25,13 @@ func main() {
 	// Initialize API handler
 	h := api.NewHandler(fileStore, sessionMgr)
 
+	// Load default rules on startup
+	if err := h.LoadDefaultRules(); err != nil {
+		fmt.Printf("Warning: failed to load default rules: %v\n", err)
+	} else {
+		fmt.Println("Default rules loaded successfully")
+	}
+
 	e := echo.New()
 
 	// Middleware
@@ -69,6 +76,10 @@ func main() {
 	apiGroup.GET("/map/rules", h.HandleGetMapRules)
 	apiGroup.POST("/map/rules", h.HandleUploadMapRules)
 	apiGroup.GET("/map/files/recent", h.HandleRecentMapFiles)
+
+	// Default maps
+	apiGroup.GET("/map/defaults", h.HandleGetDefaultMaps)
+	apiGroup.POST("/map/defaults/load", h.HandleLoadDefaultMap)
 
 	// Carrier log for map tracking
 	apiGroup.POST("/map/carrier-log", h.HandleUploadCarrierLog)

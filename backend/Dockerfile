@@ -26,6 +26,11 @@ COPY --from=builder /server .
 RUN mkdir -p config
 COPY --from=builder /app/config* ./config/
 
+# Copy defaults directory for persistent default maps and rules
+RUN mkdir -p data/defaults/maps
+COPY --from=builder /app/data/defaults ./data/defaults/
+
 EXPOSE 8089
 
 CMD ["./server"]
+

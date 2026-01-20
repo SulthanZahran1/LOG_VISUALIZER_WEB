@@ -1,8 +1,10 @@
 import { signal, computed, effect } from '@preact/signals';
 import {
     getMapLayout, getMapRules, getRecentMapFiles, getCarrierLog, getCarrierEntries, setActiveMap,
-    type MapRules, type RecentMapFiles, type CarrierLogInfo, type CarrierEntry
+    getDefaultMaps, loadDefaultMap,
+    type MapRules, type RecentMapFiles, type CarrierLogInfo, type CarrierEntry, type DefaultMapInfo
 } from '../api/client';
+
 
 export interface MapObject {
     name: string;
@@ -126,6 +128,38 @@ export async function loadMap(id: string) {
         mapLoading.value = false;
     }
 }
+
+// Default maps state
+export const defaultMaps = signal<DefaultMapInfo[]>([]);
+export const defaultMapsLoading = signal(false);
+
+export async function fetchDefaultMaps() {
+    defaultMapsLoading.value = true;
+    try {
+        const data = await getDefaultMaps();
+        defaultMaps.value = data.maps || [];
+    } catch (err: unknown) {
+        console.error('Failed to fetch default maps:', err);
+        defaultMaps.value = [];
+    } finally {
+        defaultMapsLoading.value = false;
+    }
+}
+
+export async function loadDefaultMapByName(name: string) {
+    mapLoading.value = true;
+    mapError.value = null;
+    try {
+        const layout = await loadDefaultMap(name);
+        mapLayout.value = layout;
+    } catch (err: unknown) {
+        console.error('Failed to load default map:', err);
+        mapError.value = err instanceof Error ? err.message : 'Failed to load default map';
+    } finally {
+        mapLoading.value = false;
+    }
+}
+
 
 // Derived
 export const mapObjectsArray = computed(() => {

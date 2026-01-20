@@ -303,6 +303,28 @@ export async function getRecentMapFiles(): Promise<RecentMapFiles> {
     return request<RecentMapFiles>('/map/files/recent');
 }
 
+// Default Maps
+export interface DefaultMapInfo {
+    id: string;
+    name: string;
+}
+
+export interface DefaultMapsResponse {
+    maps: DefaultMapInfo[];
+}
+
+export async function getDefaultMaps(): Promise<DefaultMapsResponse> {
+    return request<DefaultMapsResponse>('/map/defaults');
+}
+
+export async function loadDefaultMap(name: string): Promise<any> {
+    return request<any>('/map/defaults/load', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+    });
+}
+
+
 // Carrier Log
 export interface CarrierLogInfo {
     loaded: boolean;

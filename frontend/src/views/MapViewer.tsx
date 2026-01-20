@@ -7,11 +7,12 @@ import { FileUpload } from '../components/file/FileUpload';
 import { RecentFiles } from '../components/file/RecentFiles';
 import { uploadMapLayout } from '../api/client';
 import type { FileInfo } from '../models/types';
-import { AlertTriangleIcon } from '../components/icons';
+import { AlertTriangleIcon, MapIcon } from '../components/icons';
 import {
     fetchMapLayout, fetchMapRules, mapLayout, mapRules,
     carrierTrackingEnabled, toggleCarrierTracking, canEnableRules,
-    recentMapFiles, fetchRecentMapFiles, loadMap
+    recentMapFiles, fetchRecentMapFiles, loadMap,
+    defaultMaps, fetchDefaultMaps, loadDefaultMapByName
 } from '../stores/mapStore';
 
 export function MapViewer() {
@@ -19,7 +20,12 @@ export function MapViewer() {
 
     useEffect(() => {
         const init = async () => {
-            await Promise.all([fetchMapLayout(), fetchMapRules(), fetchRecentMapFiles()]);
+            await Promise.all([
+                fetchMapLayout(),
+                fetchMapRules(),
+                fetchRecentMapFiles(),
+                fetchDefaultMaps()
+            ]);
             setInitialized(true);
         };
         init();
@@ -39,6 +45,10 @@ export function MapViewer() {
         await loadMap(file.id);
     };
 
+    const handleDefaultMapSelect = async (name: string) => {
+        await loadDefaultMapByName(name);
+    };
+
     if (!initialized) {
         return (
             <div class="view-container">
@@ -51,8 +61,35 @@ export function MapViewer() {
         <div class="view-container">
             {!mapLayout.value?.objects || Object.keys(mapLayout.value.objects).length === 0 ? (
                 <div class="map-placeholder">
-                    <h2>No Map Loaded</h2>
-                    <p>Upload a conveyor map XML file to get started.</p>
+                    <h2>Select a Map</h2>
+
+                    {/* Default Maps Section */}
+                    {defaultMaps.value.length > 0 && (
+                        <div class="default-maps-section">
+                            <p class="section-label">Default Maps</p>
+                            <div class="default-maps-grid">
+                                {defaultMaps.value.map(map => (
+                                    <button
+                                        key={map.id}
+                                        class="default-map-card"
+                                        onClick={() => handleDefaultMapSelect(map.name)}
+                                    >
+                                        <MapIcon size={24} />
+                                        <span class="map-name">{map.name.replace('.xml', '')}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Divider */}
+                    {defaultMaps.value.length > 0 && (
+                        <div class="divider-or">
+                            <span>or upload your own</span>
+                        </div>
+                    )}
+
+                    {/* Upload Section */}
                     <div class="upload-container">
                         <FileUpload
                             onUploadSuccess={handleUploadSuccess}
@@ -61,6 +98,8 @@ export function MapViewer() {
                             maxSize={50 * 1024 * 1024} // 50MB for maps
                         />
                     </div>
+
+                    {/* Recent Maps Section */}
                     {recentMapFiles.value?.xmlFiles && recentMapFiles.value.xmlFiles.length > 0 && (
                         <div class="recent-maps-container">
                             <RecentFiles
@@ -75,6 +114,7 @@ export function MapViewer() {
                     <p class="hint">You'll also need a YAML rules file for carrier tracking.</p>
                 </div>
             ) : (
+
                 <>
                     <div class="map-toolbar">
                         <div class="toolbar-left">
@@ -209,7 +249,71 @@ export function MapViewer() {
                 .status-dot.off {
                     background: #6e7681;
                 }
+                
+                /* Default Maps Picker */
+                .default-maps-section {
+                    width: 100%;
+                    max-width: 600px;
+                    margin-bottom: var(--spacing-md);
+                }
+                .section-label {
+                    font-size: 0.85rem;
+                    color: var(--text-tertiary);
+                    margin-bottom: var(--spacing-sm);
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                }
+                .default-maps-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                    gap: var(--spacing-md);
+                }
+                .default-map-card {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    gap: var(--spacing-sm);
+                    padding: var(--spacing-lg);
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--card-radius);
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+                .default-map-card:hover {
+                    background: var(--bg-tertiary);
+                    border-color: var(--accent-primary);
+                    transform: translateY(-2px);
+                }
+                .default-map-card .map-name {
+                    font-size: 0.9rem;
+                    font-weight: 500;
+                    color: var(--text-primary);
+                    text-align: center;
+                    word-break: break-word;
+                }
+                .divider-or {
+                    display: flex;
+                    align-items: center;
+                    width: 100%;
+                    max-width: 500px;
+                    margin: var(--spacing-md) 0;
+                    color: var(--text-tertiary);
+                    font-size: 0.8rem;
+                }
+                .divider-or::before,
+                .divider-or::after {
+                    content: '';
+                    flex: 1;
+                    height: 1px;
+                    background: var(--border-color);
+                }
+                .divider-or span {
+                    padding: 0 var(--spacing-md);
+                }
             `}</style>
+
         </div>
     );
 }

@@ -3,6 +3,8 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +32,29 @@ func NewHandler(store storage.Store, session *session.Manager) *Handler {
 		store:   store,
 		session: session,
 	}
+}
+
+// LoadDefaultRules loads the default rules.yaml file if it exists.
+func (h *Handler) LoadDefaultRules() error {
+	rulesPath := "./data/defaults/rules.yaml"
+	if _, err := os.Stat(rulesPath); os.IsNotExist(err) {
+		return nil // No default rules file
+	}
+
+	file, err := os.Open(rulesPath)
+	if err != nil {
+		return fmt.Errorf("failed to open default rules: %w", err)
+	}
+	defer file.Close()
+
+	rules, err := parser.ParseMapRulesFromReader(file)
+	if err != nil {
+		return fmt.Errorf("failed to parse default rules: %w", err)
+	}
+
+	h.currentRulesID = "default:rules.yaml"
+	h.currentRules = rules
+	return nil
 }
 
 // HandleHealth returns server health status.
@@ -245,15 +270,27 @@ func (h *Handler) HandleGetMapLayout(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]interface{}{"objects": map[string]interface{}{}})
 	}
 
-	// Get file info for metadata
-	info, err := h.store.Get(h.currentMapID)
-	if err != nil {
-		// Log error but proceed? Or fail. Let's fail safe.
-	}
+	var path string
+	var mapName string
 
-	path, err := h.store.GetFilePath(h.currentMapID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get map file path"})
+	// Check if it's a default map
+	if strings.HasPrefix(h.currentMapID, "default:") {
+		cleanName := strings.TrimPrefix(h.currentMapID, "default:")
+		path = filepath.Join("./data/defaults/maps", cleanName)
+		mapName = cleanName
+	} else {
+		// Get file from store
+		info, _ := h.store.Get(h.currentMapID)
+		var err error
+		path, err = h.store.GetFilePath(h.currentMapID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get map file path"})
+		}
+		if info != nil {
+			mapName = info.Name
+		} else {
+			mapName = "Unknown Map"
+		}
 	}
 
 	layout, err := parser.ParseMapXML(path)
@@ -261,18 +298,12 @@ func (h *Handler) HandleGetMapLayout(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to parse map layout: %v", err)})
 	}
 
-	response := map[string]interface{}{
+	return c.JSON(http.StatusOK, map[string]interface{}{
 		"version": layout.Version,
 		"objects": layout.Objects,
 		"id":      h.currentMapID,
-		"name":    "Unknown Map",
-	}
-
-	if info != nil {
-		response["name"] = info.Name
-	}
-
-	return c.JSON(http.StatusOK, response)
+		"name":    mapName,
+	})
 }
 
 // HandleUploadMapLayout accepts a map XML file and sets it as the active layout.
@@ -530,6 +561,76 @@ func (h *Handler) HandleGetValidationRules(c echo.Context) error {
 // HandleUpdateValidationRules updates placeholder validation rules.
 func (h *Handler) HandleUpdateValidationRules(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "updated"})
+}
+
+// HandleGetDefaultMaps returns a list of available default map layouts.
+func (h *Handler) HandleGetDefaultMaps(c echo.Context) error {
+	defaultsDir := "./data/defaults/maps"
+
+	entries, err := os.ReadDir(defaultsDir)
+	if err != nil {
+		// No defaults directory - return empty list
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"maps": []interface{}{},
+		})
+	}
+
+	var maps []map[string]string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasSuffix(strings.ToLower(name), ".xml") {
+			maps = append(maps, map[string]string{
+				"name": name,
+				"id":   name, // Use filename as ID for defaults
+			})
+		}
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"maps": maps,
+	})
+}
+
+// HandleLoadDefaultMap loads a specific default map by name.
+func (h *Handler) HandleLoadDefaultMap(c echo.Context) error {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if req.Name == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name is required"})
+	}
+
+	// Sanitize filename to prevent path traversal
+	cleanName := filepath.Base(req.Name)
+	mapPath := filepath.Join("./data/defaults/maps", cleanName)
+
+	// Verify file exists
+	if _, err := os.Stat(mapPath); os.IsNotExist(err) {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "default map not found"})
+	}
+
+	// Parse to validate
+	layout, err := parser.ParseMapXML(mapPath)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to parse map: %v", err)})
+	}
+
+	// Mark as active (use special prefix for defaults)
+	h.currentMapID = "default:" + cleanName
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"version": layout.Version,
+		"objects": layout.Objects,
+		"id":      h.currentMapID,
+		"name":    cleanName,
+	})
 }
 
 // HandleUploadChunk accepts a single chunk of a file.
