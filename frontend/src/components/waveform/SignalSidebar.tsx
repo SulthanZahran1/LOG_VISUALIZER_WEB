@@ -18,6 +18,7 @@ import {
     focusedSignal
 } from '../../stores/waveformStore';
 import { logEntries } from '../../stores/logStore';
+import { ChevronRightIcon } from '../icons';
 import type { SignalType } from '../../models/types';
 
 export function SignalSidebar() {
@@ -252,7 +253,7 @@ export function SignalSidebar() {
                         {filterPresets.value.map(p => (
                             <optgroup key={p.name} label={p.name}>
                                 <option value={p.name}>Load "{p.name}"</option>
-                                <option value={`DELETE:${p.name}`}>❌ Delete "{p.name}"</option>
+                                <option value={`DELETE:${p.name}`}>Delete "{p.name}"</option>
                             </optgroup>
                         ))}
                     </select>
@@ -310,7 +311,7 @@ export function SignalSidebar() {
                             <div class="device-group" key={device}>
                                 <div class="device-header" onClick={() => toggleDevice(device)}>
                                     <div class="device-accent" style={{ backgroundColor: deviceColors.value.get(device) }} />
-                                    <span class={`expand-icon ${isExpanded ? 'expanded' : ''}`}>▶</span>
+                                    <span class={`expand-icon ${isExpanded ? 'expanded' : ''}`}><ChevronRightIcon /></span>
                                     <input
                                         type="checkbox"
                                         class={partiallySelected ? 'indeterminate' : ''}

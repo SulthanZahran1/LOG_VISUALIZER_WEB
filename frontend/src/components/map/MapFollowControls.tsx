@@ -1,5 +1,6 @@
 import { useSignal } from '@preact/signals';
 import { carrierLocations, followedCarrierId, centerOnCarrier } from '../../stores/mapStore';
+import { TargetIcon, EyeIcon, CenterIcon } from '../icons';
 import './MapFollowControls.css';
 
 export function MapFollowControls() {
@@ -61,7 +62,7 @@ export function MapFollowControls() {
                 disabled={!followedCarrierId.value && !carriers.find(id => id.toLowerCase() === searchQuery.value.toLowerCase())}
                 title={followedCarrierId.value ? 'Stop following' : 'Follow carrier'}
             >
-                {followedCarrierId.value ? '🎯 Following' : '🔭 Follow'}
+                {followedCarrierId.value ? <><TargetIcon size={14} /> Following</> : <><EyeIcon size={14} /> Follow</>}
             </button>
             <button
                 class="center-btn"
@@ -69,7 +70,7 @@ export function MapFollowControls() {
                 disabled={!followedCarrierId.value}
                 title="Re-center on followed carrier"
             >
-                ⌘
+                <CenterIcon size={14} />
             </button>
         </div>
     );

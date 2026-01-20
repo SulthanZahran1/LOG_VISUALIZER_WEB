@@ -213,7 +213,6 @@ export function WaveformCanvas() {
             drawBookmarks(ctx, sortedBookmarks.value, range.start, pixelsPerMs, height, width);
 
             // Draw hover tooltip
-            const currentHoverX = hoverXRef.current;
             const hoverRow = hoverRowRef.current;
             if (currentHoverX !== null && hoverRow !== null && hoverRow >= 0 && hoverRow < selectedSignals.value.length) {
                 const signalKey = selectedSignals.value[hoverRow];

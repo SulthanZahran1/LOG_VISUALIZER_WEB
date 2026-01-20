@@ -3,6 +3,7 @@ import {
     latestSignalValues, carrierLocations, centerOnUnit,
     followedCarrierId, centerOnCarrier
 } from '../../stores/mapStore';
+import { TargetIcon, XIcon } from '../icons';
 
 import './CarrierPanel.css';
 
@@ -29,9 +30,9 @@ export function CarrierPanel() {
                         onClick={() => centerOnUnit(unitId)}
                         title="Center view on this unit"
                     >
-                        🎯
+                        <TargetIcon size={14} />
                     </button>
-                    <button className="close-btn" onClick={() => selectedUnitId.value = null}>×</button>
+                    <button className="close-btn" onClick={() => selectedUnitId.value = null}><XIcon size={14} /></button>
                 </div>
             </div>
 

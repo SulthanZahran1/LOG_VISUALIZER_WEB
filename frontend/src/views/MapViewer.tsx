@@ -7,6 +7,7 @@ import { FileUpload } from '../components/file/FileUpload';
 import { RecentFiles } from '../components/file/RecentFiles';
 import { uploadMapLayout } from '../api/client';
 import type { FileInfo } from '../models/types';
+import { AlertTriangleIcon } from '../components/icons';
 import {
     fetchMapLayout, fetchMapRules, mapLayout, mapRules,
     carrierTrackingEnabled, toggleCarrierTracking, canEnableRules,
@@ -79,7 +80,7 @@ export function MapViewer() {
                         <div class="toolbar-left">
                             <h3>{mapLayout.value.name || 'Conveyor Map'}</h3>
                             {!mapRules.value?.rules?.length && (
-                                <span class="rules-warning">⚠️ No rules loaded</span>
+                                <span class="rules-warning"><AlertTriangleIcon size={14} /> No rules loaded</span>
                             )}
                         </div>
                         <div class="toolbar-center">
@@ -89,7 +90,7 @@ export function MapViewer() {
                                 disabled={!canEnableRules.value}
                                 title={!canEnableRules.value ? 'Load XML Layout and YAML Rules to enable tracking' : ''}
                             >
-                                {carrierTrackingEnabled.value ? '🟢 Tracking ON' : '⚪ Tracking OFF'}
+                                <><span class={`status-dot ${carrierTrackingEnabled.value ? 'on' : 'off'}`} /> Tracking {carrierTrackingEnabled.value ? 'ON' : 'OFF'}</>
                             </button>
                             {carrierTrackingEnabled.value && <MapFollowControls />}
                         </div>
@@ -190,6 +191,23 @@ export function MapViewer() {
                     font-size: 0.85rem;
                     margin-left: 1rem;
                     color: #FFA500;
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                }
+                .status-dot {
+                    display: inline-block;
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    margin-right: 4px;
+                }
+                .status-dot.on {
+                    background: #90EE90;
+                    box-shadow: 0 0 4px #90EE90;
+                }
+                .status-dot.off {
+                    background: #6e7681;
                 }
             `}</style>
         </div>

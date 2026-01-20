@@ -8,6 +8,7 @@ import { HomeView } from './views/HomeView'
 import { MapViewer } from './views/MapViewer'
 import { BookmarkPanel } from './components/BookmarkPanel'
 import { BookmarkNotification } from './components/BookmarkNotification'
+import { XIcon } from './components/icons'
 import {
   addBookmark,
   getCurrentTime,
@@ -246,7 +247,7 @@ export function App() {
                 class="tab-close"
                 onClick={(e) => { e.stopPropagation(); handleCloseView(viewType); }}
               >
-                ×
+                <XIcon size={12} />
               </span>
             )}
           </button>
@@ -262,7 +263,7 @@ export function App() {
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
             Parsing Error: {logError.value}
-            <button onClick={() => logError.value = null}>✕</button>
+            <button onClick={() => logError.value = null}><XIcon size={14} /></button>
           </div>
         )}
 
@@ -289,7 +290,7 @@ export function App() {
             <div class="help-modal" onClick={(e) => e.stopPropagation()}>
               <div class="help-header">
                 <h2>PLC Log Visualizer Help</h2>
-                <button onClick={() => showHelp.value = false}>✕</button>
+                <button onClick={() => showHelp.value = false}><XIcon size={16} /></button>
               </div>
               <div class="help-content">
                 <h3>Keyboard Shortcuts</h3>

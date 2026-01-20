@@ -18,6 +18,7 @@ import {
 import { currentSession, logEntries } from '../../stores/logStore';
 import { uploadMapLayout, uploadMapRules, uploadCarrierLog } from '../../api/client';
 import type { FileInfo } from '../../models/types';
+import { CheckIcon } from '../icons';
 
 import './MapFileSelector.css';
 
@@ -256,7 +257,7 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
                             </button>
                             {signalLogSessionId.value && (
                                 <div className="signal-log-info">
-                                    ✓ Linked: {signalLogEntryCount.value} entries
+                                    <CheckIcon size={14} /> Linked: {signalLogEntryCount.value} entries
                                 </div>
                             )}
                         </div>
@@ -279,7 +280,7 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
                             )}
                             {carrierLogInfo.value?.loaded && (
                                 <div className="carrier-info">
-                                    ✓ Loaded: {carrierLogInfo.value.entryCount} entries
+                                    <CheckIcon size={14} /> Loaded: {carrierLogInfo.value.entryCount} entries
                                 </div>
                             )}
                         </div>

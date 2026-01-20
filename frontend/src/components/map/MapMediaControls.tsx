@@ -4,6 +4,7 @@ import {
     formatPlaybackTime
 } from '../../stores/mapStore';
 import { sortedBookmarks, jumpToBookmark } from '../../stores/bookmarkStore';
+import { SkipBackIcon, PlayIcon, PauseIcon, SkipForwardIcon } from '../icons';
 import './MapMediaControls.css';
 
 const SPEED_OPTIONS = [0.5, 1, 2, 4, 10];
@@ -47,7 +48,7 @@ export function MapMediaControls() {
                     disabled={!hasData}
                     title="Skip back 10s"
                 >
-                    ⏪ 10s
+                    <SkipBackIcon size={14} /> 10s
                 </button>
 
                 {/* Play/Pause */}
@@ -57,7 +58,7 @@ export function MapMediaControls() {
                     disabled={!hasData}
                     title={playing ? 'Pause' : 'Play'}
                 >
-                    {playing ? '⏸' : '▶'}
+                    {playing ? <PauseIcon size={18} /> : <PlayIcon size={18} />}
                 </button>
 
                 {/* Skip Forward */}
@@ -67,7 +68,7 @@ export function MapMediaControls() {
                     disabled={!hasData}
                     title="Skip forward 10s"
                 >
-                    10s ⏩
+                    10s <SkipForwardIcon size={14} />
                 </button>
 
                 {/* Speed Selector */}

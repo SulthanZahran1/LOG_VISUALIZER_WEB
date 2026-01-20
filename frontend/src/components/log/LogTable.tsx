@@ -19,6 +19,7 @@ import { toggleSignal } from '../../stores/waveformStore';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
 import type { LogEntry } from '../../models/types';
 import { SignalSidebar } from '../waveform/SignalSidebar';
+import { SearchIcon, ChartIcon, CopyIcon, RefreshIcon, ChevronUpIcon, ChevronDownIcon } from '../icons';
 import './LogTable.css';
 
 const ROW_HEIGHT = 28; // Increased for better readability
@@ -337,7 +338,7 @@ export function LogTable() {
             <div className="log-table-toolbar">
                 <div className="toolbar-left">
                     <div className="search-box">
-                        <span className="search-icon">🔍</span>
+                        <span className="search-icon"><SearchIcon size={14} /></span>
                         <input
                             type="text"
                             placeholder="Filter signals, devices, values..."
@@ -386,9 +387,9 @@ export function LogTable() {
                     <span className="selection-count">
                         {selectedRows.value.size > 0 && `${selectedRows.value.size} selected`}
                     </span>
-                    <button className="btn-icon" onClick={() => openView('waveform')} title="Open Timing Diagram">📊</button>
-                    <button className="btn-icon" onClick={handleCopy} title="Copy selected (Ctrl+C)">📋</button>
-                    <button className="btn-icon" onClick={() => fetchEntries(1, 1000)} title="Reload data">🔄</button>
+                    <button className="btn-icon" onClick={() => openView('waveform')} title="Open Timing Diagram"><ChartIcon /></button>
+                    <button className="btn-icon" onClick={handleCopy} title="Copy selected (Ctrl+C)"><CopyIcon /></button>
+                    <button className="btn-icon" onClick={() => fetchEntries(1, 1000)} title="Reload data"><RefreshIcon /></button>
                 </div>
             </div>
 
@@ -397,15 +398,15 @@ export function LogTable() {
                 <div className="log-table-content">
                     <div className="log-table-header">
                         <div className="log-col col-ts" style={{ width: columnWidths.value.ts }} onClick={() => handleHeaderClick('timestamp')}>
-                            TIMESTAMP {sortColumn.value === 'timestamp' && (sortDirection.value === 'asc' ? '↑' : '↓')}
+                            TIMESTAMP {sortColumn.value === 'timestamp' && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
                             <div className="resize-handle" onMouseDown={(e) => handleResize('ts', e)} />
                         </div>
                         <div className="log-col col-dev" style={{ width: columnWidths.value.dev }} onClick={() => handleHeaderClick('deviceId')}>
-                            DEVICE ID {sortColumn.value === 'deviceId' && (sortDirection.value === 'asc' ? '↑' : '↓')}
+                            DEVICE ID {sortColumn.value === 'deviceId' && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
                             <div className="resize-handle" onMouseDown={(e) => handleResize('dev', e)} />
                         </div>
                         <div className="log-col col-sig" style={{ width: columnWidths.value.sig }} onClick={() => handleHeaderClick('signalName')}>
-                            SIGNAL NAME {sortColumn.value === 'signalName' && (sortDirection.value === 'asc' ? '↑' : '↓')}
+                            SIGNAL NAME {sortColumn.value === 'signalName' && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
                             <div className="resize-handle" onMouseDown={(e) => handleResize('sig', e)} />
                         </div>
                         <div className="log-col col-val" style={{ width: columnWidths.value.val }}>

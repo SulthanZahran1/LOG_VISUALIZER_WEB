@@ -145,7 +145,7 @@ test.describe('Waveform Cursor Snapping', () => {
             await page.waitForTimeout(2000)
 
             // Open Timing Diagram from Log Table toolbar
-            await page.locator('.btn-icon').filter({ hasText: '📊' }).click()
+            await page.locator('.btn-icon[title="Open Timing Diagram"]').click()
 
             // Wait for Timing Diagram tab to be active and canvas to be visible
             await expect(page.locator('.tab-item.active')).toContainText('Timing Diagram')

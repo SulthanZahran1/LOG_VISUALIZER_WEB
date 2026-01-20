@@ -9,6 +9,7 @@ import {
     toggleBookmarkPanel,
     sortedBookmarks
 } from '../stores/bookmarkStore';
+import { XIcon } from './icons';
 
 function formatTime(timeMs: number): string {
     const date = new Date(timeMs);
@@ -33,7 +34,7 @@ export function BookmarkPanel() {
             <div class="bookmark-panel" onClick={handlePanelClick}>
                 <div class="bookmark-header">
                     <h2>Bookmarks</h2>
-                    <button class="close-btn" onClick={toggleBookmarkPanel}>×</button>
+                    <button class="close-btn" onClick={toggleBookmarkPanel}><XIcon size={14} /></button>
                 </div>
 
                 <div class="bookmark-list">
@@ -60,7 +61,7 @@ export function BookmarkPanel() {
                                         removeBookmark(bookmark.id);
                                     }}
                                 >
-                                    ×
+                                    <XIcon size={12} />
                                 </button>
                             </div>
                         ))

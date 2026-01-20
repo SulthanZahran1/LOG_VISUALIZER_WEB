@@ -1,4 +1,5 @@
 import { selectedUnitId, mapLayout, getCarriersAtUnit } from '../../stores/mapStore';
+import { BoxIcon } from '../icons';
 import './MapDetailPanel.css';
 
 export function MapDetailPanel() {
@@ -41,7 +42,7 @@ export function MapDetailPanel() {
                             <ul class="carrier-list">
                                 {carriers.map(id => (
                                     <li key={id} class="carrier-item">
-                                        <span class="carrier-icon">📦</span>
+                                        <span class="carrier-icon"><BoxIcon size={14} /></span>
                                         <span class="carrier-id">{id}</span>
                                     </li>
                                 ))}
