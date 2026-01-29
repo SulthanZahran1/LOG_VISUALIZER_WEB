@@ -11,6 +11,7 @@ export interface LogEntry {
     timestamp: number; // Unix ms
     value: boolean | string | number;
     signalType: SignalType;
+    category?: string; // Category from PLC debug format
 }
 
 export interface ParsedLog {

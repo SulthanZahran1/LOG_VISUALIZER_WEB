@@ -39,7 +39,8 @@ export function LogTable() {
     const columnWidths = useSignal({
         ts: 220,
         dev: 180,
-        sig: 300,
+        sig: 250,
+        cat: 120,
         val: 150,
         type: 100
     });
@@ -409,6 +410,10 @@ export function LogTable() {
                             SIGNAL NAME {sortColumn.value === 'signalName' && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
                             <div className="resize-handle" onMouseDown={(e) => handleResize('sig', e)} />
                         </div>
+                        <div className="log-col col-cat" style={{ width: columnWidths.value.cat }} onClick={() => handleHeaderClick('category')}>
+                            CATEGORY {sortColumn.value === 'category' && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
+                            <div className="resize-handle" onMouseDown={(e) => handleResize('cat', e)} />
+                        </div>
                         <div className="log-col col-val" style={{ width: columnWidths.value.val }}>
                             VALUE
                             <div className="resize-handle" onMouseDown={(e) => handleResize('val', e)} />
@@ -436,6 +441,9 @@ export function LogTable() {
                                             </div>
                                             <div className="log-col" style={{ width: columnWidths.value.sig }}>
                                                 <HighlightText text={entry.signalName} />
+                                            </div>
+                                            <div className="log-col" style={{ width: columnWidths.value.cat }}>
+                                                <HighlightText text={entry.category || ''} />
                                             </div>
                                             <div className={`log-col val-${entry.signalType}`} style={{ width: columnWidths.value.val }}>
                                                 <HighlightText text={String(entry.value)} />

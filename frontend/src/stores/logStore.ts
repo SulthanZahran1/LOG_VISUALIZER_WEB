@@ -131,8 +131,8 @@ export const filteredEntries = computed(() => {
         const col = sortColumn.value;
         const dir = sortDirection.value === 'asc' ? 1 : -1;
         entries.sort((a, b) => {
-            const valA = a[col];
-            const valB = b[col];
+            const valA = a[col] ?? '';
+            const valB = b[col] ?? '';
             if (valA < valB) return -1 * dir;
             if (valA > valB) return 1 * dir;
             return 0;
