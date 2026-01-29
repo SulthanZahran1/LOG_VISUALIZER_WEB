@@ -19,5 +19,6 @@ type LogEntry struct {
 	Timestamp  time.Time   `json:"timestamp"`
 	Value      interface{} `json:"value"` // bool, string, or int
 	SignalType SignalType  `json:"signalType"`
+	Category   string      `json:"category,omitempty"` // Category from PLC debug format
 	SourceID   string      `json:"sourceId,omitempty"` // File ID for merged sessions
 }

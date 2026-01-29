@@ -122,7 +122,7 @@ func (p *PLCDebugParser) parseLine(line string, lineNum int) (*models.LogEntry, 
 	tsStr := m[1]
 	// level := m[2]
 	path := m[3]
-	// category := m[4]
+	category := strings.TrimSpace(m[4])
 	signal := m[5]
 	dtypeToken := strings.ToLower(m[6])
 	valueStr := m[7]
@@ -151,6 +151,7 @@ func (p *PLCDebugParser) parseLine(line string, lineNum int) (*models.LogEntry, 
 		Timestamp:  ts,
 		Value:      value,
 		SignalType: stype,
+		Category:   category,
 	}, nil
 }
 
@@ -192,6 +193,7 @@ func (p *PLCDebugParser) fastParseLine(line string) *models.LogEntry {
 	if colonIdx == -1 {
 		return nil
 	}
+	category := strings.TrimSpace(catSignal[:colonIdx])
 	signal := strings.TrimSpace(catSignal[colonIdx+1:])
 
 	parenOpen := strings.Index(line[bracket3Close:], "(")
@@ -233,5 +235,6 @@ func (p *PLCDebugParser) fastParseLine(line string) *models.LogEntry {
 		Timestamp:  ts,
 		Value:      value,
 		SignalType: stype,
+		Category:   category,
 	}
 }
