@@ -65,16 +65,23 @@ export const isParsing = computed(() =>
 // 2.05 Filter by Selected Signals (Waveform Selection)
 // Implicit mode: If signals are selected, filter to them. If empty, show all.
 export const filteredEntries = computed(() => {
-    let entries = [...logEntries.value];
+    // OPTIMIZATION: Early exit if no signals selected - avoids all expensive operations
+    const selected = new Set(selectedSignals.value);
+    if (selected.size === 0) {
+        return [];
+    }
 
-    // 1. Sort by timestamp first to ensure change detection is accurate
-    entries.sort((a, b) => {
-        const timeA = new Date(a.timestamp).getTime();
-        const timeB = new Date(b.timestamp).getTime();
-        return timeA - timeB;
-    });
+    // 1. Selection Filter (do this FIRST to reduce dataset size for subsequent operations)
+    let entries = logEntries.value.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
 
-    // 2. Filter "Show Changed Only"
+    // 2. Filter by Signal Type (cheap filter, do early)
+    if (signalTypeFilter.value) {
+        entries = entries.filter(e => e.signalType === signalTypeFilter.value);
+    }
+
+    // 3. Filter "Show Changed Only" 
+    // NOTE: Backend returns entries sorted by timestamp, so change detection is accurate
+    // We only create the Map when this filter is enabled
     if (showChangedOnly.value) {
         const lastValues = new Map<string, string | number | boolean>();
         entries = entries.filter(e => {
@@ -84,19 +91,6 @@ export const filteredEntries = computed(() => {
             lastValues.set(key, e.value);
             return isChanged;
         });
-    }
-
-    // 3. Selection Filter (Strict)
-    const selected = new Set(selectedSignals.value);
-    if (selected.size === 0) {
-        entries = [];
-    } else {
-        entries = entries.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
-    }
-
-    // 2.1 Filter by Signal Type
-    if (signalTypeFilter.value) {
-        entries = entries.filter(e => e.signalType === signalTypeFilter.value);
     }
 
     // 4. Search Filter
@@ -126,11 +120,12 @@ export const filteredEntries = computed(() => {
         );
     }
 
-    // 5. Final Sort (User selection)
+    // 5. Final Sort (User selection) - only sort once at the end
     if (sortColumn.value) {
         const col = sortColumn.value;
         const dir = sortDirection.value === 'asc' ? 1 : -1;
-        entries.sort((a, b) => {
+        // Create a shallow copy for sorting to avoid mutating the filtered reference
+        entries = [...entries].sort((a, b) => {
             const valA = a[col] ?? '';
             const valB = b[col] ?? '';
             if (valA < valB) return -1 * dir;

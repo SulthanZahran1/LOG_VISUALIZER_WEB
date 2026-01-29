@@ -57,12 +57,16 @@ func (p *PLCDebugParser) Parse(filePath string) (*models.ParsedLog, []*models.Pa
 	}
 	defer file.Close()
 
-	entries := make([]models.LogEntry, 0)
-	errors := make([]*models.ParseError, 0)
+	// Pre-allocate with estimated capacity for large files (reduces reallocations)
+	entries := make([]models.LogEntry, 0, 10000)
+	errors := make([]*models.ParseError, 0, 100)
 	signals := make(map[string]struct{})
 	devices := make(map[string]struct{})
 
 	scanner := bufio.NewScanner(file)
+	// Increase buffer size for large log files (1MB instead of default 64KB)
+	const maxScannerBuffer = 1024 * 1024 // 1MB
+	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
 	lineNum := 0
 	for scanner.Scan() {
 		lineNum++
