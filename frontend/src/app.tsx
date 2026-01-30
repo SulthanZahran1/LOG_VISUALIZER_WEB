@@ -91,11 +91,13 @@ export function App() {
 
   const handleUploadSuccess = (file: FileInfo) => {
     recentFiles.value = [file, ...recentFiles.value]
+    // Auto-load the uploaded file (start parsing) but stay on Home
+    startParsing(file.id)
   }
 
   const handleFileSelect = (file: FileInfo) => {
     startParsing(file.id)
-    openView('log-table')
+    // Don't auto-navigate - user can choose which view from the Loaded tab
   }
 
   const handleFileMerge = async (files: FileInfo[]) => {
@@ -110,7 +112,7 @@ export function App() {
       const fileIds = files.map(f => f.id);
       const session = await startParseMerge(fileIds);
       currentSession.value = session;
-      openView('log-table');
+      // Don't auto-navigate - user can choose which view from the Loaded tab
     } catch (err) {
       console.error('Failed to start merge session', err);
       logError.value = err instanceof Error ? err.message : 'Failed to merge files';
@@ -280,6 +282,7 @@ export function App() {
             onFileDelete={handleFileDelete}
             onFileRename={handleRename}
             onOpenView={handleOpenView}
+            onClearSession={handleClearSession}
           />
         )}
         {activeTab.value === 'log-table' && <LogTable />}

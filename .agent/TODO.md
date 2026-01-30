@@ -130,3 +130,13 @@
 - "Merge & Visualize" button in Recent Files
 
 </details>
+
+<details>
+<summary>Main Menu UX Improvements (2026-01-30)</summary>
+
+- Loaded/Recent tabs in files section
+- Auto-load on upload (no manual file selection)
+- LoadedFileCard with quick action buttons
+- No auto-navigation to Log Table - user chooses view
+
+</details>

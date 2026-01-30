@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.2] - 2026-01-30
+
+### Added
+- **Loaded/Recent Tabs**: New tabbed interface in the files section separating "Loaded" (currently active file) from "Recent" (file history)
+- **LoadedFileCard Component**: Shows current file with name, size, entry count, status badge, and quick action buttons
+- **Quick Action Buttons**: Direct navigation to Log Table, Waveform, Map, or Transitions from the Loaded tab
+- **Auto-load on Upload**: Uploaded files automatically start parsing without manual selection
+
+### Changed
+- **UX Flow Improvement**: Loading a file no longer auto-navigates to Log Table, user stays on Home to choose which view
+- **HomeView Redesign**: Replaced single "Recent Files" card with tabbed Loaded/Recent interface
+
+### Files Changed
+- New: `frontend/src/components/file/LoadedFileCard.tsx`
+- Modified: `frontend/src/views/HomeView.tsx`
+- Modified: `frontend/src/app.tsx`
+
+---
+
 ## [0.6.1] - 2026-01-18
 
 ### Fixed
