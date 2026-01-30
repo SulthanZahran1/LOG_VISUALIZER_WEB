@@ -6,6 +6,7 @@ import { WaveformView } from './components/waveform/WaveformView'
 import { currentSession, startParsing, logError, initLogStore, activeTab, openViews, openView, closeView, type ViewType } from './stores/logStore'
 import { HomeView } from './views/HomeView'
 import { MapViewer } from './views/MapViewer'
+import { TransitionView } from './components/transition/TransitionView'
 import { BookmarkPanel } from './components/BookmarkPanel'
 import { BookmarkNotification } from './components/BookmarkNotification'
 import { XIcon } from './components/icons'
@@ -160,6 +161,7 @@ export function App() {
       case 'log-table': return 'Log Table';
       case 'waveform': return 'Timing Diagram';
       case 'map-viewer': return 'Map Viewer';
+      case 'transitions': return 'Transitions';
       default: return viewType;
     }
   }
@@ -174,6 +176,8 @@ export function App() {
         return <path d="M3 12h4l3-9 4 18 3-9h4" />;
       case 'map-viewer':
         return <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 3v18" /></>;
+      case 'transitions':
+        return <path d="M12 8v4l3 3M12 3v1M12 20v1M3 12h1M20 12h1" />;
       default:
         return null;
     }
@@ -281,6 +285,7 @@ export function App() {
         {activeTab.value === 'log-table' && <LogTable />}
         {activeTab.value === 'waveform' && <WaveformView />}
         {activeTab.value === 'map-viewer' && <MapViewer />}
+        {activeTab.value === 'transitions' && <TransitionView />}
 
         <BookmarkPanel />
         <BookmarkNotification />

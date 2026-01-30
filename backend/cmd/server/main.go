@@ -37,6 +37,13 @@ func main() {
 	// Middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
+		Level: 5, // Balanced compression/speed
+		Skipper: func(c echo.Context) bool {
+			// Skip compression for SSE streams (they handle their own streaming)
+			return c.Request().Header.Get("Accept") == "text/event-stream"
+		},
+	}))
 	e.Use(middleware.BodyLimit("1G"))
 
 	// CORS configuration for frontend dev server
@@ -65,6 +72,8 @@ func main() {
 	apiGroup.POST("/parse", h.HandleStartParse)
 	apiGroup.GET("/parse/:sessionId/status", h.HandleParseStatus)
 	apiGroup.GET("/parse/:sessionId/entries", h.HandleParseEntries)
+	apiGroup.GET("/parse/:sessionId/entries/msgpack", h.HandleParseEntriesMsgpack)
+	apiGroup.GET("/parse/:sessionId/stream", h.HandleParseStream)
 	apiGroup.GET("/parse/:sessionId/chunk", h.HandleParseChunk)
 	apiGroup.GET("/parse/:sessionId/signals", h.HandleGetSignals)
 

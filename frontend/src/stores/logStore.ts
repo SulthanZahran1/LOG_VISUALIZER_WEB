@@ -1,5 +1,5 @@
 import { signal, computed, effect } from '@preact/signals';
-import { startParse, getParseStatus, getParseEntries } from '../api/client';
+import { startParse, getParseStatus, getParseEntries, streamParseEntries } from '../api/client';
 import type { LogEntry, ParseSession } from '../models/types';
 import { saveSession, getSessions } from '../utils/persistence';
 import { selectedSignals } from './selectionStore';
@@ -9,6 +9,10 @@ export const logEntries = signal<LogEntry[]>([]);
 export const totalEntries = signal(0);
 export const isLoadingLog = signal(false);
 export const logError = signal<string | null>(null);
+
+// Streaming progress (0-100) - shows progress when loading large files via SSE
+export const streamProgress = signal(0);
+export const isStreaming = signal(false);
 
 // Selected log entry time - used for bookmarking from Log Table view
 export const selectedLogTime = signal<number | null>(null);
@@ -22,7 +26,7 @@ export const searchCaseSensitive = signal(false);
 export const showChangedOnly = signal(false);
 
 // Layout - View types matching desktop reference
-export type ViewType = 'home' | 'log-table' | 'waveform' | 'map-viewer';
+export type ViewType = 'home' | 'log-table' | 'waveform' | 'map-viewer' | 'transitions';
 export const openViews = signal<ViewType[]>(['home']);
 export const activeTab = signal<ViewType>('home');
 export const signalTypeFilter = signal<string | null>(null);
@@ -190,25 +194,73 @@ async function pollStatus(sessionId: string) {
             }
 
             if (session.status === 'complete') {
-                isLoadingLog.value = false;
-                await fetchEntries(1, 1000000); // Fetch all entries (up to 1M) for full visualization
+                // Use streaming for large files (>10k entries) for better UX
+                const STREAM_THRESHOLD = 10000;
+                if ((session.entryCount ?? 0) > STREAM_THRESHOLD) {
+                    isStreaming.value = true;
+                    streamProgress.value = 0;
+                    logEntries.value = []; // Clear before streaming
 
-                // Trigger map update if map viewer is open
-                const mapStore = await import('./mapStore');
-                mapStore.updateSignalValues(logEntries.value);
+                    streamParseEntries(
+                        sessionId,
+                        (batch, progress, total) => {
+                            // Append batch to entries
+                            logEntries.value = [...logEntries.value, ...batch];
+                            streamProgress.value = progress;
+                            totalEntries.value = total;
+                        },
+                        async (total) => {
+                            isStreaming.value = false;
+                            isLoadingLog.value = false;
+                            streamProgress.value = 100;
+                            totalEntries.value = total;
 
-                // Set playback time range from session metadata (preferred)
-                if (session.startTime && session.endTime) {
-                    mapStore.setPlaybackRange(session.startTime, session.endTime);
-                } else if (logEntries.value.length > 0) {
-                    // Fallback: Set playback time range from log entries
-                    const timestamps = logEntries.value
-                        .map(e => e.timestamp ? new Date(e.timestamp).getTime() : null)
-                        .filter((t): t is number => t !== null && !isNaN(t));
-                    if (timestamps.length > 0) {
-                        const startTime = Math.min(...timestamps);
-                        const endTime = Math.max(...timestamps);
-                        mapStore.setPlaybackRange(startTime, endTime);
+                            // Trigger map update if map viewer is open
+                            const mapStore = await import('./mapStore');
+                            mapStore.updateSignalValues(logEntries.value);
+
+                            // Set playback time range from session metadata
+                            if (session.startTime && session.endTime) {
+                                mapStore.setPlaybackRange(session.startTime, session.endTime);
+                            } else if (logEntries.value.length > 0) {
+                                const timestamps = logEntries.value
+                                    .map(e => e.timestamp ? new Date(e.timestamp).getTime() : null)
+                                    .filter((t): t is number => t !== null && !isNaN(t));
+                                if (timestamps.length > 0) {
+                                    const startTime = Math.min(...timestamps);
+                                    const endTime = Math.max(...timestamps);
+                                    mapStore.setPlaybackRange(startTime, endTime);
+                                }
+                            }
+                        },
+                        (error) => {
+                            isStreaming.value = false;
+                            isLoadingLog.value = false;
+                            logError.value = error;
+                        }
+                    );
+                } else {
+                    // Small file: use regular fetch
+                    isLoadingLog.value = false;
+                    await fetchEntries(1, 1000000);
+
+                    // Trigger map update if map viewer is open
+                    const mapStore = await import('./mapStore');
+                    mapStore.updateSignalValues(logEntries.value);
+
+                    // Set playback time range from session metadata (preferred)
+                    if (session.startTime && session.endTime) {
+                        mapStore.setPlaybackRange(session.startTime, session.endTime);
+                    } else if (logEntries.value.length > 0) {
+                        // Fallback: Set playback time range from log entries
+                        const timestamps = logEntries.value
+                            .map(e => e.timestamp ? new Date(e.timestamp).getTime() : null)
+                            .filter((t): t is number => t !== null && !isNaN(t));
+                        if (timestamps.length > 0) {
+                            const startTime = Math.min(...timestamps);
+                            const endTime = Math.max(...timestamps);
+                            mapStore.setPlaybackRange(startTime, endTime);
+                        }
                     }
                 }
                 return;

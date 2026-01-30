@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/plc-visualizer/backend/internal/parser"
 	"github.com/plc-visualizer/backend/internal/session"
 	"github.com/plc-visualizer/backend/internal/storage"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 // Handler handles API requests.
@@ -688,4 +690,124 @@ func (h *Handler) HandleCompleteUpload(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusCreated, info)
+}
+
+// HandleParseEntriesMsgpack returns paginated log entries in MessagePack format.
+// MessagePack is 30-50% smaller than JSON for log data.
+func (h *Handler) HandleParseEntriesMsgpack(c echo.Context) error {
+	id := c.Param("sessionId")
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	if page < 1 {
+		page = 1
+	}
+	pageSize, _ := strconv.Atoi(c.QueryParam("pageSize"))
+	if pageSize < 1 {
+		pageSize = 100
+	}
+
+	entries, total, ok := h.session.GetEntries(id, page, pageSize)
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
+	}
+
+	data, err := msgpack.Marshal(map[string]interface{}{
+		"entries":  entries,
+		"total":    total,
+		"page":     page,
+		"pageSize": pageSize,
+	})
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to encode msgpack"})
+	}
+
+	return c.Blob(http.StatusOK, "application/msgpack", data)
+}
+
+// HandleParseStream streams log entries via Server-Sent Events for progressive loading.
+// This allows the frontend to display entries as they are received rather than waiting
+// for the entire payload.
+func (h *Handler) HandleParseStream(c echo.Context) error {
+	id := c.Param("sessionId")
+
+	// Set SSE headers
+	c.Response().Header().Set("Content-Type", "text/event-stream")
+	c.Response().Header().Set("Cache-Control", "no-cache")
+	c.Response().Header().Set("Connection", "keep-alive")
+	c.Response().Header().Set("X-Accel-Buffering", "no") // Disable nginx buffering
+
+	// Get session to check total entries
+	sess, ok := h.session.GetSession(id)
+	if !ok {
+		fmt.Fprintf(c.Response(), "data: {\"error\": \"session not found\"}\n\n")
+		c.Response().Flush()
+		return nil
+	}
+
+	// Wait for parsing to complete if still in progress
+	for sess.Status == "parsing" || sess.Status == "pending" {
+		time.Sleep(100 * time.Millisecond)
+		sess, ok = h.session.GetSession(id)
+		if !ok {
+			break
+		}
+	}
+
+	if sess.Status == "error" {
+		errorMsg := "parsing failed"
+		if len(sess.Errors) > 0 {
+			errorMsg = sess.Errors[0].Reason
+		}
+		data, _ := json.Marshal(map[string]interface{}{"error": errorMsg})
+		fmt.Fprintf(c.Response(), "data: %s\n\n", data)
+		c.Response().Flush()
+		return nil
+	}
+
+	// Stream entries in batches
+	batchSize := 5000 // Entries per SSE event
+	totalEntries := sess.EntryCount
+	sent := 0
+
+	for sent < totalEntries {
+		page := (sent / batchSize) + 1
+		entries, _, ok := h.session.GetEntries(id, page, batchSize)
+		if !ok || len(entries) == 0 {
+			break
+		}
+
+		progress := 0
+		if totalEntries > 0 {
+			progress = min((sent+len(entries))*100/totalEntries, 100)
+		}
+
+		data, err := json.Marshal(map[string]interface{}{
+			"entries":  entries,
+			"progress": progress,
+			"total":    totalEntries,
+		})
+		if err != nil {
+			break
+		}
+
+		fmt.Fprintf(c.Response(), "data: %s\n\n", data)
+		c.Response().Flush()
+
+		sent += len(entries)
+
+		// Small delay to prevent overwhelming the connection
+		if sent < totalEntries {
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	// Send completion event
+	data, _ := json.Marshal(map[string]interface{}{
+		"done":     true,
+		"total":    sent,
+		"progress": 100,
+	})
+	fmt.Fprintf(c.Response(), "data: %s\n\n", data)
+	c.Response().Flush()
+
+	return nil
 }

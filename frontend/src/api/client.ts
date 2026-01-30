@@ -211,6 +211,58 @@ export async function getParseChunk(
     return res.map(transformEntry);
 }
 
+/**
+ * Stream log entries via Server-Sent Events for progressive loading.
+ * This allows displaying entries incrementally as they are received.
+ * 
+ * @param sessionId - The parse session ID
+ * @param onBatch - Callback for each batch of entries received
+ * @param onComplete - Callback when streaming is complete
+ * @param onError - Callback for error handling
+ * @returns AbortController to cancel the stream
+ */
+export function streamParseEntries(
+    sessionId: string,
+    onBatch: (entries: LogEntry[], progress: number, total: number) => void,
+    onComplete: (total: number) => void,
+    onError?: (error: string) => void
+): AbortController {
+    const controller = new AbortController();
+    const url = `${API_BASE}/parse/${sessionId}/stream`;
+
+    const eventSource = new EventSource(url);
+
+    eventSource.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+
+            if (data.error) {
+                eventSource.close();
+                onError?.(data.error);
+                return;
+            }
+
+            if (data.done) {
+                eventSource.close();
+                onComplete(data.total);
+            } else if (data.entries) {
+                const entries = data.entries.map(transformEntry);
+                onBatch(entries, data.progress, data.total);
+            }
+        } catch (err) {
+            console.error('Failed to parse SSE data:', err);
+        }
+    };
+
+    eventSource.onerror = () => {
+        eventSource.close();
+        onError?.('Stream connection error');
+    };
+
+    controller.signal.addEventListener('abort', () => eventSource.close());
+    return controller;
+}
+
 // Map
 export async function getMapLayout(): Promise<any> {
     return request<any>('/map/layout');

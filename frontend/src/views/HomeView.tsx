@@ -95,7 +95,7 @@ export function HomeView({ recentFiles, onUploadSuccess, onFileSelect, onFileMer
                             description="Analyze signal intervals"
                             color="#EA4335"
                             disabled={!currentSession.value}
-                            onClick={() => { }}
+                            onClick={() => handleNavigation('transitions')}
                         />
                     </div>
                 </div>

@@ -13,7 +13,9 @@ import {
     signalTypeFilter,
     fetchEntries,
     openView,
-    selectedLogTime
+    selectedLogTime,
+    isStreaming,
+    streamProgress
 } from '../../stores/logStore';
 import { toggleSignal } from '../../stores/waveformStore';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
@@ -456,10 +458,19 @@ export function LogTable() {
                         </div>
                     </div>
 
-                    {isLoadingLog.value && (
+                    {(isLoadingLog.value || isStreaming.value) && (
                         <div className="log-loading-overlay">
                             <div className="loader"></div>
-                            <span>Processing Log...</span>
+                            {isStreaming.value ? (
+                                <div className="streaming-progress">
+                                    <span>Streaming Log Entries... {streamProgress.value}%</span>
+                                    <div className="progress-bar-container">
+                                        <div className="progress-bar" style={{ width: `${streamProgress.value}%` }}></div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <span>Processing Log...</span>
+                            )}
                         </div>
                     )}
 
