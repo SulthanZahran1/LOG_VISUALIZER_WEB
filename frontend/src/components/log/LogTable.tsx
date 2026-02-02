@@ -109,6 +109,26 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
 /**
  * Performant Log Table with Virtual Scrolling and Premium UX
  */
+// Column definition type
+type ColumnKey = 'timestamp' | 'deviceId' | 'signalName' | 'category' | 'value' | 'type';
+
+interface ColumnDef {
+    key: ColumnKey;
+    id: string; // Short ID for width lookup
+    label: string;
+    sortable: boolean;
+    resizable: boolean;
+}
+
+const COLUMNS: ColumnDef[] = [
+    { key: 'timestamp', id: 'ts', label: 'TIMESTAMP', sortable: true, resizable: true },
+    { key: 'deviceId', id: 'dev', label: 'DEVICE ID', sortable: true, resizable: true },
+    { key: 'signalName', id: 'sig', label: 'SIGNAL NAME', sortable: true, resizable: true },
+    { key: 'category', id: 'cat', label: 'CATEGORY', sortable: true, resizable: true },
+    { key: 'value', id: 'val', label: 'VALUE', sortable: false, resizable: true },
+    { key: 'type', id: 'type', label: 'TYPE', sortable: false, resizable: false },
+];
+
 export function LogTable() {
     const tableRef = useRef<HTMLDivElement>(null);
     const scrollSignal = useSignal(0);
@@ -126,6 +146,11 @@ export function LogTable() {
         type: 100
     });
     const contextMenu = useSignal<{ x: number, y: number, visible: boolean }>({ x: 0, y: 0, visible: false });
+
+    // --- Column Order (Draggable) ---
+    const columnOrder = useSignal<ColumnKey[]>(['timestamp', 'deviceId', 'signalName', 'category', 'value', 'type']);
+    const draggedColumn = useSignal<ColumnKey | null>(null);
+    const dragOverColumn = useSignal<ColumnKey | null>(null);
 
     // --- Category Filter Popover ---
     const categoryFilterOpen = useSignal(false);
@@ -268,6 +293,56 @@ export function LogTable() {
 
         window.addEventListener('mousemove', onMouseMove);
         window.addEventListener('mouseup', onMouseUp);
+    };
+
+    // --- Column Drag and Drop ---
+    const handleColumnDragStart = (colKey: ColumnKey, e: DragEvent) => {
+        draggedColumn.value = colKey;
+        e.dataTransfer!.effectAllowed = 'move';
+        e.dataTransfer!.setData('text/plain', colKey);
+        // Add a slight delay to show the drag ghost
+        const target = e.target as HTMLElement;
+        target.classList.add('dragging');
+    };
+
+    const handleColumnDragEnd = (e: DragEvent) => {
+        const target = e.target as HTMLElement;
+        target.classList.remove('dragging');
+        draggedColumn.value = null;
+        dragOverColumn.value = null;
+    };
+
+    const handleColumnDragOver = (colKey: ColumnKey, e: DragEvent) => {
+        e.preventDefault();
+        e.dataTransfer!.dropEffect = 'move';
+        if (draggedColumn.value && draggedColumn.value !== colKey) {
+            dragOverColumn.value = colKey;
+        }
+    };
+
+    const handleColumnDragLeave = () => {
+        dragOverColumn.value = null;
+    };
+
+    const handleColumnDrop = (targetColKey: ColumnKey, e: DragEvent) => {
+        e.preventDefault();
+        const sourceColKey = e.dataTransfer!.getData('text/plain') as ColumnKey;
+        
+        if (sourceColKey && sourceColKey !== targetColKey) {
+            const newOrder = [...columnOrder.value];
+            const sourceIdx = newOrder.indexOf(sourceColKey);
+            const targetIdx = newOrder.indexOf(targetColKey);
+            
+            if (sourceIdx !== -1 && targetIdx !== -1) {
+                // Remove from source and insert at target
+                newOrder.splice(sourceIdx, 1);
+                newOrder.splice(targetIdx, 0, sourceColKey);
+                columnOrder.value = newOrder;
+            }
+        }
+        
+        draggedColumn.value = null;
+        dragOverColumn.value = null;
     };
 
     // --- Mouse Interaction (Click & Drag) ---
@@ -482,44 +557,68 @@ export function LogTable() {
                 <SignalSidebar />
                 <div className="log-table-content">
                     <div className="log-table-header">
-                        <div className="log-col col-ts" style={{ width: columnWidths.value.ts }} onClick={() => handleHeaderClick('timestamp')}>
-                            TIMESTAMP {sortColumn.value === 'timestamp' && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
-                            <div className="resize-handle" onMouseDown={(e) => handleResize('ts', e)} />
-                        </div>
-                        <div className="log-col col-dev" style={{ width: columnWidths.value.dev }} onClick={() => handleHeaderClick('deviceId')}>
-                            DEVICE ID {sortColumn.value === 'deviceId' && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
-                            <div className="resize-handle" onMouseDown={(e) => handleResize('dev', e)} />
-                        </div>
-                        <div className="log-col col-sig" style={{ width: columnWidths.value.sig }} onClick={() => handleHeaderClick('signalName')}>
-                            SIGNAL NAME {sortColumn.value === 'signalName' && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
-                            <div className="resize-handle" onMouseDown={(e) => handleResize('sig', e)} />
-                        </div>
-                        <div className={`log-col col-cat ${categoryFilter.value.size > 0 ? 'filter-active' : ''}`} style={{ width: columnWidths.value.cat }}>
-                            <span className="col-header-text" onClick={() => handleHeaderClick('category')}>
-                                CATEGORY {sortColumn.value === 'category' && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
-                            </span>
-                            <button
-                                className={`category-filter-btn ${categoryFilter.value.size > 0 ? 'active' : ''}`}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    categoryFilterOpen.value = !categoryFilterOpen.value;
-                                }}
-                                title="Filter by category"
-                            >
-                                <FilterIcon size={12} />
-
-                                {categoryFilter.value.size > 0 && (
-                                    <span className="filter-badge">{categoryFilter.value.size}</span>
-                                )}
-                            </button>
-                            {categoryFilterOpen.value && <CategoryFilterPopover onClose={() => categoryFilterOpen.value = false} />}
-                            <div className="resize-handle" onMouseDown={(e) => handleResize('cat', e)} />
-                        </div>
-                        <div className="log-col col-val" style={{ width: columnWidths.value.val }}>
-                            VALUE
-                            <div className="resize-handle" onMouseDown={(e) => handleResize('val', e)} />
-                        </div>
-                        <div className="log-col col-type" style={{ width: columnWidths.value.type }}>TYPE</div>
+                        {columnOrder.value.map((colKey) => {
+                            const col = COLUMNS.find(c => c.key === colKey)!;
+                            const isDragOver = dragOverColumn.value === colKey;
+                            const isDraggingCol = draggedColumn.value === colKey;
+                            
+                            // Special rendering for category column with filter popover
+                            if (col.key === 'category') {
+                                return (
+                                    <div
+                                        key={col.key}
+                                        className={`log-col col-cat ${categoryFilter.value.size > 0 ? 'filter-active' : ''} ${isDragOver ? 'drag-over' : ''} ${isDraggingCol ? 'dragging' : ''}`}
+                                        style={{ width: columnWidths.value[col.id as keyof typeof columnWidths.value] }}
+                                        draggable
+                                        onDragStart={(e) => handleColumnDragStart(col.key, e)}
+                                        onDragEnd={handleColumnDragEnd}
+                                        onDragOver={(e) => handleColumnDragOver(col.key, e)}
+                                        onDragLeave={handleColumnDragLeave}
+                                        onDrop={(e) => handleColumnDrop(col.key, e)}
+                                        title="Drag to reorder"
+                                    >
+                                        <span className="col-header-text" onClick={() => handleHeaderClick('category')}>
+                                            {col.label} {sortColumn.value === 'category' && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
+                                        </span>
+                                        <button
+                                            className={`category-filter-btn ${categoryFilter.value.size > 0 ? 'active' : ''}`}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                categoryFilterOpen.value = !categoryFilterOpen.value;
+                                            }}
+                                            title="Filter by category"
+                                        >
+                                            <FilterIcon size={12} />
+                                            {categoryFilter.value.size > 0 && (
+                                                <span className="filter-badge">{categoryFilter.value.size}</span>
+                                            )}
+                                        </button>
+                                        {categoryFilterOpen.value && <CategoryFilterPopover onClose={() => categoryFilterOpen.value = false} />}
+                                        {col.resizable && <div className="resize-handle" onMouseDown={(e) => handleResize(col.id, e)} />}
+                                    </div>
+                                );
+                            }
+                            
+                            // Standard rendering for other columns
+                            return (
+                                <div
+                                    key={col.key}
+                                    className={`log-col col-${col.id} ${isDragOver ? 'drag-over' : ''} ${isDraggingCol ? 'dragging' : ''}`}
+                                    style={{ width: columnWidths.value[col.id as keyof typeof columnWidths.value] }}
+                                    onClick={() => col.sortable && handleHeaderClick(col.key)}
+                                    draggable
+                                    onDragStart={(e) => handleColumnDragStart(col.key, e)}
+                                    onDragEnd={handleColumnDragEnd}
+                                    onDragOver={(e) => handleColumnDragOver(col.key, e)}
+                                    onDragLeave={handleColumnDragLeave}
+                                    onDrop={(e) => handleColumnDrop(col.key, e)}
+                                    title="Drag to reorder"
+                                >
+                                    {col.label} {col.sortable && sortColumn.value === col.key && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
+                                    {col.resizable && <div className="resize-handle" onMouseDown={(e) => handleResize(col.id, e)} />}
+                                </div>
+                            );
+                        })}
                     </div>
 
                     <div className="log-table-viewport" ref={tableRef} onScroll={onScroll}>
@@ -536,23 +635,30 @@ export function LogTable() {
                                             onMouseEnter={() => handleMouseEnter(actualIdx)}
                                             onContextMenu={handleContextMenu}
                                         >
-                                            <div className="log-col" style={{ width: columnWidths.value.ts }}>{formatDateTime(entry.timestamp)}</div>
-                                            <div className="log-col" style={{ width: columnWidths.value.dev }}>
-                                                <HighlightText text={entry.deviceId} />
-                                            </div>
-                                            <div className="log-col" style={{ width: columnWidths.value.sig }}>
-                                                <HighlightText text={entry.signalName} />
-                                            </div>
-                                            <div className="log-col" style={{ width: columnWidths.value.cat }}>
-                                                <HighlightText text={entry.category || ''} />
-                                            </div>
-                                            <div className={`log-col val-${entry.signalType}`} style={{ width: columnWidths.value.val }}>
-                                                <HighlightText text={String(entry.value)} />
-                                            </div>
-                                            <div className="log-col" style={{ width: columnWidths.value.type }}>{entry.signalType}</div>
+                                            {columnOrder.value.map((colKey) => {
+                                                const col = COLUMNS.find(c => c.key === colKey)!;
+                                                const width = columnWidths.value[col.id as keyof typeof columnWidths.value];
+                                                
+                                                switch (col.key) {
+                                                    case 'timestamp':
+                                                        return <div key={col.key} className="log-col" style={{ width }}>{formatDateTime(entry.timestamp)}</div>;
+                                                    case 'deviceId':
+                                                        return <div key={col.key} className="log-col" style={{ width }}><HighlightText text={entry.deviceId} /></div>;
+                                                    case 'signalName':
+                                                        return <div key={col.key} className="log-col" style={{ width }}><HighlightText text={entry.signalName} /></div>;
+                                                    case 'category':
+                                                        return <div key={col.key} className="log-col" style={{ width }}><HighlightText text={entry.category || ''} /></div>;
+                                                    case 'value':
+                                                        return <div key={col.key} className={`log-col val-${entry.signalType}`} style={{ width }}><HighlightText text={String(entry.value)} /></div>;
+                                                    case 'type':
+                                                        return <div key={col.key} className="log-col" style={{ width }}>{entry.signalType}</div>;
+                                                    default:
+                                                        return null;
+                                                }
+                                            })}
                                         </div>
                                     );
-                                })}
+                                })},
                             </div>
                         </div>
                     </div>

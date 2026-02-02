@@ -453,6 +453,31 @@
     overflow: visible !important; /* Allow popover to overflow */
 }
 
+/* === Draggable Columns === */
+.log-table-header .log-col {
+    cursor: grab;
+}
+
+.log-table-header .log-col:active {
+    cursor: grabbing;
+}
+
+.log-table-header .log-col.dragging {
+    opacity: 0.5;
+    background: var(--bg-hover);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.log-table-header .log-col.drag-over {
+    border-left: 3px solid var(--primary-accent);
+    background: rgba(77, 182, 226, 0.1);
+}
+
+/* Don't show drag cursor on resize handle */
+.log-table-header .log-col .resize-handle {
+    cursor: col-resize;
+}
+
 .col-header-text {
     flex: 1;
     cursor: pointer;
