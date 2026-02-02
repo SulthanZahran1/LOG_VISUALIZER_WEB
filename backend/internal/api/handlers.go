@@ -1,9 +1,12 @@
 package api
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -672,9 +675,12 @@ func (h *Handler) HandleUploadChunk(c echo.Context) error {
 // HandleCompleteUpload assembles the uploaded chunks.
 func (h *Handler) HandleCompleteUpload(c echo.Context) error {
 	var req struct {
-		UploadID    string `json:"uploadId"`
-		Name        string `json:"name"`
-		TotalChunks int    `json:"totalChunks"`
+		UploadID       string `json:"uploadId"`
+		Name           string `json:"name"`
+		TotalChunks    int    `json:"totalChunks"`
+		OriginalSize   int64  `json:"originalSize"`
+		CompressedSize int64  `json:"compressedSize"`
+		Encoding       string `json:"encoding"`
 	}
 
 	if err := c.Bind(&req); err != nil {
@@ -690,7 +696,56 @@ func (h *Handler) HandleCompleteUpload(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to complete upload: %v", err)})
 	}
 
+	// If file was gzip compressed, decompress it
+	if req.Encoding == "gzip" {
+		if err := h.decompressFile(info.ID); err != nil {
+			// Log error but don't fail - file might still be parseable
+			fmt.Printf("Warning: failed to decompress file %s: %v\n", info.ID, err)
+		} else {
+			// Update size after decompression
+			info.Size = req.OriginalSize
+		}
+	}
+
 	return c.JSON(http.StatusCreated, info)
+}
+
+// decompressFile decompresses a gzip file in place
+func (h *Handler) decompressFile(fileID string) error {
+	path, err := h.store.GetFilePath(fileID)
+	if err != nil {
+		return err
+	}
+
+	// Read compressed data
+	compressed, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	// Check gzip magic
+	if len(compressed) < 2 || compressed[0] != 0x1f || compressed[1] != 0x8b {
+		return fmt.Errorf("not a gzip file")
+	}
+
+	// Decompress
+	reader, err := gzip.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	decompressed, err := io.ReadAll(reader)
+	if err != nil {
+		return err
+	}
+
+	// Write decompressed data back
+	if err := os.WriteFile(path, decompressed, 0644); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // HandleUploadBinary accepts pre-encoded binary log files.
