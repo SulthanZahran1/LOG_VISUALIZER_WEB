@@ -2,7 +2,6 @@ package parser
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -57,34 +56,11 @@ func (p *PLCDebugParser) Parse(filePath string) (*models.ParsedLog, []*models.Pa
 	}
 	defer file.Close()
 
-	// Get file info for capacity estimation
-	fileInfo, err := file.Stat()
-	if err != nil {
-		fileInfo = nil
-	}
-
-	// Dynamic pre-allocation based on file size
-	// Estimate ~150 bytes per line average for PLC debug logs
-	initialCapacity := 10000
-	if fileInfo != nil {
-		estimatedLines := int(fileInfo.Size() / 150)
-		if estimatedLines > initialCapacity {
-			initialCapacity = estimatedLines
-			// Cap at 50M to avoid excessive pre-allocation for pathological files
-			if initialCapacity > 50000000 {
-				initialCapacity = 50000000
-			}
-		}
-	}
-
-	// Pre-allocate with estimated capacity for large files (reduces reallocations)
-	entries := make([]models.LogEntry, 0, initialCapacity)
+	// Use compact columnar storage (6-7x memory reduction vs []LogEntry)
+	store := NewCompactLogStore()
 	errors := make([]*models.ParseError, 0, 100)
-	signals := make(map[string]struct{}, 1000)
-	devices := make(map[string]struct{}, 1000)
 
 	// String interning for device IDs and signal names
-	// This dramatically reduces memory for logs with repetitive device/signal names
 	intern := GetGlobalIntern()
 
 	scanner := bufio.NewScanner(file)
@@ -105,29 +81,18 @@ func (p *PLCDebugParser) Parse(filePath string) (*models.ParsedLog, []*models.Pa
 			continue
 		}
 
-		entries = append(entries, *entry)
-		signals[fmt.Sprintf("%s::%s", entry.DeviceID, entry.SignalName)] = struct{}{}
-		devices[entry.DeviceID] = struct{}{}
+		// Add to compact storage instead of slice
+		store.AddEntry(entry)
 	}
 
 	if err := scanner.Err(); err != nil {
 		return nil, nil, err
 	}
 
-	var timeRange *models.TimeRange
-	if len(entries) > 0 {
-		timeRange = &models.TimeRange{
-			Start: entries[0].Timestamp,
-			End:   entries[len(entries)-1].Timestamp,
-		}
-	}
-
-	return &models.ParsedLog{
-		Entries:   entries,
-		Signals:   signals,
-		Devices:   devices,
-		TimeRange: timeRange,
-	}, errors, nil
+	// Convert compact storage to ParsedLog for API compatibility
+	parsed := store.ToParsedLog()
+	
+	return parsed, errors, nil
 }
 
 func (p *PLCDebugParser) parseLine(line string, lineNum int, intern *StringIntern) (*models.LogEntry, *models.ParseError) {

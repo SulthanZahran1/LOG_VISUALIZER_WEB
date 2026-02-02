@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"time"
 	"github.com/plc-visualizer/backend/internal/models"
 )
 
@@ -116,4 +117,67 @@ func (cs *CompactLogStore) MemoryUsage() int {
 		len(cs.stringValues)*4 +
 		len(cs.valueTypes) +
 		len(cs.valueIndices)*4
+}
+
+// ToParsedLog converts compact storage to ParsedLog for API compatibility
+func (cs *CompactLogStore) ToParsedLog() *models.ParsedLog {
+	entries := make([]models.LogEntry, 0, cs.entryCount)
+	signals := make(map[string]struct{})
+	devices := make(map[string]struct{})
+	
+	for i := 0; i < cs.entryCount; i++ {
+		entry := cs.getEntry(i)
+		entries = append(entries, entry)
+		
+		signals[entry.DeviceID + "::" + entry.SignalName] = struct{}{}
+		devices[entry.DeviceID] = struct{}{}
+	}
+	
+	var timeRange *models.TimeRange
+	if cs.entryCount > 0 {
+		timeRange = &models.TimeRange{
+			Start: time.UnixMilli(int64(cs.timestamps[0])),
+			End:   time.UnixMilli(int64(cs.timestamps[cs.entryCount-1])),
+		}
+	}
+	
+	return &models.ParsedLog{
+		Entries:   entries,
+		Signals:   signals,
+		Devices:   devices,
+		TimeRange: timeRange,
+	}
+}
+
+// getEntry reconstructs a single LogEntry
+func (cs *CompactLogStore) getEntry(i int) models.LogEntry {
+	entry := models.LogEntry{
+		Timestamp:  time.UnixMilli(int64(cs.timestamps[i])),
+		DeviceID:   cs.idxToString[cs.deviceIdx[i]],
+		SignalName: cs.idxToString[cs.signalIdx[i]],
+	}
+	
+	if cs.categories[i] != 0xFFFFFFFF {
+		entry.Category = cs.idxToString[cs.categories[i]]
+	}
+	
+	switch cs.valueTypes[i] {
+	case ValueTypeBoolFalse:
+		entry.Value = false
+		entry.SignalType = models.SignalTypeBoolean
+	case ValueTypeBoolTrue:
+		entry.Value = true
+		entry.SignalType = models.SignalTypeBoolean
+	case ValueTypeInt64:
+		entry.Value = int(cs.intValues[cs.valueIndices[i]])
+		entry.SignalType = models.SignalTypeInteger
+	case ValueTypeFloat64:
+		entry.Value = cs.floatValues[cs.valueIndices[i]]
+		entry.SignalType = models.SignalTypeString
+	case ValueTypeStringIndex:
+		entry.Value = cs.idxToString[cs.stringValues[cs.valueIndices[i]]]
+		entry.SignalType = models.SignalTypeString
+	}
+	
+	return entry
 }
