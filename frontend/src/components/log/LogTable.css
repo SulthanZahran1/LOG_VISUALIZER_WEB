@@ -450,6 +450,7 @@
 /* === Category Filter === */
 .col-cat {
     position: relative;
+    overflow: visible !important; /* Allow popover to overflow */
 }
 
 .col-header-text {
