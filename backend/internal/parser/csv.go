@@ -51,6 +51,10 @@ func (p *CSVSignalParser) CanParse(filePath string) (bool, error) {
 }
 
 func (p *CSVSignalParser) Parse(filePath string) (*models.ParsedLog, []*models.ParseError, error) {
+	return p.ParseWithProgress(filePath, nil)
+}
+
+func (p *CSVSignalParser) ParseWithProgress(filePath string, onProgress ProgressCallback) (*models.ParsedLog, []*models.ParseError, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, nil, err
@@ -84,16 +88,33 @@ func (p *CSVSignalParser) Parse(filePath string) (*models.ParsedLog, []*models.P
 	// String interning for device IDs and signal names
 	intern := GetGlobalIntern()
 
+	// Get file size for progress tracking (fileInfo already obtained above)
+	totalBytes := int64(0)
+	if fileInfo != nil {
+		totalBytes = fileInfo.Size()
+	}
+
 	scanner := bufio.NewScanner(file)
 	// Increase buffer size for large log files
 	const maxScannerBuffer = 1024 * 1024 // 1MB
 	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
 	lineNum := 0
+	var bytesRead int64
+	lastProgressUpdate := 0
+	
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
+		bytesRead += int64(len(line)) + 1
+		
 		if strings.TrimSpace(line) == "" {
 			continue
+		}
+		
+		// Report progress every 100K lines
+		if onProgress != nil && lineNum%100000 == 0 && lineNum != lastProgressUpdate {
+			lastProgressUpdate = lineNum
+			onProgress(lineNum, bytesRead, totalBytes)
 		}
 
 		m := p.lineRegex.FindStringSubmatch(line)
@@ -182,6 +203,11 @@ func (p *CSVSignalParser) Parse(filePath string) (*models.ParsedLog, []*models.P
 
 	if err := scanner.Err(); err != nil {
 		return nil, nil, err
+	}
+
+	// Final progress update
+	if onProgress != nil {
+		onProgress(lineNum, bytesRead, totalBytes)
 	}
 
 	var timeRange *models.TimeRange

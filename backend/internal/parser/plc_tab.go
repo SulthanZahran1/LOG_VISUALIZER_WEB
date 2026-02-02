@@ -51,16 +51,24 @@ func (p *PLCTabParser) CanParse(filePath string) (bool, error) {
 }
 
 func (p *PLCTabParser) Parse(filePath string) (*models.ParsedLog, []*models.ParseError, error) {
+	return p.ParseWithProgress(filePath, nil)
+}
+
+func (p *PLCTabParser) ParseWithProgress(filePath string, onProgress ProgressCallback) (*models.ParsedLog, []*models.ParseError, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer file.Close()
 
-	// Get file info for capacity estimation
+	// Get file info for progress tracking
 	fileInfo, err := file.Stat()
 	if err != nil {
 		fileInfo = nil
+	}
+	totalBytes := int64(0)
+	if fileInfo != nil {
+		totalBytes = fileInfo.Size()
 	}
 
 	// Dynamic pre-allocation based on file size
@@ -89,11 +97,22 @@ func (p *PLCTabParser) Parse(filePath string) (*models.ParsedLog, []*models.Pars
 	const maxScannerBuffer = 1024 * 1024 // 1MB
 	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
 	lineNum := 0
+	var bytesRead int64
+	lastProgressUpdate := 0
+	
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
+		bytesRead += int64(len(line)) + 1
+		
 		if strings.TrimSpace(line) == "" {
 			continue
+		}
+		
+		// Report progress every 100K lines
+		if onProgress != nil && lineNum%100000 == 0 && lineNum != lastProgressUpdate {
+			lastProgressUpdate = lineNum
+			onProgress(lineNum, bytesRead, totalBytes)
 		}
 
 		entry, parseErr := p.parseLine(line, lineNum, intern)
@@ -109,6 +128,11 @@ func (p *PLCTabParser) Parse(filePath string) (*models.ParsedLog, []*models.Pars
 
 	if err := scanner.Err(); err != nil {
 		return nil, nil, err
+	}
+
+	// Final progress update
+	if onProgress != nil {
+		onProgress(lineNum, bytesRead, totalBytes)
 	}
 
 	var timeRange *models.TimeRange

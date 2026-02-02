@@ -9,6 +9,9 @@ import (
 	"github.com/plc-visualizer/backend/internal/models"
 )
 
+// ProgressCallback is called periodically during parsing to report progress.
+type ProgressCallback func(linesProcessed int, bytesProcessed int64, totalBytes int64)
+
 // Parser defines the interface for log file parsers.
 type Parser interface {
 	// Name returns the unique name of the parser.
@@ -17,6 +20,8 @@ type Parser interface {
 	CanParse(filePath string) (bool, error)
 	// Parse parses the entire file and returns the result.
 	Parse(filePath string) (*models.ParsedLog, []*models.ParseError, error)
+	// ParseWithProgress parses with progress callbacks for large files.
+	ParseWithProgress(filePath string, onProgress ProgressCallback) (*models.ParsedLog, []*models.ParseError, error)
 }
 
 // Common utilities for parsing

@@ -620,16 +620,37 @@ func (p *BinaryFormatParser) CanParse(filePath string) (bool, error) {
 }
 
 func (p *BinaryFormatParser) Parse(filePath string) (*models.ParsedLog, []*models.ParseError, error) {
+	return p.ParseWithProgress(filePath, nil)
+}
+
+func (p *BinaryFormatParser) ParseWithProgress(filePath string, onProgress ProgressCallback) (*models.ParsedLog, []*models.ParseError, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer file.Close()
 
+	// Get file size for progress tracking
+	fileInfo, _ := file.Stat()
+	totalBytes := int64(0)
+	if fileInfo != nil {
+		totalBytes = fileInfo.Size()
+	}
+
+	// Report initial progress
+	if onProgress != nil {
+		onProgress(0, 0, totalBytes)
+	}
+
 	decoder := NewBinaryDecoder(file)
 	parsed, err := decoder.Decode()
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Report final progress
+	if onProgress != nil {
+		onProgress(len(parsed.Entries), totalBytes, totalBytes)
 	}
 
 	return parsed, nil, nil

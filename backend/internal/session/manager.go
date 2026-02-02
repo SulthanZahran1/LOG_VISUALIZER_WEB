@@ -69,11 +69,32 @@ func (m *Manager) runParse(sessionID, filePath string) {
 	m.mu.Lock()
 	if state, ok := m.sessions[sessionID]; ok {
 		state.Session.Progress = 10
+		state.Session.Status = models.SessionStatusParsing
 	}
 	m.mu.Unlock()
 
 	fmt.Printf("[Parse %s] Beginning parse...\n", sessionID[:8])
-	result, parseErrors, err := p.Parse(filePath)
+	
+	// Progress callback updates session every 100K lines
+	progressCb := func(lines int, bytesRead, totalBytes int64) {
+		progress := 10.0 + float64(bytesRead)*80.0/float64(totalBytes)
+		if progress > 90 {
+			progress = 90
+		}
+		
+		m.mu.Lock()
+		if state, ok := m.sessions[sessionID]; ok {
+			state.Session.Progress = progress
+			// Store lines processed for display
+			state.Session.EntryCount = lines
+		}
+		m.mu.Unlock()
+		
+		fmt.Printf("[Parse %s] Progress: %.1f%% (%d lines, %d/%d bytes)\n", 
+			sessionID[:8], progress, lines, bytesRead, totalBytes)
+	}
+	
+	result, parseErrors, err := p.ParseWithProgress(filePath, progressCb)
 	if err != nil {
 		fmt.Printf("[Parse %s] ERROR: parse failed: %v\n", sessionID[:8], err)
 		m.updateSessionError(sessionID, fmt.Sprintf("parse failed: %v", err))

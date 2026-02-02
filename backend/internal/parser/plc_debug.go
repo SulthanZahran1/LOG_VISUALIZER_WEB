@@ -2,7 +2,6 @@ package parser
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -51,11 +50,22 @@ func (p *PLCDebugParser) CanParse(filePath string) (bool, error) {
 }
 
 func (p *PLCDebugParser) Parse(filePath string) (*models.ParsedLog, []*models.ParseError, error) {
+	return p.ParseWithProgress(filePath, nil)
+}
+
+func (p *PLCDebugParser) ParseWithProgress(filePath string, onProgress ProgressCallback) (*models.ParsedLog, []*models.ParseError, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer file.Close()
+
+	// Get file size for progress calculation
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, nil, err
+	}
+	totalBytes := fileInfo.Size()
 
 	// Use compact columnar storage (6-7x memory reduction vs []LogEntry)
 	store := NewCompactLogStore()
@@ -69,11 +79,14 @@ func (p *PLCDebugParser) Parse(filePath string) (*models.ParsedLog, []*models.Pa
 	const maxScannerBuffer = 1024 * 1024 // 1MB
 	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
 	lineNum := 0
-	lastLog := 0
+	var bytesRead int64
+	lastProgressUpdate := 0
 	
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
+		bytesRead += int64(len(line)) + 1 // +1 for newline
+		
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -87,16 +100,20 @@ func (p *PLCDebugParser) Parse(filePath string) (*models.ParsedLog, []*models.Pa
 		// Add to compact storage instead of slice
 		store.AddEntry(entry)
 		
-		// Log progress every 100K lines
-		if lineNum%100000 == 0 && lineNum != lastLog {
-			lastLog = lineNum
-			memUsage := store.MemoryUsage()
-			fmt.Printf("[PLC Parser] Parsed %d lines, memory: %.1f MB\n", lineNum, float64(memUsage)/(1024*1024))
+		// Report progress every 100K lines or 1% of file
+		if onProgress != nil && lineNum%100000 == 0 && lineNum != lastProgressUpdate {
+			lastProgressUpdate = lineNum
+			onProgress(lineNum, bytesRead, totalBytes)
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		return nil, nil, err
+	}
+
+	// Final progress update
+	if onProgress != nil {
+		onProgress(lineNum, bytesRead, totalBytes)
 	}
 
 	// Convert compact storage to ParsedLog for API compatibility
