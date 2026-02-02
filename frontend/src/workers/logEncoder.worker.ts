@@ -93,7 +93,7 @@ function handleEncode(message: WorkerMessage): void {
             }
         };
 
-        self.postMessage(response, [encoded.buffer]);
+        self.postMessage(response, { transfer: [encoded.buffer as ArrayBuffer] });
 
         // Send progress update
         const progress = Math.round(((chunkIndex + 1) / totalChunks) * 100);

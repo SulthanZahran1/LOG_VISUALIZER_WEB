@@ -40,7 +40,7 @@ async function compressGzip(data: Uint8Array): Promise<Uint8Array> {
     }
 
     try {
-        const blob = new Blob([data]);
+        const blob = new Blob([data.buffer as ArrayBuffer]);
         const stream = blob.stream();
         const compressedStream = stream.pipeThrough(new CompressionStream('gzip'));
         const response = new Response(compressedStream);
@@ -71,55 +71,7 @@ function createEncoderWorker(): Worker {
     return worker;
 }
 
-/**
- * Encode a text chunk using the Web Worker
- */
-async function encodeChunkWithWorker(
-    worker: Worker,
-    textChunk: string,
-    chunkIndex: number,
-    totalChunks: number
-): Promise<{ encoded: Uint8Array; ratio: string }> {
-    return new Promise((resolve, reject) => {
-        const messageId = `chunk-${chunkIndex}`;
-        
-        const handleMessage = (event: MessageEvent) => {
-            const { type, id, payload } = event.data;
-            
-            if (id !== messageId) return;
 
-            switch (type) {
-                case 'complete':
-                    worker.removeEventListener('message', handleMessage);
-                    // We need to get the actual encoded data
-                    // The worker should return it in the complete message
-                    resolve({
-                        encoded: payload.encodedData || new Uint8Array(0),
-                        ratio: payload.compressionRatio || 'unknown'
-                    });
-                    break;
-                    
-                case 'error':
-                    worker.removeEventListener('message', handleMessage);
-                    reject(new Error(payload.error || 'Encoding failed'));
-                    break;
-            }
-        };
-
-        worker.addEventListener('message', handleMessage);
-
-        worker.postMessage({
-            type: 'encode',
-            id: messageId,
-            payload: {
-                chunk: textChunk,
-                chunkIndex,
-                totalChunks,
-                isLast: chunkIndex === totalChunks - 1
-            }
-        });
-    });
-}
 
 /**
  * Upload a single chunk
@@ -146,7 +98,7 @@ async function uploadChunk(
                 'X-Compressed': 'true',
                 'Connection': 'keep-alive',
             },
-            body: data,
+            body: new Blob([data.buffer as ArrayBuffer]),
         });
 
         if (!response.ok) {

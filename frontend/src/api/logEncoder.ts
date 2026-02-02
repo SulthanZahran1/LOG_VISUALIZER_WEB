@@ -15,16 +15,18 @@
  * This typically achieves 80-95% size reduction before general compression.
  */
 
-// Entry types
-const enum ValueType {
-    BOOL_FALSE = 0,
-    BOOL_TRUE = 1,
-    INT8 = 2,
-    INT16 = 3,
-    INT32 = 4,
-    STRING_INDEX = 5,  // Reference to dictionary
-    STRING_RAW = 6,    // Inline string
-}
+// Entry types - using const object for erasableSyntaxOnly compatibility
+const ValueType = {
+    BOOL_FALSE: 0,
+    BOOL_TRUE: 1,
+    INT8: 2,
+    INT16: 3,
+    INT32: 4,
+    STRING_INDEX: 5,
+    STRING_RAW: 6,
+} as const;
+
+type ValueType = typeof ValueType[keyof typeof ValueType];
 
 interface StringTable {
     strings: string[];
@@ -195,8 +197,6 @@ export function encodeLogEntries(entries: LogEntry[]): Uint8Array {
     // Build string table
     const table = buildStringTable(entries);
 
-    // Calculate output size (rough estimate)
-    const estimatedSize = entries.length * 16 + table.strings.join('').length * 2;
     const bytes: number[] = [];
 
     // Magic number: "LLOG" (0x4C4C4F47 in LE)
