@@ -2,6 +2,7 @@ package parser
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -68,6 +69,8 @@ func (p *PLCDebugParser) Parse(filePath string) (*models.ParsedLog, []*models.Pa
 	const maxScannerBuffer = 1024 * 1024 // 1MB
 	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
 	lineNum := 0
+	lastLog := 0
+	
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
@@ -83,6 +86,13 @@ func (p *PLCDebugParser) Parse(filePath string) (*models.ParsedLog, []*models.Pa
 
 		// Add to compact storage instead of slice
 		store.AddEntry(entry)
+		
+		// Log progress every 100K lines
+		if lineNum%100000 == 0 && lineNum != lastLog {
+			lastLog = lineNum
+			memUsage := store.MemoryUsage()
+			fmt.Printf("[PLC Parser] Parsed %d lines, memory: %.1f MB\n", lineNum, float64(memUsage)/(1024*1024))
+		}
 	}
 
 	if err := scanner.Err(); err != nil {

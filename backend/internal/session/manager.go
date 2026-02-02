@@ -54,12 +54,17 @@ func (m *Manager) StartSession(fileID, filePath string) (*models.ParseSession, e
 
 func (m *Manager) runParse(sessionID, filePath string) {
 	start := time.Now()
+	
+	fmt.Printf("[Parse %s] Starting parse of %s\n", sessionID[:8], filePath)
 
 	p, err := m.registry.FindParser(filePath)
 	if err != nil {
+		fmt.Printf("[Parse %s] ERROR: failed to find parser: %v\n", sessionID[:8], err)
 		m.updateSessionError(sessionID, fmt.Sprintf("failed to find parser: %v", err))
 		return
 	}
+	
+	fmt.Printf("[Parse %s] Using parser: %s\n", sessionID[:8], p.Name())
 
 	m.mu.Lock()
 	if state, ok := m.sessions[sessionID]; ok {
@@ -67,11 +72,15 @@ func (m *Manager) runParse(sessionID, filePath string) {
 	}
 	m.mu.Unlock()
 
+	fmt.Printf("[Parse %s] Beginning parse...\n", sessionID[:8])
 	result, parseErrors, err := p.Parse(filePath)
 	if err != nil {
+		fmt.Printf("[Parse %s] ERROR: parse failed: %v\n", sessionID[:8], err)
 		m.updateSessionError(sessionID, fmt.Sprintf("parse failed: %v", err))
 		return
 	}
+	
+	fmt.Printf("[Parse %s] Parse complete: %d entries, %d errors\n", sessionID[:8], len(result.Entries), len(parseErrors))
 
 	elapsed := time.Since(start).Milliseconds()
 
