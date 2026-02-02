@@ -9,6 +9,7 @@
  */
 
 import type { FileInfo } from '../models/types';
+import { trackUploadProgress } from './upload';
 
 const API_BASE = '/api';
 
@@ -210,9 +211,9 @@ export async function uploadLogFileOptimized(
         // Wait for all uploads
         await Promise.all(uploadQueue);
 
-        onProgress?.(90, 'finalizing');
+        onProgress?.(90, 'Starting server processing...');
 
-        // Complete upload
+        // Complete upload - starts async processing
         const completeResponse = await fetch(`${API_BASE}/files/upload/complete`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -225,11 +226,18 @@ export async function uploadLogFileOptimized(
         });
 
         if (!completeResponse.ok) {
-            throw new Error('Failed to complete upload');
+            throw new Error('Failed to start upload processing');
         }
 
-        onProgress?.(100, 'complete');
-        return completeResponse.json();
+        const { jobId } = await completeResponse.json() as { jobId: string };
+
+        // Track async processing via SSE
+        const fileInfo = await trackUploadProgress(jobId, (progress, stage) => {
+            onProgress?.(90 + Math.round(progress * 0.1), stage);
+        });
+
+        onProgress?.(100, 'Complete!');
+        return fileInfo;
 
     } finally {
         worker.terminate();

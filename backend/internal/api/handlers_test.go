@@ -12,6 +12,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/plc-visualizer/backend/internal/session"
 	"github.com/plc-visualizer/backend/internal/storage"
+	"github.com/plc-visualizer/backend/internal/upload"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,7 +23,8 @@ func TestMapHandlers(t *testing.T) {
 	tmpDir := t.TempDir()
 	store, _ := storage.NewLocalStore(tmpDir)
 	sessionMgr := session.NewManager()
-	h := NewHandler(store, sessionMgr)
+	uploadMgr := upload.NewManager(tmpDir, store)
+	h := NewHandler(store, sessionMgr, uploadMgr)
 
 	// 1. Initially no map
 	req := httptest.NewRequest(http.MethodGet, "/api/map/layout", nil)
@@ -63,7 +65,8 @@ func TestChunkedUpload(t *testing.T) {
 	tmpDir := t.TempDir()
 	store, _ := storage.NewLocalStore(tmpDir)
 	sessionMgr := session.NewManager()
-	h := NewHandler(store, sessionMgr)
+	uploadMgr := upload.NewManager(tmpDir, store)
+	h := NewHandler(store, sessionMgr, uploadMgr)
 
 	uploadID := "test-upload-v1"
 	chunk1 := []byte("chunk one ")
@@ -105,16 +108,17 @@ func TestChunkedUpload(t *testing.T) {
 		assert.Equal(t, http.StatusAccepted, rec2.Code)
 	}
 
-	// 3. Complete upload
+	// 3. Complete upload - now async, returns job ID
 	completeReq := bytes.NewBufferString(`{"uploadId":"test-upload-v1","name":"combined.txt","totalChunks":2}`)
 	req3 := httptest.NewRequest(http.MethodPost, "/api/files/upload/complete", completeReq)
 	req3.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec3 := httptest.NewRecorder()
 	c3 := e.NewContext(req3, rec3)
 	if assert.NoError(t, h.HandleCompleteUpload(c3)) {
-		assert.Equal(t, http.StatusCreated, rec3.Code)
-		assert.Contains(t, rec3.Body.String(), `"name":"combined.txt"`)
-		assert.Contains(t, rec3.Body.String(), `"size":19`) // 10 + 9
+		// Should return 202 Accepted with job ID
+		assert.Equal(t, http.StatusAccepted, rec3.Code)
+		assert.Contains(t, rec3.Body.String(), `"jobId"`)
+		assert.Contains(t, rec3.Body.String(), `"status":"processing"`)
 	}
 }
 
@@ -123,7 +127,8 @@ func TestRecentFilesFiltering(t *testing.T) {
 	tmpDir := t.TempDir()
 	store, _ := storage.NewLocalStore(tmpDir)
 	sessionMgr := session.NewManager()
-	h := NewHandler(store, sessionMgr)
+	uploadMgr := upload.NewManager(tmpDir, store)
+	h := NewHandler(store, sessionMgr, uploadMgr)
 
 	// Upload files with different extensions using the store directly
 	// to avoid mocking the multipart file creation repeatedly
@@ -170,7 +175,8 @@ func TestSetActiveMap(t *testing.T) {
 	tmpDir := t.TempDir()
 	store, _ := storage.NewLocalStore(tmpDir)
 	sessionMgr := session.NewManager()
-	h := NewHandler(store, sessionMgr)
+	uploadMgr := upload.NewManager(tmpDir, store)
+	h := NewHandler(store, sessionMgr, uploadMgr)
 
 	// 1. Upload a map
 	data := bytes.NewBufferString(`<?xml version="1.0" ?><ConveyorMap><Object name="O1" type="T"><Size>1,1</Size><Location>0,0</Location></Object></ConveyorMap>`)

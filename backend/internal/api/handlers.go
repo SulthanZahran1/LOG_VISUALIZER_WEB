@@ -18,6 +18,7 @@ import (
 	"github.com/plc-visualizer/backend/internal/parser"
 	"github.com/plc-visualizer/backend/internal/session"
 	"github.com/plc-visualizer/backend/internal/storage"
+	"github.com/plc-visualizer/backend/internal/upload"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -25,6 +26,7 @@ import (
 type Handler struct {
 	store            storage.Store
 	session          *session.Manager
+	uploadManager    *upload.Manager
 	currentMapID     string
 	currentRulesID   string
 	currentRules     *models.MapRules
@@ -32,10 +34,11 @@ type Handler struct {
 }
 
 // NewHandler creates a new API handler.
-func NewHandler(store storage.Store, session *session.Manager) *Handler {
+func NewHandler(store storage.Store, session *session.Manager, uploadMgr *upload.Manager) *Handler {
 	return &Handler{
-		store:   store,
-		session: session,
+		store:         store,
+		session:       session,
+		uploadManager: uploadMgr,
 	}
 }
 
@@ -671,7 +674,8 @@ func (h *Handler) HandleUploadChunk(c echo.Context) error {
 	return c.NoContent(http.StatusAccepted)
 }
 
-// HandleCompleteUpload assembles the uploaded chunks.
+// HandleCompleteUpload starts async processing of uploaded chunks.
+// Returns immediately with a job ID for tracking progress via SSE.
 func (h *Handler) HandleCompleteUpload(c echo.Context) error {
 	var req struct {
 		UploadID       string `json:"uploadId"`
@@ -690,28 +694,85 @@ func (h *Handler) HandleCompleteUpload(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "uploadId, name, and totalChunks are required"})
 	}
 
-	info, err := h.store.CompleteChunkedUpload(req.UploadID, req.Name, req.TotalChunks)
-	if err != nil {
-		fmt.Printf("Error completing upload: %v\n", err)
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to complete upload: %v", err)})
+	// Start async processing job
+	job := h.uploadManager.StartJob(
+		req.UploadID,
+		req.Name,
+		req.TotalChunks,
+		req.OriginalSize,
+		req.CompressedSize,
+		req.Encoding,
+	)
+
+	fmt.Printf("[HandleCompleteUpload] Started async upload job %s for %s\n", job.ID, req.Name)
+
+	// Return job ID immediately - client should connect to SSE for progress
+	return c.JSON(http.StatusAccepted, map[string]interface{}{
+		"jobId":  job.ID,
+		"status": job.Status,
+	})
+}
+
+// HandleUploadJobStream streams upload processing progress via Server-Sent Events.
+func (h *Handler) HandleUploadJobStream(c echo.Context) error {
+	jobID := c.Param("jobId")
+
+	// Set SSE headers
+	c.Response().Header().Set("Content-Type", "text/event-stream")
+	c.Response().Header().Set("Cache-Control", "no-cache")
+	c.Response().Header().Set("Connection", "keep-alive")
+	c.Response().Header().Set("X-Accel-Buffering", "no") // Disable nginx buffering
+	c.Response().WriteHeader(http.StatusOK)
+
+	// Get initial job state
+	job, ok := h.uploadManager.GetJob(jobID)
+	if !ok {
+		data, _ := json.Marshal(map[string]string{"error": "job not found"})
+		fmt.Fprintf(c.Response(), "data: %s\n\n", data)
+		c.Response().Flush()
+		return nil
 	}
 
-	// If file was gzip compressed, decompress it
-	if req.Encoding == "gzip" {
-		fmt.Printf("Decompressing file %s (compressed: %d bytes, original: %d bytes)\n", 
-			info.ID, info.Size, req.OriginalSize)
-		
-		if err := h.decompressFile(info.ID); err != nil {
-			// Log error but don't fail - file might still be parseable
-			fmt.Printf("Warning: failed to decompress file %s: %v\n", info.ID, err)
-		} else {
-			// Update size after decompression
-			info.Size = req.OriginalSize
-			fmt.Printf("Successfully decompressed file %s\n", info.ID)
+	// Stream progress updates
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.Request().Context().Done():
+			return nil
+		case <-ticker.C:
+			job, ok = h.uploadManager.GetJob(jobID)
+			if !ok {
+				data, _ := json.Marshal(map[string]string{"error": "job not found"})
+				fmt.Fprintf(c.Response(), "data: %s\n\n", data)
+				c.Response().Flush()
+				return nil
+			}
+
+			// Send current state
+			data, err := json.Marshal(map[string]interface{}{
+				"jobId":         job.ID,
+				"status":        job.Status,
+				"progress":      job.Progress,
+				"stage":         job.Stage,
+				"stageProgress": job.StageProgress,
+				"fileInfo":      job.FileInfo,
+				"error":         job.Error,
+			})
+			if err != nil {
+				continue
+			}
+
+			fmt.Fprintf(c.Response(), "data: %s\n\n", data)
+			c.Response().Flush()
+
+			// Stop if job is complete or errored
+			if job.Status == upload.StatusComplete || job.Status == upload.StatusError {
+				return nil
+			}
 		}
 	}
-
-	return c.JSON(http.StatusCreated, info)
 }
 
 // decompressFile decompresses a gzip file in place using streaming

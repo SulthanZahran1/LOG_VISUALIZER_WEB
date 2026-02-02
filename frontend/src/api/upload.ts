@@ -9,11 +9,29 @@
  * - Connection keep-alive for persistent connections
  * - Exponential backoff retry logic
  * - Minimal packet overhead
+ * - Async processing with SSE progress tracking (no timeouts!)
  */
 
 import type { FileInfo } from '../models/types';
 
 const API_BASE = '/api';
+
+/** Upload processing job status */
+export interface UploadJob {
+    id: string;
+    uploadId: string;
+    fileName: string;
+    totalChunks: number;
+    originalSize: number;
+    compressedSize: number;
+    encoding: string;
+    status: 'processing' | 'assembling' | 'decompressing' | 'complete' | 'error';
+    progress: number;
+    stage: string;
+    stageProgress: number;
+    fileInfo?: FileInfo;
+    error?: string;
+}
 
 class UploadError extends Error {
     status: number;
@@ -112,6 +130,55 @@ async function uploadChunkWithRetry(
 }
 
 /**
+ * Track upload processing progress via Server-Sent Events
+ */
+function trackUploadProgress(
+    jobId: string,
+    onProgress?: (progress: number, stage: string) => void
+): Promise<FileInfo> {
+    return new Promise((resolve, reject) => {
+        const eventSource = new EventSource(`${API_BASE}/files/upload/${jobId}/status`);
+        
+        eventSource.onmessage = (event) => {
+            try {
+                const data: UploadJob = JSON.parse(event.data);
+                
+                if (data.error) {
+                    eventSource.close();
+                    reject(new Error(data.error));
+                    return;
+                }
+                
+                // Map internal stages to user-friendly messages
+                const stageMessages: Record<string, string> = {
+                    'preparing': 'Preparing file...',
+                    'assembling chunks': `Assembling chunks (${Math.round(data.stageProgress)}%)...`,
+                    'decompressing file': `Decompressing ${(data.originalSize / 1024 / 1024).toFixed(1)}MB file (${Math.round(data.stageProgress)}%)...`,
+                };
+                
+                const stageMessage = stageMessages[data.stage] || data.stage;
+                onProgress?.(Math.round(data.progress), stageMessage);
+                
+                if (data.status === 'complete' && data.fileInfo) {
+                    eventSource.close();
+                    resolve(data.fileInfo);
+                } else if (data.status === 'error') {
+                    eventSource.close();
+                    reject(new Error(data.error || 'Upload processing failed'));
+                }
+            } catch (err) {
+                console.error('Failed to parse SSE data:', err);
+            }
+        };
+        
+        eventSource.onerror = () => {
+            eventSource.close();
+            reject(new Error('Lost connection to server'));
+        };
+    });
+}
+
+/**
  * Upload multiple chunks in parallel with concurrency control
  */
 async function uploadChunksParallel(
@@ -185,7 +252,7 @@ async function compressFile(file: File): Promise<Blob> {
 /**
  * Optimized chunked file upload with WHOLE-FILE compression first
  * 
- * Flow: File → Compress ENTIRE file → Slice compressed data → Upload chunks
+ * Flow: File → Compress ENTIRE file → Slice compressed data → Upload chunks → Async processing with SSE
  * 
  * This gives much better compression than per-chunk compression because
  * the compressor can build a dictionary from the entire file.
@@ -195,15 +262,16 @@ async function compressFile(file: File): Promise<Blob> {
  * - 5MB chunks of compressed data = fewer HTTP requests
  * - Parallel uploads (3 concurrent) = faster transfer
  * - Connection keep-alive = reduced TCP handshake overhead
+ * - Async processing with real-time SSE progress (no timeouts for large files!)
  */
 export async function uploadFileOptimized(
     file: File,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number, stage?: string) => void
 ): Promise<FileInfo> {
-    onProgress?.(0);
+    onProgress?.(0, 'Preparing upload...');
 
     // Step 1: Compress ENTIRE file first (better compression ratio)
-    onProgress?.(5); // Started compression
+    onProgress?.(5, 'Compressing file...');
     const compressedBlob = await compressFile(file);
     const isCompressed = compressedBlob.size < file.size;
     const compressionRatio = file.size / compressedBlob.size;
@@ -223,12 +291,12 @@ export async function uploadFileOptimized(
 
     // Step 3: Upload chunks in parallel
     await uploadChunksParallel(uploadId, chunks, (p) => {
-        // Map chunk progress to overall progress (10% for compression, 90% for upload)
-        onProgress?.(10 + Math.round(p * 0.9));
+        // Map chunk progress to overall progress (10% for compression, 80% for upload)
+        onProgress?.(10 + Math.round(p * 0.8), `Uploading chunks (${p}%)...`);
     }, isCompressed);
 
-    // Step 4: Complete upload
-    onProgress?.(95);
+    // Step 4: Start async processing and track via SSE (no timeout issues!)
+    onProgress?.(90, 'Starting server processing...');
     const response = await fetch(`${API_BASE}/files/upload/complete`, {
         method: 'POST',
         headers: {
@@ -245,26 +313,37 @@ export async function uploadFileOptimized(
     });
 
     if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Failed to complete upload' }));
+        const error = await response.json().catch(() => ({ error: 'Failed to start upload processing' }));
         throw new UploadError(response.status, error.error);
     }
 
-    onProgress?.(100);
-    return response.json();
+    const { jobId } = await response.json() as { jobId: string };
+    console.log(`Upload processing started with job ID: ${jobId}`);
+
+    // Step 5: Track async processing progress via SSE (this can take minutes for large files)
+    const fileInfo = await trackUploadProgress(jobId, (progress, stage) => {
+        // Map 90-100% for server-side processing
+        onProgress?.(90 + Math.round(progress * 0.1), stage);
+    });
+
+    onProgress?.(100, 'Complete!');
+    return fileInfo;
 }
 
 /**
  * Legacy chunked upload - kept for compatibility
  * Uses sequential uploads (slower but simpler)
+ * Now uses async processing with SSE progress tracking
  */
 export async function uploadFileChunkedLegacy(
     file: File,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number, stage?: string) => void
 ): Promise<FileInfo> {
     const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB for legacy
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     const uploadId = generateUploadId();
 
+    onProgress?.(0, 'Uploading chunks...');
     for (let i = 0; i < totalChunks; i++) {
         const start = i * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, file.size);
@@ -285,9 +364,11 @@ export async function uploadFileChunkedLegacy(
             throw new UploadError(response.status, error.error || `Chunk ${i} failed`);
         }
 
-        onProgress?.(Math.round(((i + 1) / totalChunks) * 100));
+        onProgress?.(Math.round(((i + 1) / totalChunks) * 80), `Uploading chunks (${Math.round(((i + 1) / totalChunks) * 100)}%)...`);
     }
 
+    // Start async processing
+    onProgress?.(80, 'Starting server processing...');
     const response = await fetch(`${API_BASE}/files/upload/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -295,15 +376,26 @@ export async function uploadFileChunkedLegacy(
     });
 
     if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Failed to complete upload' }));
+        const error = await response.json().catch(() => ({ error: 'Failed to start upload processing' }));
         throw new UploadError(response.status, error.error);
     }
 
-    return response.json();
+    const { jobId } = await response.json() as { jobId: string };
+
+    // Track async processing via SSE
+    const fileInfo = await trackUploadProgress(jobId, (progress, stage) => {
+        onProgress?.(80 + Math.round(progress * 0.2), stage);
+    });
+
+    onProgress?.(100, 'Complete!');
+    return fileInfo;
 }
 
 // Export configuration for debugging
 export { CONFIG };
+
+// Export progress tracking for other upload modules
+export { trackUploadProgress };
 
 // Export log encoder for advanced usage
 export { parsePLCDebugLine, encodeLogEntries, calculateCompressionRatio } from './logEncoder';

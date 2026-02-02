@@ -9,6 +9,7 @@ import (
 	"github.com/plc-visualizer/backend/internal/api"
 	"github.com/plc-visualizer/backend/internal/session"
 	"github.com/plc-visualizer/backend/internal/storage"
+	"github.com/plc-visualizer/backend/internal/upload"
 )
 
 func main() {
@@ -22,8 +23,11 @@ func main() {
 	// Initialize session manager
 	sessionMgr := session.NewManager()
 
+	// Initialize upload processing manager
+	uploadMgr := upload.NewManager("./data/uploads", fileStore)
+
 	// Initialize API handler
-	h := api.NewHandler(fileStore, sessionMgr)
+	h := api.NewHandler(fileStore, sessionMgr, uploadMgr)
 
 	// Load default rules on startup
 	if err := h.LoadDefaultRules(); err != nil {
@@ -64,6 +68,7 @@ func main() {
 	apiGroup.POST("/files/upload/binary", h.HandleUploadBinary)
 	apiGroup.POST("/files/upload/chunk", h.HandleUploadChunk)
 	apiGroup.POST("/files/upload/complete", h.HandleCompleteUpload)
+	apiGroup.GET("/files/upload/:jobId/status", h.HandleUploadJobStream)
 	apiGroup.GET("/files/recent", h.HandleRecentFiles)
 	apiGroup.GET("/files/:id", h.HandleGetFile)
 	apiGroup.DELETE("/files/:id", h.HandleDeleteFile)

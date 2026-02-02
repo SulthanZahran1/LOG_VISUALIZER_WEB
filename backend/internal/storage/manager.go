@@ -226,3 +226,10 @@ func (s *LocalStore) CompleteChunkedUpload(uploadID string, name string, totalCh
 
 	return info, nil
 }
+
+// RegisterFile registers an existing file in the store (used by async upload processor).
+func (s *LocalStore) RegisterFile(info *models.FileInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.files[info.ID] = info
+}
