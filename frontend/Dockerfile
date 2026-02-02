@@ -33,6 +33,9 @@ RUN echo 'server { \
     proxy_http_version 1.1; \
     proxy_set_header Host $host; \
     proxy_set_header X-Real-IP $remote_addr; \
+    proxy_connect_timeout 300s; \
+    proxy_send_timeout 300s; \
+    proxy_read_timeout 300s; \
     } \
     }' > /etc/nginx/conf.d/default.conf
 

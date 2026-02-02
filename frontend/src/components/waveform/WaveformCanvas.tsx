@@ -18,6 +18,17 @@ import type { LogEntry } from '../../models/types';
 import { formatTimestamp, getTickIntervals, findFirstIndexAtTime } from '../../utils/TimeAxisUtils';
 
 const ROW_HEIGHT = 60;
+
+/**
+ * Safely get timestamp as a number (Unix ms).
+ * Handles both string (ISO/RFC3339) and number inputs.
+ */
+function getTimestampMs(entry: LogEntry): number {
+    const ts = entry.timestamp;
+    if (typeof ts === 'number') return ts;
+    if (typeof ts === 'string') return new Date(ts).getTime();
+    return 0;
+}
 const AXIS_HEIGHT = 32;
 
 // Dark theme colors
@@ -222,8 +233,7 @@ export function WaveformCanvas() {
                     // Find the value at hoverTime
                     let valueAtTime: any = entries[0].value;
                     for (const e of entries) {
-                        const t = typeof e.timestamp === 'number' ? e.timestamp : new Date(e.timestamp).getTime();
-                        if (t <= hTime) valueAtTime = e.value;
+                        if (getTimestampMs(e) <= hTime) valueAtTime = e.value;
                         else break;
                     }
                     drawTooltip(ctx, currentHoverX, AXIS_HEIGHT + hoverRow * ROW_HEIGHT, signalKey, valueAtTime, width);
@@ -351,9 +361,7 @@ export function WaveformCanvas() {
                 let closestDiff = snapThresholdMs;
 
                 for (const entry of entries) {
-                    const entryTime = typeof entry.timestamp === 'number'
-                        ? entry.timestamp
-                        : new Date(entry.timestamp).getTime();
+                    const entryTime = getTimestampMs(entry);
                     const diff = Math.abs(entryTime - rawTime);
 
                     if (diff < closestDiff) {
@@ -517,9 +525,9 @@ function drawBooleanSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], s
     entries.forEach((entry, i) => {
         const val = entry.value === true || entry.value === "true" || entry.value === 1 || entry.value === "1";
         if (val) {
-            const x_start = (entry.timestamp - startTime) * pixelsPerMs;
+            const x_start = (getTimestampMs(entry) - startTime) * pixelsPerMs;
             const nextEntry = entries[i + 1];
-            const x_end = nextEntry ? (nextEntry.timestamp - startTime) * pixelsPerMs : width + 100;
+            const x_end = nextEntry ? (getTimestampMs(nextEntry) - startTime) * pixelsPerMs : width + 100;
 
             if (x_end > 0 && x_start < width) {
                 ctx.fillRect(x_start, highY - 4, x_end - x_start, lowY - highY + 8);
@@ -538,7 +546,7 @@ function drawBooleanSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], s
     let lastY = lowY;
 
     entries.forEach((entry) => {
-        const x = (entry.timestamp - startTime) * pixelsPerMs;
+        const x = (getTimestampMs(entry) - startTime) * pixelsPerMs;
         const val = entry.value === true || entry.value === "true" || entry.value === 1 || entry.value === "1";
         const y = val ? highY : lowY;
 
@@ -565,7 +573,7 @@ function drawBooleanSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], s
         const prevVal = prevEntry.value === true || prevEntry.value === "true" || prevEntry.value === 1 || prevEntry.value === "1";
 
         if (val !== prevVal) {
-            const x = (entry.timestamp - startTime) * pixelsPerMs;
+            const x = (getTimestampMs(entry) - startTime) * pixelsPerMs;
             if (x > 0 && x < width) {
                 ctx.fillStyle = COLORS.transition;
                 ctx.beginPath();
@@ -591,9 +599,9 @@ function drawStateSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], sta
     };
 
     entries.forEach((entry, i) => {
-        const x = (entry.timestamp - startTime) * pixelsPerMs;
+        const x = (getTimestampMs(entry) - startTime) * pixelsPerMs;
         const nextX = (i < entries.length - 1)
-            ? (entries[i + 1].timestamp - startTime) * pixelsPerMs
+            ? (getTimestampMs(entries[i + 1]) - startTime) * pixelsPerMs
             : width + 100;
 
         if (nextX < 0 || x > width) return;
