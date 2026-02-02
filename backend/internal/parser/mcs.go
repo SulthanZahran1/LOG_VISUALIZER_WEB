@@ -74,12 +74,38 @@ func (p *MCSLogParser) Parse(filePath string) (*models.ParsedLog, []*models.Pars
 	}
 	defer file.Close()
 
-	entries := make([]models.LogEntry, 0)
-	errors := make([]*models.ParseError, 0)
-	signals := make(map[string]struct{})
-	devices := make(map[string]struct{})
+	// Get file info for capacity estimation
+	fileInfo, err := file.Stat()
+	if err != nil {
+		fileInfo = nil
+	}
+
+	// Dynamic pre-allocation based on file size
+	// MCS logs have more entries per line (key-value pairs), estimate ~100 bytes per line
+	initialCapacity := 10000
+	if fileInfo != nil {
+		estimatedLines := int(fileInfo.Size() / 100)
+		if estimatedLines > initialCapacity {
+			initialCapacity = estimatedLines
+			// Cap at 50M to avoid excessive pre-allocation
+			if initialCapacity > 50000000 {
+				initialCapacity = 50000000
+			}
+		}
+	}
+
+	entries := make([]models.LogEntry, 0, initialCapacity)
+	errors := make([]*models.ParseError, 0, 100)
+	signals := make(map[string]struct{}, 1000)
+	devices := make(map[string]struct{}, 1000)
+
+	// String interning for device IDs and signal names
+	intern := GetGlobalIntern()
 
 	scanner := bufio.NewScanner(file)
+	// Increase buffer size for large log files
+	const maxScannerBuffer = 1024 * 1024 // 1MB
+	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
 	lineNum := 0
 	for scanner.Scan() {
 		lineNum++
@@ -88,7 +114,7 @@ func (p *MCSLogParser) Parse(filePath string) (*models.ParsedLog, []*models.Pars
 			continue
 		}
 
-		lineEntries, parseErr := p.parseLine(line, lineNum)
+		lineEntries, parseErr := p.parseLine(line, lineNum, intern)
 		if parseErr != nil {
 			errors = append(errors, parseErr)
 			continue
@@ -121,7 +147,7 @@ func (p *MCSLogParser) Parse(filePath string) (*models.ParsedLog, []*models.Pars
 	}, errors, nil
 }
 
-func (p *MCSLogParser) parseLine(line string, lineNum int) ([]models.LogEntry, *models.ParseError) {
+func (p *MCSLogParser) parseLine(line string, lineNum int, intern *StringIntern) ([]models.LogEntry, *models.ParseError) {
 	m := p.lineRegex.FindStringSubmatch(line)
 	if m == nil {
 		return nil, &models.ParseError{Line: lineNum, Content: line, Reason: "line does not match MCS format"}
@@ -152,13 +178,17 @@ func (p *MCSLogParser) parseLine(line string, lineNum int) ([]models.LogEntry, *
 		carrierID = firstID
 	}
 
-	deviceID := carrierID
-	entries := make([]models.LogEntry, 0)
+	deviceID := intern.Intern(carrierID)
+	// Intern common signal names that appear in every entry
+	actionSignal := intern.Intern("_Action")
+	commandIDSignal := intern.Intern("_CommandID")
+
+	entries := make([]models.LogEntry, 0, 10) // Pre-allocate for typical number of KV pairs
 
 	// Action signal
 	entries = append(entries, models.LogEntry{
 		DeviceID:   deviceID,
-		SignalName: "_Action",
+		SignalName: actionSignal,
 		Timestamp:  ts,
 		Value:      action,
 		SignalType: models.SignalTypeString,
@@ -168,7 +198,7 @@ func (p *MCSLogParser) parseLine(line string, lineNum int) ([]models.LogEntry, *
 	if commandID != "" {
 		entries = append(entries, models.LogEntry{
 			DeviceID:   deviceID,
-			SignalName: "_CommandID",
+			SignalName: commandIDSignal,
 			Timestamp:  ts,
 			Value:      commandID,
 			SignalType: models.SignalTypeString,
@@ -189,6 +219,9 @@ func (p *MCSLogParser) parseLine(line string, lineNum int) ([]models.LogEntry, *
 		if key == "CarrierLoc" || key == "CarrierLocation" {
 			key = "CurrentLocation"
 		}
+
+		// Intern the signal name
+		key = intern.Intern(key)
 
 		stype := p.inferTypeForKey(key, valueStr)
 		value := p.parseValueForType(valueStr, stype)

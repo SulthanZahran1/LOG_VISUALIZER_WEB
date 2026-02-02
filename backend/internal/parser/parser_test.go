@@ -9,9 +9,10 @@ import (
 
 func TestPLCDebugParser(t *testing.T) {
 	p := NewPLCDebugParser()
+	intern := NewStringIntern()
 	line := "2025-09-22 13:00:00.199 [Debug] [SYSTEM/PATH/DEV-123] [INPUT2:I_MOVE_IN] (Boolean) : ON"
 
-	entry, err := p.parseLine(line, 1)
+	entry, err := p.parseLine(line, 1, intern)
 	if err != nil {
 		t.Fatalf("Failed to parse line: %v", err)
 	}
@@ -41,11 +42,12 @@ func TestPLCDebugParser(t *testing.T) {
 }
 
 func TestPLCTabParser(t *testing.T) {
+        intern := NewStringIntern()
 	p := NewPLCTabParser()
 	// Format: ts [] path\tsignal\tdirection\tvalue\tblank\tlocation\tflag1\tflag2\tts2
 	line := "2025-09-22 13:00:00.199 [] SYSTEM/PATH/DEV-456\tMY_SIGNAL\tIN\t123\t\tLOC\tF1\tF2\t2025-09-22 13:00:00.199"
 
-	entry, err := p.parseLine(line, 1)
+	entry, err := p.parseLine(line, 1, intern)
 	if err != nil {
 		t.Fatalf("Failed to parse line: %v", err)
 	}
@@ -73,16 +75,18 @@ func TestPLCTabParser(t *testing.T) {
 	if parsed.TimeRange == nil {
 		t.Error("Expected TimeRange to be set")
 	}
-	if parsed.Entries[0].SignalName != "MY_SIGNAL         " {
-		t.Errorf("Expected padded SignalName 'MY_SIGNAL         ', got '%s'", parsed.Entries[0].SignalName)
+	// String interning trims whitespace and deduplicates
+	if parsed.Entries[0].SignalName != "MY_SIGNAL" {
+		t.Errorf("Expected interned SignalName 'MY_SIGNAL', got '%s'", parsed.Entries[0].SignalName)
 	}
 }
 
 func TestMCSLogParser(t *testing.T) {
 	p := NewMCSLogParser()
+	intern := NewStringIntern()
 	line := "2025-12-05 00:00:35.404 [UPDATE=CMD123, CAR-789] [CarrierLoc=B1ACNV13301-120], [Priority=5]"
 
-	entries, err := p.parseLine(line, 1)
+	entries, err := p.parseLine(line, 1, intern)
 	if err != nil {
 		t.Fatalf("Failed to parse line: %v", err)
 	}

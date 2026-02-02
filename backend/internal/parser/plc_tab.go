@@ -57,11 +57,32 @@ func (p *PLCTabParser) Parse(filePath string) (*models.ParsedLog, []*models.Pars
 	}
 	defer file.Close()
 
-	// Pre-allocate with estimated capacity for large files (reduces reallocations)
-	entries := make([]models.LogEntry, 0, 10000)
+	// Get file info for capacity estimation
+	fileInfo, err := file.Stat()
+	if err != nil {
+		fileInfo = nil
+	}
+
+	// Dynamic pre-allocation based on file size
+	// Tab-delimited logs vary, estimate ~120 bytes per line
+	initialCapacity := 10000
+	if fileInfo != nil {
+		estimatedLines := int(fileInfo.Size() / 120)
+		if estimatedLines > initialCapacity {
+			initialCapacity = estimatedLines
+			if initialCapacity > 50000000 {
+				initialCapacity = 50000000
+			}
+		}
+	}
+
+	entries := make([]models.LogEntry, 0, initialCapacity)
 	errors := make([]*models.ParseError, 0, 100)
-	signals := make(map[string]struct{})
-	devices := make(map[string]struct{})
+	signals := make(map[string]struct{}, 1000)
+	devices := make(map[string]struct{}, 1000)
+
+	// String interning for device IDs and signal names
+	intern := GetGlobalIntern()
 
 	scanner := bufio.NewScanner(file)
 	// Increase buffer size for large log files (1MB instead of default 64KB)
@@ -75,7 +96,7 @@ func (p *PLCTabParser) Parse(filePath string) (*models.ParsedLog, []*models.Pars
 			continue
 		}
 
-		entry, parseErr := p.parseLine(line, lineNum)
+		entry, parseErr := p.parseLine(line, lineNum, intern)
 		if parseErr != nil {
 			errors = append(errors, parseErr)
 			continue
@@ -106,9 +127,9 @@ func (p *PLCTabParser) Parse(filePath string) (*models.ParsedLog, []*models.Pars
 	}, errors, nil
 }
 
-func (p *PLCTabParser) parseLine(line string, lineNum int) (*models.LogEntry, *models.ParseError) {
+func (p *PLCTabParser) parseLine(line string, lineNum int, intern *StringIntern) (*models.LogEntry, *models.ParseError) {
 	// Try fast path first (index based)
-	entry := p.fastParseLine(line)
+	entry := p.fastParseLine(line, intern)
 	if entry != nil {
 		return entry, nil
 	}
@@ -139,6 +160,10 @@ func (p *PLCTabParser) parseLine(line string, lineNum int) (*models.LogEntry, *m
 		return nil, &models.ParseError{Line: lineNum, Content: line, Reason: "device ID not found in path"}
 	}
 
+	// Intern strings
+	deviceID = intern.Intern(deviceID)
+	signal = intern.Intern(signal)
+
 	stype := InferType(valueStr)
 	value := ParseValue(valueStr, stype)
 
@@ -151,7 +176,7 @@ func (p *PLCTabParser) parseLine(line string, lineNum int) (*models.LogEntry, *m
 	}, nil
 }
 
-func (p *PLCTabParser) fastParseLine(line string) *models.LogEntry {
+func (p *PLCTabParser) fastParseLine(line string, intern *StringIntern) *models.LogEntry {
 	if !strings.Contains(line, "\t") {
 		return nil
 	}
@@ -185,6 +210,10 @@ func (p *PLCTabParser) fastParseLine(line string) *models.LogEntry {
 	if deviceID == "" {
 		return nil
 	}
+
+	// Intern strings
+	deviceID = intern.Intern(deviceID)
+	signal = intern.Intern(signal)
 
 	stype := InferType(valueStr)
 	value := ParseValue(valueStr, stype)

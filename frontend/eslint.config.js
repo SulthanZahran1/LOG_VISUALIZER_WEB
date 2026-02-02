@@ -48,6 +48,10 @@ export default [
                 AbortController: 'readonly',
                 AbortSignal: 'readonly',
                 EventSource: 'readonly',
+                CompressionStream: 'readonly',
+                DecompressionStream: 'readonly',
+                Response: 'readonly',
+                RequestInit: 'readonly',
             },
         },
         plugins: {

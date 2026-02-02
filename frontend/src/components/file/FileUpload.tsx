@@ -1,6 +1,6 @@
 /* global ClipboardEvent, HTMLTextAreaElement */
 import { useSignal } from '@preact/signals';
-import { uploadFile, uploadFileChunked } from '../../api/client';
+import { uploadFile, uploadFileOptimized } from '../../api/client';
 import type { FileInfo } from '../../models/types';
 
 interface FileUploadProps {
@@ -14,7 +14,7 @@ export function FileUpload({
     onUploadSuccess,
     uploadFn = uploadFile,
     accept,
-    maxSize = 1024 * 1024 * 1024 // 1GB default
+    maxSize = 2 * 1024 * 1024 * 1024 // 2GB default
 }: FileUploadProps) {
     const isDragging = useSignal(false);
     const isUploading = useSignal(false);
@@ -34,10 +34,10 @@ export function FileUpload({
         error.value = null;
 
         try {
-            // Use chunked upload for files > 1MB (default Nginx body limit)
-            const CHUNK_THRESHOLD = 1 * 1024 * 1024;
+            // Use chunked upload for files > 5MB (optimized threshold)
+            const CHUNK_THRESHOLD = 5 * 1024 * 1024;
             const info = file.size > CHUNK_THRESHOLD
-                ? await uploadFileChunked(file, (p) => uploadProgress.value = p)
+                ? await uploadFileOptimized(file, (p) => uploadProgress.value = p)
                 : await uploadFn(file);
 
             onUploadSuccess(info);

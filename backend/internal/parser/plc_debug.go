@@ -57,11 +57,35 @@ func (p *PLCDebugParser) Parse(filePath string) (*models.ParsedLog, []*models.Pa
 	}
 	defer file.Close()
 
+	// Get file info for capacity estimation
+	fileInfo, err := file.Stat()
+	if err != nil {
+		fileInfo = nil
+	}
+
+	// Dynamic pre-allocation based on file size
+	// Estimate ~150 bytes per line average for PLC debug logs
+	initialCapacity := 10000
+	if fileInfo != nil {
+		estimatedLines := int(fileInfo.Size() / 150)
+		if estimatedLines > initialCapacity {
+			initialCapacity = estimatedLines
+			// Cap at 50M to avoid excessive pre-allocation for pathological files
+			if initialCapacity > 50000000 {
+				initialCapacity = 50000000
+			}
+		}
+	}
+
 	// Pre-allocate with estimated capacity for large files (reduces reallocations)
-	entries := make([]models.LogEntry, 0, 10000)
+	entries := make([]models.LogEntry, 0, initialCapacity)
 	errors := make([]*models.ParseError, 0, 100)
-	signals := make(map[string]struct{})
-	devices := make(map[string]struct{})
+	signals := make(map[string]struct{}, 1000)
+	devices := make(map[string]struct{}, 1000)
+
+	// String interning for device IDs and signal names
+	// This dramatically reduces memory for logs with repetitive device/signal names
+	intern := GetGlobalIntern()
 
 	scanner := bufio.NewScanner(file)
 	// Increase buffer size for large log files (1MB instead of default 64KB)
@@ -75,7 +99,7 @@ func (p *PLCDebugParser) Parse(filePath string) (*models.ParsedLog, []*models.Pa
 			continue
 		}
 
-		entry, parseErr := p.parseLine(line, lineNum)
+		entry, parseErr := p.parseLine(line, lineNum, intern)
 		if parseErr != nil {
 			errors = append(errors, parseErr)
 			continue
@@ -106,9 +130,9 @@ func (p *PLCDebugParser) Parse(filePath string) (*models.ParsedLog, []*models.Pa
 	}, errors, nil
 }
 
-func (p *PLCDebugParser) parseLine(line string, lineNum int) (*models.LogEntry, *models.ParseError) {
+func (p *PLCDebugParser) parseLine(line string, lineNum int, intern *StringIntern) (*models.LogEntry, *models.ParseError) {
 	// Try fast path first (bracket splitting)
-	entry := p.fastParseLine(line)
+	entry := p.fastParseLine(line, intern)
 	if entry != nil {
 		return entry, nil
 	}
@@ -141,6 +165,11 @@ func (p *PLCDebugParser) parseLine(line string, lineNum int) (*models.LogEntry, 
 		return nil, &models.ParseError{Line: lineNum, Content: line, Reason: "device ID not found in path"}
 	}
 
+	// Intern device ID and signal name to reduce memory usage
+	deviceID = intern.Intern(deviceID)
+	signal = intern.Intern(signal)
+	category = intern.Intern(category)
+
 	stype := models.SignalType(dtypeToken)
 	if stype != models.SignalTypeBoolean && stype != models.SignalTypeInteger && stype != models.SignalTypeString {
 		// Infer if not standard
@@ -159,7 +188,7 @@ func (p *PLCDebugParser) parseLine(line string, lineNum int) (*models.LogEntry, 
 	}, nil
 }
 
-func (p *PLCDebugParser) fastParseLine(line string) *models.LogEntry {
+func (p *PLCDebugParser) fastParseLine(line string, intern *StringIntern) *models.LogEntry {
 	// Format: "YYYY-MM-DD HH:MM:SS.fff [Level] [path] [cat:signal] (dtype) : value"
 	if !strings.Contains(line, "[") || !strings.Contains(line, "(") {
 		return nil
@@ -225,6 +254,11 @@ func (p *PLCDebugParser) fastParseLine(line string) *models.LogEntry {
 	if deviceID == "" {
 		return nil
 	}
+
+	// Intern strings to reduce memory usage
+	deviceID = intern.Intern(deviceID)
+	signal = intern.Intern(signal)
+	category = intern.Intern(category)
 
 	stype := models.SignalType(dtypeToken)
 	if stype != models.SignalTypeBoolean && stype != models.SignalTypeInteger && stype != models.SignalTypeString {

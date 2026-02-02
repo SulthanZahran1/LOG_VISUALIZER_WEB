@@ -44,7 +44,7 @@ func main() {
 			return c.Request().Header.Get("Accept") == "text/event-stream"
 		},
 	}))
-	e.Use(middleware.BodyLimit("1G"))
+	e.Use(middleware.BodyLimit("2G"))
 
 	// CORS configuration for frontend dev server
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
@@ -61,6 +61,7 @@ func main() {
 
 	// File management
 	apiGroup.POST("/files/upload", h.HandleUploadFile)
+	apiGroup.POST("/files/upload/binary", h.HandleUploadBinary)
 	apiGroup.POST("/files/upload/chunk", h.HandleUploadChunk)
 	apiGroup.POST("/files/upload/complete", h.HandleCompleteUpload)
 	apiGroup.GET("/files/recent", h.HandleRecentFiles)

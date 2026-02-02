@@ -57,12 +57,37 @@ func (p *CSVSignalParser) Parse(filePath string) (*models.ParsedLog, []*models.P
 	}
 	defer file.Close()
 
-	entries := make([]models.LogEntry, 0)
-	errors := make([]*models.ParseError, 0)
-	signals := make(map[string]struct{})
-	devices := make(map[string]struct{})
+	// Get file info for capacity estimation
+	fileInfo, err := file.Stat()
+	if err != nil {
+		fileInfo = nil
+	}
+
+	// Dynamic pre-allocation based on file size
+	// CSV lines are typically shorter, estimate ~80 bytes per line
+	initialCapacity := 10000
+	if fileInfo != nil {
+		estimatedLines := int(fileInfo.Size() / 80)
+		if estimatedLines > initialCapacity {
+			initialCapacity = estimatedLines
+			if initialCapacity > 50000000 {
+				initialCapacity = 50000000
+			}
+		}
+	}
+
+	entries := make([]models.LogEntry, 0, initialCapacity)
+	errors := make([]*models.ParseError, 0, 100)
+	signals := make(map[string]struct{}, 1000)
+	devices := make(map[string]struct{}, 1000)
+
+	// String interning for device IDs and signal names
+	intern := GetGlobalIntern()
 
 	scanner := bufio.NewScanner(file)
+	// Increase buffer size for large log files
+	const maxScannerBuffer = 1024 * 1024 // 1MB
+	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
 	lineNum := 0
 	for scanner.Scan() {
 		lineNum++
@@ -91,6 +116,10 @@ func (p *CSVSignalParser) Parse(filePath string) (*models.ParsedLog, []*models.P
 				if deviceID == "" {
 					deviceID = path // Fallback for simple CSV
 				}
+
+				// Intern strings
+				deviceID = intern.Intern(deviceID)
+				signal = intern.Intern(signal)
 
 				stype := InferType(valueStr)
 				value := ParseValue(valueStr, stype)
@@ -131,6 +160,10 @@ func (p *CSVSignalParser) Parse(filePath string) (*models.ParsedLog, []*models.P
 		if deviceID == "" {
 			deviceID = path
 		}
+
+		// Intern strings
+		deviceID = intern.Intern(deviceID)
+		signal = intern.Intern(signal)
 
 		stype := InferType(valueStr)
 		value := ParseValue(valueStr, stype)

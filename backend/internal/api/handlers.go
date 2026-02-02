@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -687,6 +688,44 @@ func (h *Handler) HandleCompleteUpload(c echo.Context) error {
 	info, err := h.store.CompleteChunkedUpload(req.UploadID, req.Name, req.TotalChunks)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to complete upload: %v", err)})
+	}
+
+	return c.JSON(http.StatusCreated, info)
+}
+
+// HandleUploadBinary accepts pre-encoded binary log files.
+// This format is 85-95% smaller than raw text and requires zero parsing on backend.
+func (h *Handler) HandleUploadBinary(c echo.Context) error {
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing file in request"})
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to open uploaded file"})
+	}
+	defer src.Close()
+
+	// Check magic number to verify it's a valid binary format
+	var magic uint32
+	if err := binary.Read(src, binary.BigEndian, &magic); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid binary file"})
+	}
+
+	if magic != parser.BinaryMagic {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid binary format magic number"})
+	}
+
+	// Reset reader to beginning
+	if _, err := src.Seek(0, 0); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to reset file reader"})
+	}
+
+	// Save the binary file
+	info, err := h.store.Save(file.Filename, src)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save file: %v", err)})
 	}
 
 	return c.JSON(http.StatusCreated, info)

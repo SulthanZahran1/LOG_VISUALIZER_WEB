@@ -4,6 +4,7 @@
  */
 
 import type { FileInfo, ParseSession, HealthResponse, LogEntry } from '../models/types';
+export { uploadFileOptimized, CONFIG as UPLOAD_CONFIG } from './upload';
 
 const API_BASE = '/api';
 
@@ -64,50 +65,23 @@ export async function uploadFile(file: File): Promise<FileInfo> {
 }
 
 /**
- * Uploads a file in chunks to bypass server body limits.
+ * Uploads a file in chunks with optimizations:
+ * - Parallel chunk uploads (3 concurrent)
+ * - 5MB chunks (was 1MB) for reduced HTTP overhead
+ * - Retry logic with exponential backoff
+ * - Connection keep-alive
+ * 
+ * For small files (< 5MB), uses single upload to avoid chunking overhead.
+ * 
+ * @deprecated Use uploadFileOptimized from './upload' for full optimization
  */
 export async function uploadFileChunked(
     file: File,
     onProgress?: (progress: number) => void
 ): Promise<FileInfo> {
-    const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks (Nginx default limit safe)
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    const uploadId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-
-    for (let i = 0; i < totalChunks; i++) {
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, file.size);
-        const chunk = file.slice(start, end);
-
-        const formData = new FormData();
-        formData.append('file', chunk);
-        formData.append('uploadId', uploadId);
-        formData.append('chunkIndex', i.toString());
-
-        const response = await fetch(`${API_BASE}/files/upload/chunk`, {
-            method: 'POST',
-            body: formData,
-        });
-
-        if (!response.ok) {
-            const error = await response.json().catch(() => ({ error: 'Chunk upload failed' }));
-            throw new ApiError(response.status, error.error || `Chunk ${i} failed`);
-        }
-
-        if (onProgress) {
-            onProgress(Math.round(((i + 1) / totalChunks) * 100));
-        }
-    }
-
-    // Complete upload
-    return request<FileInfo>('/files/upload/complete', {
-        method: 'POST',
-        body: JSON.stringify({
-            uploadId,
-            name: file.name,
-            totalChunks,
-        }),
-    });
+    // Dynamically import to avoid circular deps
+    const { uploadFileOptimized } = await import('./upload');
+    return uploadFileOptimized(file, onProgress);
 }
 
 export async function getRecentFiles(): Promise<FileInfo[]> {

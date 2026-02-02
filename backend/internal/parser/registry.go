@@ -16,6 +16,7 @@ var globalRegistry = NewRegistry()
 func NewRegistry() *Registry {
 	return &Registry{
 		parsers: []Parser{
+			NewBinaryFormatParser(), // Check binary format first (most specific)
 			NewPLCDebugParser(),
 			NewPLCTabParser(),
 			NewMCSLogParser(),
