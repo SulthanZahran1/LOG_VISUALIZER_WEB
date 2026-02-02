@@ -87,20 +87,20 @@ export const availableCategories = computed(() => {
 // 2.05 Filter by Selected Signals (Waveform Selection)
 // Implicit mode: If signals are selected, filter to them. If empty, show all.
 export const filteredEntries = computed(() => {
-    // OPTIMIZATION: Early exit if no signals selected - avoids all expensive operations
+    // 1. Selection Filter (Implicit: if selected, filter. If empty, show all)
     const selected = new Set(selectedSignals.value);
-    if (selected.size === 0) {
-        return [];
-    }
+    let entries = logEntries.value;
 
-    // 1. Selection Filter (do this FIRST to reduce dataset size for subsequent operations)
-    let entries = logEntries.value.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
+    if (selected.size > 0) {
+        entries = entries.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
+    }
 
     // 2. Filter by Category (if any categories selected)
     const catFilter = categoryFilter.value;
     if (catFilter.size > 0) {
         entries = entries.filter(e => catFilter.has(e.category || ''));
     }
+
 
     // 3. Filter by Signal Type (cheap filter, do early)
     if (signalTypeFilter.value) {
