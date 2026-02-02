@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"compress/gzip"
 	"encoding/binary"
 	"encoding/json"
@@ -693,55 +692,81 @@ func (h *Handler) HandleCompleteUpload(c echo.Context) error {
 
 	info, err := h.store.CompleteChunkedUpload(req.UploadID, req.Name, req.TotalChunks)
 	if err != nil {
+		fmt.Printf("Error completing upload: %v\n", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to complete upload: %v", err)})
 	}
 
 	// If file was gzip compressed, decompress it
 	if req.Encoding == "gzip" {
+		fmt.Printf("Decompressing file %s (compressed: %d bytes, original: %d bytes)\n", 
+			info.ID, info.Size, req.OriginalSize)
+		
 		if err := h.decompressFile(info.ID); err != nil {
 			// Log error but don't fail - file might still be parseable
 			fmt.Printf("Warning: failed to decompress file %s: %v\n", info.ID, err)
 		} else {
 			// Update size after decompression
 			info.Size = req.OriginalSize
+			fmt.Printf("Successfully decompressed file %s\n", info.ID)
 		}
 	}
 
 	return c.JSON(http.StatusCreated, info)
 }
 
-// decompressFile decompresses a gzip file in place
+// decompressFile decompresses a gzip file in place using streaming
+// to avoid loading large files into memory
 func (h *Handler) decompressFile(fileID string) error {
 	path, err := h.store.GetFilePath(fileID)
 	if err != nil {
 		return err
 	}
 
-	// Read compressed data
-	compressed, err := os.ReadFile(path)
+	// Open compressed file
+	compressedFile, err := os.Open(path)
 	if err != nil {
 		return err
 	}
+	defer compressedFile.Close()
 
 	// Check gzip magic
-	if len(compressed) < 2 || compressed[0] != 0x1f || compressed[1] != 0x8b {
+	magic := make([]byte, 2)
+	if _, err := compressedFile.Read(magic); err != nil {
+		return err
+	}
+	if magic[0] != 0x1f || magic[1] != 0x8b {
 		return fmt.Errorf("not a gzip file")
 	}
+	
+	// Reset to beginning
+	compressedFile.Seek(0, 0)
 
-	// Decompress
-	reader, err := gzip.NewReader(bytes.NewReader(compressed))
+	// Create gzip reader
+	reader, err := gzip.NewReader(compressedFile)
 	if err != nil {
 		return err
 	}
 	defer reader.Close()
 
-	decompressed, err := io.ReadAll(reader)
+	// Create temp file for decompressed data
+	tempPath := path + ".decompressing"
+	outFile, err := os.Create(tempPath)
 	if err != nil {
 		return err
 	}
 
-	// Write decompressed data back
-	if err := os.WriteFile(path, decompressed, 0644); err != nil {
+	// Stream decompress (no loading into memory)
+	_, err = io.Copy(outFile, reader)
+	outFile.Close()
+	
+	if err != nil {
+		os.Remove(tempPath)
+		return fmt.Errorf("decompression failed: %w", err)
+	}
+
+	// Replace original with decompressed
+	if err := os.Rename(tempPath, path); err != nil {
+		os.Remove(tempPath)
 		return err
 	}
 
