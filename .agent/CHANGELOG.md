@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.3] - 2026-01-30
+
+### Added
+- **Category Column Filter**: Added column header quick filter for the Category column in Log Table
+- **Filter Popover**: Click funnel icon on CATEGORY header to open filter popover with checkbox list
+- **Multi-Select Categories**: Select/deselect individual categories or use All/Clear buttons
+- **Visual Feedback**: Filter badge shows count when active, header highlights when filtered
+- **(Uncategorized)** option for entries without a category
+
+### Files Changed
+- Modified: `frontend/src/stores/logStore.ts` - Added `categoryFilter` signal and `availableCategories` computed
+- Modified: `frontend/src/components/log/LogTable.tsx` - Added `CategoryFilterPopover` component
+- Modified: `frontend/src/components/log/LogTable.css` - Added popover and filter button styles
+- Modified: `frontend/src/components/icons.tsx` - Added `FilterIcon`
+- Modified: `.agent/TODO.md` - Added future Sidebar Filter Panel backlog item
+
+---
+
 ## [0.6.2] - 2026-01-30
 
 ### Added

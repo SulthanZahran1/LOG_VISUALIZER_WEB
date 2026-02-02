@@ -25,6 +25,9 @@ export const searchRegex = signal(false);
 export const searchCaseSensitive = signal(false);
 export const showChangedOnly = signal(false);
 
+// Category filter - Set of selected categories (empty = show all)
+export const categoryFilter = signal<Set<string>>(new Set());
+
 // Layout - View types matching desktop reference
 export type ViewType = 'home' | 'log-table' | 'waveform' | 'map-viewer' | 'transitions';
 export const openViews = signal<ViewType[]>(['home']);
@@ -66,6 +69,21 @@ export const isParsing = computed(() =>
     currentSession.value?.status === 'parsing' || currentSession.value?.status === 'pending'
 );
 
+// Available categories - extracted from current log entries
+export const availableCategories = computed(() => {
+    const categories = new Set<string>();
+    for (const entry of logEntries.value) {
+        // Include empty string for uncategorized entries
+        categories.add(entry.category || '');
+    }
+    return Array.from(categories).sort((a, b) => {
+        // Sort empty string (uncategorized) to the end
+        if (a === '') return 1;
+        if (b === '') return -1;
+        return a.localeCompare(b);
+    });
+});
+
 // 2.05 Filter by Selected Signals (Waveform Selection)
 // Implicit mode: If signals are selected, filter to them. If empty, show all.
 export const filteredEntries = computed(() => {
@@ -78,12 +96,18 @@ export const filteredEntries = computed(() => {
     // 1. Selection Filter (do this FIRST to reduce dataset size for subsequent operations)
     let entries = logEntries.value.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
 
-    // 2. Filter by Signal Type (cheap filter, do early)
+    // 2. Filter by Category (if any categories selected)
+    const catFilter = categoryFilter.value;
+    if (catFilter.size > 0) {
+        entries = entries.filter(e => catFilter.has(e.category || ''));
+    }
+
+    // 3. Filter by Signal Type (cheap filter, do early)
     if (signalTypeFilter.value) {
         entries = entries.filter(e => e.signalType === signalTypeFilter.value);
     }
 
-    // 3. Filter "Show Changed Only" 
+    // 4. Filter "Show Changed Only" 
     // NOTE: Backend returns entries sorted by timestamp, so change detection is accurate
     // We only create the Map when this filter is enabled
     if (showChangedOnly.value) {
@@ -97,7 +121,7 @@ export const filteredEntries = computed(() => {
         });
     }
 
-    // 4. Search Filter
+    // 5. Search Filter
     if (searchQuery.value) {
         let matcher: (text: string) => boolean;
 
@@ -124,7 +148,7 @@ export const filteredEntries = computed(() => {
         );
     }
 
-    // 5. Final Sort (User selection) - only sort once at the end
+    // 6. Final Sort (User selection) - only sort once at the end
     if (sortColumn.value) {
         const col = sortColumn.value;
         const dir = sortDirection.value === 'asc' ? 1 : -1;

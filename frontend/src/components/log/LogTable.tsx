@@ -15,17 +15,95 @@ import {
     openView,
     selectedLogTime,
     isStreaming,
-    streamProgress
+    streamProgress,
+    categoryFilter,
+    availableCategories
 } from '../../stores/logStore';
 import { toggleSignal } from '../../stores/waveformStore';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
 import type { LogEntry } from '../../models/types';
 import { SignalSidebar } from '../waveform/SignalSidebar';
-import { SearchIcon, ChartIcon, CopyIcon, RefreshIcon, ChevronUpIcon, ChevronDownIcon } from '../icons';
+import { SearchIcon, ChartIcon, CopyIcon, RefreshIcon, ChevronUpIcon, ChevronDownIcon, FilterIcon } from '../icons';
 import './LogTable.css';
 
 const ROW_HEIGHT = 28; // Increased for better readability
 const BUFFER = 10;
+
+/**
+ * Category Filter Popover Component
+ */
+function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
+    const categories = availableCategories.value;
+    const currentFilter = categoryFilter.value;
+
+    const handleToggle = (cat: string) => {
+        const newFilter = new Set(currentFilter);
+        if (newFilter.has(cat)) {
+            newFilter.delete(cat);
+        } else {
+            newFilter.add(cat);
+        }
+        categoryFilter.value = newFilter;
+    };
+
+    const handleSelectAll = () => {
+        categoryFilter.value = new Set(categories);
+    };
+
+    const handleClearAll = () => {
+        categoryFilter.value = new Set();
+    };
+
+    // Close on outside click
+    const popoverRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+                onClose();
+            }
+        };
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        // Delay to avoid immediate close from the click that opened it
+        setTimeout(() => {
+            document.addEventListener('mousedown', handleClickOutside);
+            document.addEventListener('keydown', handleEscape);
+        }, 0);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleEscape);
+        };
+    }, [onClose]);
+
+    return (
+        <div ref={popoverRef} className="category-filter-popover">
+            <div className="popover-header">
+                <span>Filter by Category</span>
+                <div className="popover-actions">
+                    <button className="popover-btn" onClick={handleSelectAll}>All</button>
+                    <button className="popover-btn" onClick={handleClearAll}>Clear</button>
+                </div>
+            </div>
+            <div className="popover-list">
+                {categories.length === 0 ? (
+                    <div className="popover-empty">No categories available</div>
+                ) : (
+                    categories.map(cat => (
+                        <label key={cat || '__uncategorized__'} className="filter-item">
+                            <input
+                                type="checkbox"
+                                checked={currentFilter.has(cat)}
+                                onChange={() => handleToggle(cat)}
+                            />
+                            <span className="filter-label">{cat || '(Uncategorized)'}</span>
+                        </label>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+}
 
 /**
  * Performant Log Table with Virtual Scrolling and Premium UX
@@ -47,6 +125,9 @@ export function LogTable() {
         type: 100
     });
     const contextMenu = useSignal<{ x: number, y: number, visible: boolean }>({ x: 0, y: 0, visible: false });
+
+    // --- Category Filter Popover ---
+    const [categoryFilterOpen, setCategoryFilterOpen] = useState(false);
 
     // --- Debounced Search ---
     const [localQuery, setLocalQuery] = useState(searchQuery.value);
@@ -412,8 +493,33 @@ export function LogTable() {
                             SIGNAL NAME {sortColumn.value === 'signalName' && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
                             <div className="resize-handle" onMouseDown={(e) => handleResize('sig', e)} />
                         </div>
-                        <div className="log-col col-cat" style={{ width: columnWidths.value.cat }} onClick={() => handleHeaderClick('category')}>
-                            CATEGORY {sortColumn.value === 'category' && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
+                        <div className={`log-col col-cat ${categoryFilter.value.size > 0 ? 'filter-active' : ''}`} style={{ width: columnWidths.value.cat }}>
+                            <span className="col-header-text" onClick={() => handleHeaderClick('category')}>
+                                CATEGORY {sortColumn.value === 'category' && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
+                            </span>
+                            <button
+                                className={`category-filter-btn ${categoryFilter.value.size > 0 ? 'active' : ''}`}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    contextMenu.value = { ...contextMenu.value, visible: false };
+                                    // Toggle popover using a local state approach
+                                    const btn = e.currentTarget;
+                                    const existing = btn.parentElement?.querySelector('.category-filter-popover');
+                                    if (existing) {
+                                        existing.remove();
+                                    } else {
+                                        // Use a portal-like approach: render popover
+                                        setCategoryFilterOpen(prev => !prev);
+                                    }
+                                }}
+                                title="Filter by category"
+                            >
+                                <FilterIcon size={12} />
+                                {categoryFilter.value.size > 0 && (
+                                    <span className="filter-badge">{categoryFilter.value.size}</span>
+                                )}
+                            </button>
+                            {categoryFilterOpen && <CategoryFilterPopover onClose={() => setCategoryFilterOpen(false)} />}
                             <div className="resize-handle" onMouseDown={(e) => handleResize('cat', e)} />
                         </div>
                         <div className="log-col col-val" style={{ width: columnWidths.value.val }}>

@@ -58,6 +58,13 @@
 - [ ] YAML editor with syntax highlighting
 - [ ] Results panel with violation navigation
 
+### Future: Sidebar Filter Panel (Log Table Enhancement)
+- [ ] Unified filter panel in sidebar for Log Table
+- [ ] Collapsible sections: Categories, Device IDs, Signal Types, Source Files
+- [ ] Only show sections with data (e.g., hide Categories if log has none)
+- [ ] Consider tabbed approach: Signals | Filters
+- [ ] Replaces/supplements current column header filters
+
 ---
 
 ## ⚡ Performance & Stability
