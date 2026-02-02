@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, Page } from '@playwright/test'
 
 test.describe('Log Table', () => {
     test.beforeEach(async ({ page }) => {
@@ -77,5 +77,111 @@ test.describe('Log Table', () => {
                 await expect(page.locator('.signal-sidebar')).toBeVisible()
             }
         }
+    })
+
+    /**
+     * Navigate to Log Table using any available method.
+     * Returns true if navigation succeeded, false otherwise.
+     */
+    async function navigateToLogTable(page: Page): Promise<boolean> {
+        // First, try enabled view-btn in LoadedFileCard
+        const logTableBtn = page.locator('.view-btn').filter({ hasText: 'Log Table' }).first()
+        if (await logTableBtn.isEnabled({ timeout: 3000 }).catch(() => false)) {
+            await logTableBtn.click()
+            await expect(page.locator('.log-table-header')).toBeVisible({ timeout: 10000 })
+            return true
+        }
+
+        // Try the "Open Views" section's "Log Table" button (only if enabled)
+        const openViewsLogTable = page.locator('button').filter({ hasText: 'Browse and filter log entries' })
+        if (await openViewsLogTable.isEnabled({ timeout: 3000 }).catch(() => false)) {
+            await openViewsLogTable.click()
+            await expect(page.locator('.log-table-header')).toBeVisible({ timeout: 10000 })
+            return true
+        }
+
+        // Cannot navigate - no valid session
+        return false
+    }
+
+    test('category filter button is visible in header', async ({ page }) => {
+        if (!await navigateToLogTable(page)) {
+            test.skip()
+            return
+        }
+        await expect(page.locator('.category-filter-btn')).toBeVisible()
+    })
+
+    test('clicking category filter button opens popover', async ({ page }) => {
+        if (!await navigateToLogTable(page)) {
+            test.skip()
+            return
+        }
+
+        await page.locator('.category-filter-btn').click()
+        await expect(page.locator('.category-filter-popover')).toBeVisible()
+        await expect(page.locator('.popover-header')).toContainText('Filter by Category')
+        await expect(page.locator('.popover-btn').filter({ hasText: 'All' })).toBeVisible()
+        await expect(page.locator('.popover-btn').filter({ hasText: 'Clear' })).toBeVisible()
+    })
+
+    test('category filter popover closes on escape', async ({ page }) => {
+        if (!await navigateToLogTable(page)) {
+            test.skip()
+            return
+        }
+
+        await page.locator('.category-filter-btn').click()
+        await expect(page.locator('.category-filter-popover')).toBeVisible()
+
+        await page.keyboard.press('Escape')
+        await expect(page.locator('.category-filter-popover')).not.toBeVisible()
+    })
+
+    test('category filter popover closes on clicking filter button again', async ({ page }) => {
+        if (!await navigateToLogTable(page)) {
+            test.skip()
+            return
+        }
+
+        await page.locator('.category-filter-btn').click()
+        await expect(page.locator('.category-filter-popover')).toBeVisible()
+
+        await page.locator('.category-filter-btn').click()
+        await expect(page.locator('.category-filter-popover')).not.toBeVisible()
+    })
+
+    test('category filter All button selects all categories', async ({ page }) => {
+        if (!await navigateToLogTable(page)) {
+            test.skip()
+            return
+        }
+
+        await page.locator('.category-filter-btn').click()
+        await expect(page.locator('.category-filter-popover')).toBeVisible()
+
+        await page.locator('.popover-btn').filter({ hasText: 'All' }).click()
+
+        const checkboxes = page.locator('.filter-item input[type="checkbox"]')
+        const count = await checkboxes.count()
+
+        if (count > 0) {
+            await expect(page.locator('.category-filter-btn.active')).toBeVisible()
+        }
+    })
+
+    test('category filter Clear button clears all selections', async ({ page }) => {
+        if (!await navigateToLogTable(page)) {
+            test.skip()
+            return
+        }
+
+        await page.locator('.category-filter-btn').click()
+        await expect(page.locator('.category-filter-popover')).toBeVisible()
+
+        await page.locator('.popover-btn').filter({ hasText: 'All' }).click()
+        await page.locator('.popover-btn').filter({ hasText: 'Clear' }).click()
+
+        await expect(page.locator('.filter-badge')).not.toBeVisible()
     })
 })

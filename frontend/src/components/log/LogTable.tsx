@@ -33,10 +33,11 @@ const BUFFER = 10;
  * Category Filter Popover Component
  */
 function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
+    // Access signals reactively - re-renders when they change
     const categories = availableCategories.value;
-    const currentFilter = categoryFilter.value;
 
     const handleToggle = (cat: string) => {
+        const currentFilter = categoryFilter.value;
         const newFilter = new Set(currentFilter);
         if (newFilter.has(cat)) {
             newFilter.delete(cat);
@@ -93,7 +94,7 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
                         <label key={cat || '__uncategorized__'} className="filter-item">
                             <input
                                 type="checkbox"
-                                checked={currentFilter.has(cat)}
+                                checked={categoryFilter.value.has(cat)}
                                 onChange={() => handleToggle(cat)}
                             />
                             <span className="filter-label">{cat || '(Uncategorized)'}</span>
@@ -502,15 +503,7 @@ export function LogTable() {
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     contextMenu.value = { ...contextMenu.value, visible: false };
-                                    // Toggle popover using a local state approach
-                                    const btn = e.currentTarget;
-                                    const existing = btn.parentElement?.querySelector('.category-filter-popover');
-                                    if (existing) {
-                                        existing.remove();
-                                    } else {
-                                        // Use a portal-like approach: render popover
-                                        setCategoryFilterOpen(prev => !prev);
-                                    }
+                                    setCategoryFilterOpen(prev => !prev);
                                 }}
                                 title="Filter by category"
                             >
