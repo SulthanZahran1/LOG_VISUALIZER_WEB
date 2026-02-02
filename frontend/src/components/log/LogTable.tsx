@@ -47,10 +47,6 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
         categoryFilter.value = newFilter;
     };
 
-    const handleSelectAll = () => {
-        categoryFilter.value = new Set(categories);
-    };
-
     const handleClearAll = () => {
         categoryFilter.value = new Set();
     };
@@ -82,7 +78,6 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
             <div className="popover-header">
                 <span>Filter by Category</span>
                 <div className="popover-actions">
-                    <button className="popover-btn" onClick={handleSelectAll}>All</button>
                     <button className="popover-btn" onClick={handleClearAll}>Clear</button>
                 </div>
             </div>

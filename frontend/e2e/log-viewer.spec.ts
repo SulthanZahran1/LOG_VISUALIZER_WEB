@@ -70,7 +70,6 @@ test.describe('Log Table', () => {
         await page.locator('.category-filter-btn').click()
         await expect(page.locator('.category-filter-popover')).toBeVisible()
         await expect(page.locator('.popover-header')).toContainText('Filter by Category')
-        await expect(page.locator('.popover-btn').filter({ hasText: 'All' })).toBeVisible()
         await expect(page.locator('.popover-btn').filter({ hasText: 'Clear' })).toBeVisible()
     })
 
@@ -100,25 +99,6 @@ test.describe('Log Table', () => {
         await expect(page.locator('.category-filter-popover')).not.toBeVisible()
     })
 
-    test('category filter All button selects all categories', async ({ page }) => {
-        if (!await setupLogTableWithData(page)) {
-            test.skip()
-            return
-        }
-
-        await page.locator('.category-filter-btn').click()
-        await expect(page.locator('.category-filter-popover')).toBeVisible()
-
-        await page.locator('.popover-btn').filter({ hasText: 'All' }).click()
-
-        const checkboxes = page.locator('.filter-item input[type="checkbox"]')
-        const count = await checkboxes.count()
-
-        if (count > 0) {
-            await expect(page.locator('.category-filter-btn.active')).toBeVisible()
-        }
-    })
-
     test('category filter Clear button clears all selections', async ({ page }) => {
         if (!await setupLogTableWithData(page)) {
             test.skip()
@@ -128,10 +108,19 @@ test.describe('Log Table', () => {
         await page.locator('.category-filter-btn').click()
         await expect(page.locator('.category-filter-popover')).toBeVisible()
 
-        await page.locator('.popover-btn').filter({ hasText: 'All' }).click()
-        await page.locator('.popover-btn').filter({ hasText: 'Clear' }).click()
+        // First, manually check some categories
+        const checkboxes = page.locator('.filter-item input[type="checkbox"]')
+        const count = await checkboxes.count()
 
-        await expect(page.locator('.filter-badge')).not.toBeVisible()
+        if (count > 0) {
+            // Check first category
+            await checkboxes.first().check()
+            await expect(page.locator('.category-filter-btn.active')).toBeVisible()
+
+            // Now click Clear to clear all
+            await page.locator('.popover-btn').filter({ hasText: 'Clear' }).click()
+            await expect(page.locator('.filter-badge')).not.toBeVisible()
+        }
     })
 
     test.describe('Draggable Columns', () => {
