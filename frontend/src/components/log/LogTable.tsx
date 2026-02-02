@@ -59,7 +59,7 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
     const popoverRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
-            if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+            if (popoverRef.current && e.target instanceof HTMLElement && !popoverRef.current.contains(e.target)) {
                 onClose();
             }
         };
@@ -128,7 +128,7 @@ export function LogTable() {
     const contextMenu = useSignal<{ x: number, y: number, visible: boolean }>({ x: 0, y: 0, visible: false });
 
     // --- Category Filter Popover ---
-    const [categoryFilterOpen, setCategoryFilterOpen] = useState(false);
+    const categoryFilterOpen = useSignal(false);
 
     // --- Debounced Search ---
     const [localQuery, setLocalQuery] = useState(searchQuery.value);
@@ -500,11 +500,9 @@ export function LogTable() {
                             </span>
                             <button
                                 className={`category-filter-btn ${categoryFilter.value.size > 0 ? 'active' : ''}`}
-                                onMouseDown={(e) => {
+                                onClick={(e) => {
                                     e.stopPropagation();
-                                    e.preventDefault();
-                                    contextMenu.value = { ...contextMenu.value, visible: false };
-                                    setCategoryFilterOpen(prev => !prev);
+                                    categoryFilterOpen.value = !categoryFilterOpen.value;
                                 }}
                                 title="Filter by category"
                             >
@@ -514,7 +512,7 @@ export function LogTable() {
                                     <span className="filter-badge">{categoryFilter.value.size}</span>
                                 )}
                             </button>
-                            {categoryFilterOpen && <CategoryFilterPopover onClose={() => setCategoryFilterOpen(false)} />}
+                            {categoryFilterOpen.value && <CategoryFilterPopover onClose={() => categoryFilterOpen.value = false} />}
                             <div className="resize-handle" onMouseDown={(e) => handleResize('cat', e)} />
                         </div>
                         <div className="log-col col-val" style={{ width: columnWidths.value.val }}>
