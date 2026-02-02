@@ -500,14 +500,16 @@ export function LogTable() {
                             </span>
                             <button
                                 className={`category-filter-btn ${categoryFilter.value.size > 0 ? 'active' : ''}`}
-                                onClick={(e) => {
+                                onMouseDown={(e) => {
                                     e.stopPropagation();
+                                    e.preventDefault();
                                     contextMenu.value = { ...contextMenu.value, visible: false };
                                     setCategoryFilterOpen(prev => !prev);
                                 }}
                                 title="Filter by category"
                             >
                                 <FilterIcon size={12} />
+
                                 {categoryFilter.value.size > 0 && (
                                     <span className="filter-badge">{categoryFilter.value.size}</span>
                                 )}
