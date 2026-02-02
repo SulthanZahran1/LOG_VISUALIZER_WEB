@@ -14,6 +14,9 @@ export const logError = signal<string | null>(null);
 export const streamProgress = signal(0);
 export const isStreaming = signal(false);
 
+// Polling control - to cancel ongoing polling when session changes
+let currentPollAbortController: AbortController | null = null;
+
 // Selected log entry time - used for bookmarking from Log Table view
 export const selectedLogTime = signal<number | null>(null);
 
@@ -57,6 +60,11 @@ export const isSyncEnabled = signal(false);
 export const syncScrollTop = signal(0);
 
 export function clearSession() {
+    // Abort any ongoing polling first
+    if (currentPollAbortController) {
+        currentPollAbortController.abort();
+        currentPollAbortController = null;
+    }
     currentSession.value = null;
     logEntries.value = [];
     totalEntries.value = 0;
@@ -183,7 +191,9 @@ export async function initLogStore() {
             if (lastSession.status === 'complete') {
                 fetchEntries(1, 1000); // Fetch more for initial view to support filtering
             } else if (lastSession.status === 'parsing' || lastSession.status === 'pending') {
-                pollStatus(lastSession.id);
+                // Create new abort controller for restored session polling
+                currentPollAbortController = new AbortController();
+                pollStatus(lastSession.id, currentPollAbortController.signal);
             }
         }
     } catch (err) {
@@ -193,6 +203,13 @@ export async function initLogStore() {
 
 export async function startParsing(fileId: string) {
     try {
+        // Abort any existing polling before starting new session
+        if (currentPollAbortController) {
+            currentPollAbortController.abort();
+        }
+        // Create new abort controller for this session
+        currentPollAbortController = new AbortController();
+        
         logError.value = null;
         isLoadingLog.value = true;
 
@@ -200,17 +217,30 @@ export async function startParsing(fileId: string) {
         currentSession.value = session;
 
         // Start polling for status
-        pollStatus(session.id);
+        pollStatus(session.id, currentPollAbortController.signal);
     } catch (err) {
         logError.value = (err as Error).message;
         isLoadingLog.value = false;
     }
 }
 
-async function pollStatus(sessionId: string) {
+async function pollStatus(sessionId: string, abortSignal: AbortSignal) {
+    // Check if aborted before starting
+    if (abortSignal.aborted) return;
+    
     const poll = async () => {
+        // Check if aborted before each poll
+        if (abortSignal.aborted) {
+            return;
+        }
+        
         try {
             const session = await getParseStatus(sessionId);
+            
+            // Check again after async call in case it was aborted during the request
+            if (abortSignal.aborted) {
+                return;
+            }
 
             // Only update if it's the current session
             if (currentSession.value?.id === sessionId) {
@@ -296,8 +326,15 @@ async function pollStatus(sessionId: string) {
                 return;
             }
 
-            setTimeout(poll, 1000);
+            // Schedule next poll, but check if aborted before setting timeout
+            if (!abortSignal.aborted) {
+                setTimeout(poll, 1000);
+            }
         } catch (err: any) {
+            if (abortSignal.aborted) {
+                // Aborted during request, just stop
+                return;
+            }
             if (err.status === 404) {
                 console.warn('Session not found on server, clearing local state');
                 clearSession();

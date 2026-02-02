@@ -45,6 +45,9 @@ export default [
                 setInterval: 'readonly',
                 clearInterval: 'readonly',
                 requestAnimationFrame: 'readonly',
+                AbortController: 'readonly',
+                AbortSignal: 'readonly',
+                EventSource: 'readonly',
             },
         },
         plugins: {
