@@ -272,7 +272,8 @@ export function LogTable() {
         }
     };
 
-    const handleResize = (col: keyof typeof columnWidths.value, e: MouseEvent) => {
+    const handleResize = (colId: string, e: MouseEvent) => {
+        const col = colId as keyof typeof columnWidths.value;
         e.preventDefault();
         e.stopPropagation();
         const startX = e.clientX;
@@ -605,7 +606,7 @@ export function LogTable() {
                                     key={col.key}
                                     className={`log-col col-${col.id} ${isDragOver ? 'drag-over' : ''} ${isDraggingCol ? 'dragging' : ''}`}
                                     style={{ width: columnWidths.value[col.id as keyof typeof columnWidths.value] }}
-                                    onClick={() => col.sortable && handleHeaderClick(col.key)}
+                                    onClick={() => col.sortable && handleHeaderClick(col.key as keyof LogEntry)}
                                     draggable
                                     onDragStart={(e) => handleColumnDragStart(col.key, e)}
                                     onDragEnd={handleColumnDragEnd}

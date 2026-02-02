@@ -145,6 +145,47 @@ Always run tests before committing changes. The test hierarchy is:
 TypeCheck → Lint → Unit Tests → E2E Tests → Browser Agent (last resort)
 ```
 
+## Pre-Commit Checklist ⚠️ MANDATORY
+
+**NEVER commit without completing these steps:**
+
+### 1. Type Check
+```bash
+cd frontend && npm run typecheck
+```
+Must pass with no errors.
+
+### 2. Build
+```bash
+cd frontend && npm run build
+```
+Must complete successfully with no TypeScript or Vite errors.
+
+### 3. Lint
+```bash
+cd frontend && npm run lint
+```
+Should have no new errors (existing errors in unchanged files are OK).
+
+### 4. Unit Tests
+```bash
+cd frontend && npm run test
+```
+All tests must pass.
+
+### 5. E2E Tests (for UI changes)
+```bash
+cd frontend && npm run test:e2e
+```
+Run for any component, view, or interaction changes.
+
+### Quick Check (for small changes)
+```bash
+cd frontend && npm run test:all
+```
+
+**If any step fails, fix before committing.**
+
 ### Frontend Testing
 
 ```bash
