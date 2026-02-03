@@ -305,60 +305,59 @@ func (p *PLCDebugParser) parseLine(line string, lineNum int, intern *StringInter
 
 func (p *PLCDebugParser) fastParseLine(line string, intern *StringIntern) *models.LogEntry {
 	// Format: "YYYY-MM-DD HH:MM:SS.fff [Level] [path] [cat:signal] (dtype) : value"
-	if !strings.Contains(line, "[") || !strings.Contains(line, "(") {
+	// Single-pass parsing: track positions as we go, no rescanning
+	n := len(line)
+	if n < 40 { // minimum possible line length
 		return nil
 	}
 
-	bracket1 := strings.Index(line, "[")
-	if bracket1 == -1 {
-		return nil
-	}
-	tsStr := strings.TrimSpace(line[:bracket1])
+	// Find brackets and parens in a single pass
+	var brackets [6]int // [open1, close1, open2, close2, open3, close3]
+	var parenOpen, parenClose, colonAfterParen int
+	bracketCount := 0
+	colonInBracket3 := -1
 
-	bracket2 := strings.Index(line[bracket1+1:], "[")
-	if bracket2 == -1 {
-		return nil
+	for i := 0; i < n; i++ {
+		switch line[i] {
+		case '[':
+			if bracketCount < 3 {
+				brackets[bracketCount*2] = i
+			}
+		case ']':
+			if bracketCount < 3 {
+				brackets[bracketCount*2+1] = i
+				bracketCount++
+			}
+		case '(':
+			if bracketCount == 3 && parenOpen == 0 {
+				parenOpen = i
+			}
+		case ')':
+			if parenOpen > 0 && parenClose == 0 {
+				parenClose = i
+			}
+		case ':':
+			if bracketCount == 2 && brackets[4] > 0 && colonInBracket3 == -1 && i > brackets[4] && i < brackets[5] {
+				colonInBracket3 = i
+			}
+			if parenClose > 0 && colonAfterParen == 0 && i > parenClose {
+				colonAfterParen = i
+			}
+		}
 	}
-	bracket2 += bracket1 + 1
 
-	bracket2Close := strings.Index(line[bracket2:], "]")
-	if bracket2Close == -1 {
+	// Validate we found all required parts
+	if bracketCount < 3 || parenOpen == 0 || parenClose == 0 || colonAfterParen == 0 || colonInBracket3 == -1 {
 		return nil
 	}
-	bracket2Close += bracket2
-	path := strings.TrimSpace(line[bracket2+1 : bracket2Close])
 
-	bracket3 := strings.Index(line[bracket2Close+1:], "[")
-	bracket3Close := strings.Index(line[bracket2Close+1:], "]")
-	if bracket3 == -1 || bracket3Close == -1 {
-		return nil
-	}
-	bracket3 += bracket2Close + 1
-	bracket3Close += bracket2Close + 1
-	catSignal := strings.TrimSpace(line[bracket3+1 : bracket3Close])
-
-	colonIdx := strings.Index(catSignal, ":")
-	if colonIdx == -1 {
-		return nil
-	}
-	category := strings.TrimSpace(catSignal[:colonIdx])
-	signal := strings.TrimSpace(catSignal[colonIdx+1:])
-
-	parenOpen := strings.Index(line[bracket3Close:], "(")
-	parenClose := strings.Index(line[bracket3Close:], ")")
-	if parenOpen == -1 || parenClose == -1 {
-		return nil
-	}
-	parenOpen += bracket3Close
-	parenClose += bracket3Close
+	// Extract fields without re-scanning
+	tsStr := strings.TrimSpace(line[:brackets[0]])
+	path := line[brackets[2]+1 : brackets[3]]
+	category := strings.TrimSpace(line[brackets[4]+1 : colonInBracket3])
+	signal := strings.TrimSpace(line[colonInBracket3+1 : brackets[5]])
 	dtypeToken := strings.ToLower(strings.TrimSpace(line[parenOpen+1 : parenClose]))
-
-	colonSpace := strings.Index(line[parenClose:], ":")
-	if colonSpace == -1 {
-		return nil
-	}
-	colonSpace += parenClose
-	valueStr := strings.TrimSpace(line[colonSpace+1:])
+	valueStr := strings.TrimSpace(line[colonAfterParen+1:])
 
 	ts, err := FastTimestamp(tsStr)
 	if err != nil {
