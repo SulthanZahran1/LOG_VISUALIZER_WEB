@@ -11,14 +11,10 @@ services:
       - ./uploads:/app/data/uploads
     environment:
       - PORT=8089
-      - GOGC=50  # Aggressive GC to reduce memory usage
+      - GOGC=50
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 3G  # Increased for 1.7GB file parsing
-        reservations:
-          memory: 512M
+    # Memory limit using simpler format
+    mem_limit: 3g
 
   frontend:
     build:
