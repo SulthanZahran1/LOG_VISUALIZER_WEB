@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -53,6 +54,14 @@ func (m *Manager) StartSession(fileID, filePath string) (*models.ParseSession, e
 }
 
 func (m *Manager) runParse(sessionID, filePath string) {
+	// Recover from panics to prevent backend crash
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("[Parse %s] PANIC recovered: %v\n", sessionID[:8], r)
+			m.updateSessionError(sessionID, fmt.Sprintf("parse panicked: %v", r))
+		}
+	}()
+
 	start := time.Now()
 	
 	fmt.Printf("[Parse %s] Starting parse of %s\n", sessionID[:8], filePath)
@@ -96,8 +105,15 @@ func (m *Manager) runParse(sessionID, filePath string) {
 		}
 		m.mu.Unlock()
 		
-		fmt.Printf("[Parse %s] Progress: %.1f%% (%d lines, %d/%d bytes)\n", 
-			sessionID[:8], progress, lines, bytesRead, totalBytes)
+		// Log memory usage every 500K lines
+		if lines%500000 == 0 {
+			var memStats runtime.MemStats
+			runtime.ReadMemStats(&memStats)
+			allocMB := float64(memStats.Alloc) / 1024 / 1024
+			sysMB := float64(memStats.Sys) / 1024 / 1024
+			fmt.Printf("[Parse %s] Progress: %.1f%% (%d lines) - Memory: %.1f MB (alloc) / %.1f MB (sys)\n", 
+				sessionID[:8], progress, lines, allocMB, sysMB)
+		}
 	}
 	
 	result, parseErrors, err := p.ParseWithProgress(filePath, progressCb)
