@@ -108,6 +108,10 @@ func (ds *DuckStore) flushBatch() error {
 		return nil
 	}
 
+	batchNum := ds.entryCount / ds.batchSize
+	startTime := time.Now()
+	fmt.Printf("[DuckStore] Flushing batch %d (%d entries)...\\n", batchNum, len(ds.batch))
+
 	// Build bulk INSERT with multiple VALUES rows (much faster than row-by-row)
 	var sb strings.Builder
 	sb.WriteString("INSERT INTO entries (id, timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str) VALUES ")
@@ -138,8 +142,12 @@ func (ds *DuckStore) flushBatch() error {
 
 	_, err := ds.db.Exec(sb.String(), args...)
 	if err != nil {
+		fmt.Printf("[DuckStore] Batch %d FAILED: %v\\n", batchNum, err)
 		return err
 	}
+
+	elapsed := time.Since(startTime)
+	fmt.Printf("[DuckStore] Batch %d complete in %v\\n", batchNum, elapsed)
 
 	ds.batch = ds.batch[:0]
 	return nil

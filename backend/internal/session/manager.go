@@ -175,12 +175,14 @@ func (m *Manager) runParse(sessionID, filePath string) {
 // runParseToDuckStore handles DuckDB-backed parsing for memory efficiency
 func (m *Manager) runParseToDuckStore(sessionID, filePath string, p *parser.PLCDebugParser, progressCb parser.ProgressCallback, start time.Time) {
 	// Create DuckStore for this session
+	fmt.Printf("[Parse %s] Creating DuckDB store in %s...\n", sessionID[:8], m.tempDir)
 	store, err := parser.NewDuckStore(m.tempDir, sessionID)
 	if err != nil {
 		fmt.Printf("[Parse %s] ERROR: failed to create DuckStore: %v\n", sessionID[:8], err)
 		m.updateSessionError(sessionID, fmt.Sprintf("failed to create storage: %v", err))
 		return
 	}
+	fmt.Printf("[Parse %s] DuckDB store created, starting parse...\n", sessionID[:8])
 
 	// Parse directly to DuckStore
 	parseErrors, err := p.ParseToDuckStore(filePath, store, progressCb)
