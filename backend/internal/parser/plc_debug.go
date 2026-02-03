@@ -174,7 +174,16 @@ func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onP
 			return nil, fmt.Errorf("DuckDB write error at line %d: %w", lineNum, err)
 		}
 
-		// Report progress every 10K lines (was 100K - too infrequent for slow DuckDB)
+		// Early debugging: log at 1K, 10K, then every 100K
+		if lineNum == 1000 {
+			fmt.Printf("[Parse] Reached 1K lines (%.1f MB read)\\n", float64(bytesRead)/1024/1024)
+		} else if lineNum == 10000 {
+			fmt.Printf("[Parse] Reached 10K lines (%.1f MB read)\\n", float64(bytesRead)/1024/1024)
+		} else if lineNum%100000 == 0 {
+			fmt.Printf("[Parse] Progress: %d lines (%.1f MB / %.1f MB)\\n", lineNum, float64(bytesRead)/1024/1024, float64(totalBytes)/1024/1024)
+		}
+
+		// Report progress callback every 10K lines
 		if onProgress != nil && lineNum%10000 == 0 && lineNum != lastProgressUpdate {
 			lastProgressUpdate = lineNum
 			onProgress(lineNum, bytesRead, totalBytes)
