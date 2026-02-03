@@ -4,139 +4,137 @@ import (
 	"fmt"
 	"runtime"
 	"time"
+
 	"github.com/plc-visualizer/backend/internal/models"
 )
 
 // CompactLogStore uses columnar storage (12x smaller than []LogEntry)
+// Memory optimization: Uses global string interner directly instead of duplicating strings
 type CompactLogStore struct {
-	intern      *StringIntern
-	stringToIdx map[string]uint32
-	idxToString []string
+	intern *StringIntern
 	
-	entryCount   int
-	timestamps   []uint64
-	deviceIdx    []uint32
-	signalIdx    []uint32
-	categories   []uint32
-	
-	boolValues   []bool
-	intValues    []int64
-	floatValues  []float64
-	stringValues []uint32
-	
-	valueTypes   []ValueType
-	valueIndices []uint32
+	entryCount  int
+	timestamps  []int64
+	deviceIDs   []string // Interned string references (8 bytes each, pointing to shared pool)
+	signalNames []string // Interned string references
+	categories  []string // Interned string references (empty string for none)
+	values      []Value  // Unified value storage
 }
+
+// Value stores typed values efficiently using existing ValueType constants
+type Value struct {
+	Type  ValueType
+	Bool  bool
+	Int   int64
+	Float float64
+	Str   string // Interned string reference
+}
+
+// Local ValueType constants (matching binary_format.go but with simpler names)
+const (
+	ValueTypeBool   ValueType = iota // Use separate bool values
+	ValueTypeInt                     // int64 stored
+	ValueTypeFloat                   // float64 stored
+	ValueTypeString                  // interned string reference
+)
 
 func NewCompactLogStore() *CompactLogStore {
 	return &CompactLogStore{
-		intern:       GetGlobalIntern(),
-		stringToIdx:  make(map[string]uint32),
-		idxToString:  make([]string, 0, 1000),
-		timestamps:   make([]uint64, 0, 10000),
-		deviceIdx:    make([]uint32, 0, 10000),
-		signalIdx:    make([]uint32, 0, 10000),
-		categories:   make([]uint32, 0, 10000),
-		boolValues:   make([]bool, 0, 1000),
-		intValues:    make([]int64, 0, 1000),
-		floatValues:  make([]float64, 0, 100),
-		stringValues: make([]uint32, 0, 1000),
-		valueTypes:   make([]ValueType, 0, 10000),
-		valueIndices: make([]uint32, 0, 10000),
+		intern:      GetGlobalIntern(),
+		timestamps:  make([]int64, 0, 10000),
+		deviceIDs:   make([]string, 0, 10000),
+		signalNames: make([]string, 0, 10000),
+		categories:  make([]string, 0, 10000),
+		values:      make([]Value, 0, 10000),
 	}
-}
-
-func (cs *CompactLogStore) internString(s string) uint32 {
-	s = cs.intern.Intern(s)
-	if idx, ok := cs.stringToIdx[s]; ok {
-		return idx
-	}
-	idx := uint32(len(cs.idxToString))
-	cs.idxToString = append(cs.idxToString, s)
-	cs.stringToIdx[s] = idx
-	return idx
 }
 
 func (cs *CompactLogStore) AddEntry(entry *models.LogEntry) {
-	deviceIdx := cs.internString(entry.DeviceID)
-	signalIdx := cs.internString(entry.SignalName)
+	// Intern strings and store references (not copies)
+	deviceID := cs.intern.Intern(entry.DeviceID)
+	signalName := cs.intern.Intern(entry.SignalName)
 	
-	var catIdx uint32 = 0xFFFFFFFF
+	var category string
 	if entry.Category != "" {
-		catIdx = cs.internString(entry.Category)
+		category = cs.intern.Intern(entry.Category)
 	}
 	
-	valType, valIdx := cs.storeValue(entry.Value)
+	val := cs.storeValue(entry.Value)
 	
-	cs.timestamps = append(cs.timestamps, uint64(entry.Timestamp.UnixMilli()))
-	cs.deviceIdx = append(cs.deviceIdx, deviceIdx)
-	cs.signalIdx = append(cs.signalIdx, signalIdx)
-	cs.categories = append(cs.categories, catIdx)
-	cs.valueTypes = append(cs.valueTypes, valType)
-	cs.valueIndices = append(cs.valueIndices, valIdx)
+	cs.timestamps = append(cs.timestamps, entry.Timestamp.UnixMilli())
+	cs.deviceIDs = append(cs.deviceIDs, deviceID)
+	cs.signalNames = append(cs.signalNames, signalName)
+	cs.categories = append(cs.categories, category)
+	cs.values = append(cs.values, val)
 	cs.entryCount++
 }
 
-func (cs *CompactLogStore) storeValue(val interface{}) (ValueType, uint32) {
+func (cs *CompactLogStore) storeValue(val interface{}) Value {
 	switch v := val.(type) {
 	case bool:
-		idx := uint32(len(cs.boolValues))
-		cs.boolValues = append(cs.boolValues, v)
-		if v {
-			return ValueTypeBoolTrue, idx
-		}
-		return ValueTypeBoolFalse, idx
+		return Value{Type: ValueTypeBool, Bool: v}
 	case int:
-		idx := uint32(len(cs.intValues))
-		cs.intValues = append(cs.intValues, int64(v))
-		return ValueTypeInt64, idx
+		return Value{Type: ValueTypeInt, Int: int64(v)}
 	case int64:
-		idx := uint32(len(cs.intValues))
-		cs.intValues = append(cs.intValues, v)
-		return ValueTypeInt64, idx
+		return Value{Type: ValueTypeInt, Int: v}
 	case float64:
-		idx := uint32(len(cs.floatValues))
-		cs.floatValues = append(cs.floatValues, v)
-		return ValueTypeFloat64, idx
+		return Value{Type: ValueTypeFloat, Float: v}
 	case string:
-		strIdx := cs.internString(v)
-		idx := uint32(len(cs.stringValues))
-		cs.stringValues = append(cs.stringValues, strIdx)
-		return ValueTypeStringIndex, idx
+		return Value{Type: ValueTypeString, Str: cs.intern.Intern(v)}
 	default:
-		return cs.storeValue("")
+		return Value{Type: ValueTypeString, Str: ""}
 	}
 }
 
 func (cs *CompactLogStore) MemoryUsage() int {
+	// Only count slice overhead, not string contents (shared in interner)
 	return len(cs.timestamps)*8 +
-		len(cs.deviceIdx)*4 +
-		len(cs.signalIdx)*4 +
-		len(cs.categories)*4 +
-		len(cs.boolValues) +
-		len(cs.intValues)*8 +
-		len(cs.floatValues)*8 +
-		len(cs.stringValues)*4 +
-		len(cs.valueTypes) +
-		len(cs.valueIndices)*4
+		len(cs.deviceIDs)*8 + // 8 bytes per string header (pointer + len)
+		len(cs.signalNames)*8 +
+		len(cs.categories)*8 +
+		len(cs.values)*32 // Value struct ~32 bytes
 }
 
 // ToParsedLog converts compact storage to ParsedLog for API compatibility
 func (cs *CompactLogStore) ToParsedLog() *models.ParsedLog {
 	entries := make([]models.LogEntry, 0, cs.entryCount)
-	signals := make(map[string]struct{})
-	devices := make(map[string]struct{})
+	signals := make(map[string]struct{}, 1000)
+	devices := make(map[string]struct{}, 1000)
 	
-	// Process in chunks to reduce memory pressure and allow GC
+	// Pre-size maps to avoid reallocations
+	for i := 0; i < cs.entryCount; i++ {
+		devices[cs.deviceIDs[i]] = struct{}{}
+		signals[cs.deviceIDs[i]+"::"+cs.signalNames[i]] = struct{}{}
+	}
+	
 	chunkSize := 100000
 	for i := 0; i < cs.entryCount; i++ {
-		entry := cs.getEntry(i)
+		val := cs.values[i]
+		entry := models.LogEntry{
+			Timestamp:  time.UnixMilli(cs.timestamps[i]),
+			DeviceID:   cs.deviceIDs[i],
+			SignalName: cs.signalNames[i],
+			Category:   cs.categories[i],
+		}
+		
+		switch val.Type {
+		case ValueTypeBool:
+			entry.Value = val.Bool
+			entry.SignalType = models.SignalTypeBoolean
+		case ValueTypeInt:
+			entry.Value = int(val.Int)
+			entry.SignalType = models.SignalTypeInteger
+		case ValueTypeFloat:
+			entry.Value = val.Float
+			entry.SignalType = models.SignalTypeString
+		case ValueTypeString:
+			entry.Value = val.Str
+			entry.SignalType = models.SignalTypeString
+		}
+		
 		entries = append(entries, entry)
 		
-		signals[entry.DeviceID + "::" + entry.SignalName] = struct{}{}
-		devices[entry.DeviceID] = struct{}{}
-		
-		// Run GC every chunk to free intermediate allocations
+		// Run GC periodically during conversion
 		if i > 0 && i%chunkSize == 0 {
 			runtime.GC()
 			if i%(chunkSize*5) == 0 {
@@ -152,22 +150,17 @@ func (cs *CompactLogStore) ToParsedLog() *models.ParsedLog {
 	var timeRange *models.TimeRange
 	if cs.entryCount > 0 {
 		timeRange = &models.TimeRange{
-			Start: time.UnixMilli(int64(cs.timestamps[0])),
-			End:   time.UnixMilli(int64(cs.timestamps[cs.entryCount-1])),
+			Start: time.UnixMilli(cs.timestamps[0]),
+			End:   time.UnixMilli(cs.timestamps[cs.entryCount-1]),
 		}
 	}
 	
-	// Clear compact storage to free memory before returning
+	// Clear compact storage to free memory
 	cs.timestamps = nil
-	cs.deviceIdx = nil
-	cs.signalIdx = nil
+	cs.deviceIDs = nil
+	cs.signalNames = nil
 	cs.categories = nil
-	cs.valueTypes = nil
-	cs.valueIndices = nil
-	cs.boolValues = nil
-	cs.intValues = nil
-	cs.floatValues = nil
-	cs.stringValues = nil
+	cs.values = nil
 	runtime.GC()
 	
 	return &models.ParsedLog{
@@ -176,37 +169,4 @@ func (cs *CompactLogStore) ToParsedLog() *models.ParsedLog {
 		Devices:   devices,
 		TimeRange: timeRange,
 	}
-}
-
-// getEntry reconstructs a single LogEntry
-func (cs *CompactLogStore) getEntry(i int) models.LogEntry {
-	entry := models.LogEntry{
-		Timestamp:  time.UnixMilli(int64(cs.timestamps[i])),
-		DeviceID:   cs.idxToString[cs.deviceIdx[i]],
-		SignalName: cs.idxToString[cs.signalIdx[i]],
-	}
-	
-	if cs.categories[i] != 0xFFFFFFFF {
-		entry.Category = cs.idxToString[cs.categories[i]]
-	}
-	
-	switch cs.valueTypes[i] {
-	case ValueTypeBoolFalse:
-		entry.Value = false
-		entry.SignalType = models.SignalTypeBoolean
-	case ValueTypeBoolTrue:
-		entry.Value = true
-		entry.SignalType = models.SignalTypeBoolean
-	case ValueTypeInt64:
-		entry.Value = int(cs.intValues[cs.valueIndices[i]])
-		entry.SignalType = models.SignalTypeInteger
-	case ValueTypeFloat64:
-		entry.Value = cs.floatValues[cs.valueIndices[i]]
-		entry.SignalType = models.SignalTypeString
-	case ValueTypeStringIndex:
-		entry.Value = cs.idxToString[cs.stringValues[cs.valueIndices[i]]]
-		entry.SignalType = models.SignalTypeString
-	}
-	
-	return entry
 }
