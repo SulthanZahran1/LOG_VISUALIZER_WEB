@@ -316,16 +316,23 @@ func (p *PLCDebugParser) fastParseLine(line string, intern *StringIntern) *model
 	var parenOpen, parenClose, colonAfterParen int
 	bracketCount := 0
 	colonInBracket3 := -1
+	inBracket3 := false // track if we're currently inside the 3rd bracket
 
 	for i := 0; i < n; i++ {
 		switch line[i] {
 		case '[':
 			if bracketCount < 3 {
 				brackets[bracketCount*2] = i
+				if bracketCount == 2 {
+					inBracket3 = true // entering 3rd bracket
+				}
 			}
 		case ']':
 			if bracketCount < 3 {
 				brackets[bracketCount*2+1] = i
+				if inBracket3 {
+					inBracket3 = false // leaving 3rd bracket
+				}
 				bracketCount++
 			}
 		case '(':
@@ -337,7 +344,7 @@ func (p *PLCDebugParser) fastParseLine(line string, intern *StringIntern) *model
 				parenClose = i
 			}
 		case ':':
-			if bracketCount == 2 && brackets[4] > 0 && colonInBracket3 == -1 && i > brackets[4] && i < brackets[5] {
+			if inBracket3 && colonInBracket3 == -1 {
 				colonInBracket3 = i
 			}
 			if parenClose > 0 && colonAfterParen == 0 && i > parenClose {
