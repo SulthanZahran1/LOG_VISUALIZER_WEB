@@ -23,6 +23,7 @@ type DuckStore struct {
 	devices    map[string]struct{}
 	minTs      int64
 	maxTs      int64
+	lastError  error // stores the last flush error
 }
 
 // NewDuckStore creates a new DuckDB-backed store in the given temp directory.
@@ -88,8 +89,16 @@ func (ds *DuckStore) AddEntry(entry *models.LogEntry) {
 	ds.entryCount++
 
 	if len(ds.batch) >= ds.batchSize {
-		ds.flushBatch()
+		if err := ds.flushBatch(); err != nil {
+			ds.lastError = err
+			fmt.Printf("[DuckStore] flush error: %v\n", err)
+		}
 	}
+}
+
+// LastError returns the last error that occurred during batch flush
+func (ds *DuckStore) LastError() error {
+	return ds.lastError
 }
 
 // flushBatch writes the current batch to DuckDB

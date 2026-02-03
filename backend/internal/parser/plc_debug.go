@@ -2,6 +2,7 @@ package parser
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -168,8 +169,13 @@ func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onP
 		// Add directly to DuckStore (batched writes to disk)
 		store.AddEntry(entry)
 
-		// Report progress every 100K lines
-		if onProgress != nil && lineNum%100000 == 0 && lineNum != lastProgressUpdate {
+		// Check for DuckStore flush errors
+		if err := store.LastError(); err != nil {
+			return nil, fmt.Errorf("DuckDB write error at line %d: %w", lineNum, err)
+		}
+
+		// Report progress every 10K lines (was 100K - too infrequent for slow DuckDB)
+		if onProgress != nil && lineNum%10000 == 0 && lineNum != lastProgressUpdate {
 			lastProgressUpdate = lineNum
 			onProgress(lineNum, bytesRead, totalBytes)
 		}
@@ -181,7 +187,7 @@ func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onP
 
 	// Finalize: flush remaining batch and create indexes
 	if err := store.Finalize(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("DuckDB finalization error: %w", err)
 	}
 
 	// Final progress update
