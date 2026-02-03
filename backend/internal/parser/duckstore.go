@@ -193,6 +193,141 @@ func (ds *DuckStore) GetEntry(i int) (models.LogEntry, error) {
 	return scanEntry(row)
 }
 
+// QueryParams defines filters and sorting for log entry queries
+type QueryParams struct {
+	Search        string
+	Category      string
+	SortColumn    string
+	SortDirection string // "asc" or "desc"
+	SignalType    string
+	ShowChanged   bool
+}
+
+// QueryEntries returns filtered, sorted, and paginated entries
+func (ds *DuckStore) QueryEntries(params QueryParams, page, pageSize int) ([]models.LogEntry, int, error) {
+	where, args := ds.buildWhereClause(params)
+
+	// Count total matches for pagination
+	countQuery := "SELECT COUNT(*) FROM entries"
+	if where != "" {
+		countQuery += " WHERE " + where
+	}
+
+	var total int
+	err := ds.db.QueryRow(countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count query failed: %w", err)
+	}
+
+	if total == 0 {
+		return []models.LogEntry{}, 0, nil
+	}
+
+	// Build main query
+	query := `
+		SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
+		FROM entries
+	`
+	if where != "" {
+		query += " WHERE " + where
+	}
+
+	// Sorting
+	sortCol := "id" // Default sorting by insertion order if nothing else specified
+	if params.SortColumn != "" {
+		switch params.SortColumn {
+		case "timestamp":
+			sortCol = "timestamp"
+		case "deviceId":
+			sortCol = "device_id"
+		case "signalName":
+			sortCol = "signal"
+		case "category":
+			sortCol = "category"
+		}
+	}
+
+	dir := "ASC"
+	if params.SortDirection == "desc" {
+		dir = "DESC"
+	}
+
+	query += fmt.Sprintf(" ORDER BY %s %s", sortCol, dir)
+
+	// Pagination
+	limit := pageSize
+	offset := (page - 1) * pageSize
+	query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+
+	rows, err := ds.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query failed: %w", err)
+	}
+	defer rows.Close()
+
+	entries := make([]models.LogEntry, 0, pageSize)
+	for rows.Next() {
+		entry, err := scanEntryRows(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, total, rows.Err()
+}
+
+func (ds *DuckStore) buildWhereClause(params QueryParams) (string, []interface{}) {
+	var clauses []string
+	var args []interface{}
+
+	if params.Search != "" {
+		// Simple ILIKE search on signal/device/value
+		searchPattern := "%" + params.Search + "%"
+		clauses = append(clauses, "(device_id ILIKE ? OR signal ILIKE ? OR val_str ILIKE ?)")
+		args = append(args, searchPattern, searchPattern, searchPattern)
+	}
+
+	if params.Category != "" {
+		clauses = append(clauses, "category = ?")
+		args = append(args, params.Category)
+	}
+
+	if params.SignalType != "" {
+		// Map signal type string to TINYINT if needed, but for now we expect raw value or similar
+		// Boolean=0, Int=1, Float=2, String=3
+		var t int
+		switch params.SignalType {
+		case "boolean":
+			t = 0
+		case "integer":
+			t = 1
+		case "float":
+			t = 2
+		case "string":
+			t = 3
+		default:
+			t = -1
+		}
+		if t != -1 {
+			clauses = append(clauses, "val_type = ?")
+			args = append(args, t)
+		}
+	}
+
+	if len(clauses) == 0 {
+		return "", nil
+	}
+
+	// Join all clauses with AND
+	where := clauses[0]
+	for i := 1; i < len(clauses); i++ {
+		where += " AND " + clauses[i]
+	}
+
+	return where, args
+}
+
 // GetEntries returns a range of entries (for pagination)
 func (ds *DuckStore) GetEntries(start, end int) ([]models.LogEntry, error) {
 	count := end - start

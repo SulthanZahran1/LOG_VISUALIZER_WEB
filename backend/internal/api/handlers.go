@@ -261,14 +261,14 @@ func (h *Handler) HandleParseProgressStream(c echo.Context) error {
 			// Only send update if progress changed
 			if sess.Progress != lastProgress {
 				lastProgress = sess.Progress
-				
+
 				data, err := json.Marshal(map[string]interface{}{
-					"status":       sess.Status,
-					"progress":     sess.Progress,
-					"entryCount":   sess.EntryCount,
-					"signalCount":  sess.SignalCount,
-					"parserName":   sess.ParserName,
-					"error":        sess.Errors,
+					"status":      sess.Status,
+					"progress":    sess.Progress,
+					"entryCount":  sess.EntryCount,
+					"signalCount": sess.SignalCount,
+					"parserName":  sess.ParserName,
+					"error":       sess.Errors,
 				})
 				if err != nil {
 					continue
@@ -298,7 +298,16 @@ func (h *Handler) HandleParseEntries(c echo.Context) error {
 		pageSize = 100
 	}
 
-	entries, total, ok := h.session.GetEntries(id, page, pageSize)
+	// Extract filter parameters
+	params := parser.QueryParams{
+		Search:        c.QueryParam("search"),
+		Category:      c.QueryParam("category"),
+		SortColumn:    c.QueryParam("sort"),
+		SortDirection: c.QueryParam("order"),
+		SignalType:    c.QueryParam("type"),
+	}
+
+	entries, total, ok := h.session.QueryEntries(id, params, page, pageSize)
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
 	}
@@ -865,7 +874,7 @@ func (h *Handler) decompressFile(fileID string) error {
 	if magic[0] != 0x1f || magic[1] != 0x8b {
 		return fmt.Errorf("not a gzip file")
 	}
-	
+
 	// Reset to beginning
 	compressedFile.Seek(0, 0)
 
@@ -886,7 +895,7 @@ func (h *Handler) decompressFile(fileID string) error {
 	// Stream decompress (no loading into memory)
 	_, err = io.Copy(outFile, reader)
 	outFile.Close()
-	
+
 	if err != nil {
 		os.Remove(tempPath)
 		return fmt.Errorf("decompression failed: %w", err)

@@ -240,15 +240,24 @@ let hasFetchedForCurrentSignals = false;
 let activeRequestId = 0;
 
 /**
- * Fetch all entries for selected signals across the entire session
+ * Fetch entries for selected signals.
+ * LARGE FILE OPTIMIZATION: 
+ * - If in server-side mode, fetch ONLY for the current viewport (viewRange).
+ * - If small file, fetch FULL session duration once.
  */
 export async function updateWaveformEntries() {
     const session = currentSession.value;
     if (!session || session.status !== 'complete' || selectedSignals.value.length === 0) return;
     if (session.startTime === undefined || session.endTime === undefined) return;
 
-    // Only fetch once per signal set change
-    if (hasFetchedForCurrentSignals) {
+    // Use the same threshold as logStore
+    const isLarge = (session.entryCount ?? 0) > 100000;
+    const range = isLarge ? viewRange.value : { start: session.startTime, end: session.endTime };
+
+    if (!range) return;
+
+    // Only fetch FULL session once for small files
+    if (!isLarge && hasFetchedForCurrentSignals) {
         return;
     }
 
@@ -257,10 +266,10 @@ export async function updateWaveformEntries() {
 
     try {
         const sessionId = session.id;
-        const start = session.startTime;
-        const end = session.endTime;
+        const start = range.start;
+        const end = range.end;
 
-        // Fetch ALL entries for the session
+        // Fetch entries for the specific range
         const entries = await getParseChunk(sessionId, start, end);
 
         // Race Condition Check: If a newer request started, ignore this result
@@ -272,12 +281,22 @@ export async function updateWaveformEntries() {
         const grouped: Record<string, LogEntry[]> = {};
         (entries as LogEntry[]).forEach((e: LogEntry) => {
             const key = `${e.deviceId}::${e.signalName}`;
+            // If in large mode, we only want entries for SELECTED signals
+            // (The backend chunk API returns everything in that window, so we filter locally)
+            const isSelected = selectedSignals.value.includes(key);
+            if (!isSelected) return;
+
             if (!grouped[key]) grouped[key] = [];
             grouped[key].push(e);
         });
 
+        // In large mode, we replace waveformEntries entirely for the viewport
+        // In small mode, we still set it once
         waveformEntries.value = grouped;
-        hasFetchedForCurrentSignals = true;
+
+        if (!isLarge) {
+            hasFetchedForCurrentSignals = true;
+        }
     } catch (err: any) {
         if (err.status === 404) {
             console.warn('Session not found on server during updateWaveformEntries, clearing local state');
@@ -290,11 +309,25 @@ export async function updateWaveformEntries() {
 
 // Trigger update when session completes or selectedSignals changes
 effect(() => {
-    // Reset fetch flag when signals change
-    // Access selectedSignals.value to create dependency
+    // Access signals to create dependencies
     selectedSignals.value;
+    const session = currentSession.value;
+    const isLarge = (session?.entryCount ?? 0) > 100000;
+
+    if (isLarge) {
+        // Track viewport range changes in large mode
+        viewRange.value;
+    }
+
+    // Reset fetch flag when signals change for small files
     hasFetchedForCurrentSignals = false;
-    updateWaveformEntries();
+
+    // Use a small debounce to avoid flooding during rapid scrolls
+    const timer = setTimeout(() => {
+        updateWaveformEntries();
+    }, isLarge ? 50 : 0);
+
+    return () => clearTimeout(timer);
 });
 
 // toggleSignal is imported/exported from selectionStore

@@ -163,11 +163,25 @@ function transformEntry(e: RawLogEntry): LogEntry {
 export async function getParseEntries(
     sessionId: string,
     page: number = 1,
-    pageSize: number = 100
+    pageSize: number = 100,
+    filters?: {
+        search?: string;
+        category?: string;
+        sort?: string;
+        order?: string;
+        type?: string;
+    }
 ): Promise<PaginatedEntries> {
-    const res = await request<RawPaginatedEntries>(
-        `/parse/${sessionId}/entries?page=${page}&pageSize=${pageSize}`
-    );
+    let url = `/parse/${sessionId}/entries?page=${page}&pageSize=${pageSize}`;
+    if (filters) {
+        if (filters.search) url += `&search=${encodeURIComponent(filters.search)}`;
+        if (filters.category) url += `&category=${encodeURIComponent(filters.category)}`;
+        if (filters.sort) url += `&sort=${encodeURIComponent(filters.sort)}`;
+        if (filters.order) url += `&order=${encodeURIComponent(filters.order)}`;
+        if (filters.type) url += `&type=${encodeURIComponent(filters.type)}`;
+    }
+
+    const res = await request<RawPaginatedEntries>(url);
     return {
         ...res,
         entries: res.entries.map(transformEntry)

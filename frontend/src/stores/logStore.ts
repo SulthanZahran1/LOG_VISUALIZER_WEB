@@ -94,7 +94,17 @@ export const availableCategories = computed(() => {
 
 // 2.05 Filter by Selected Signals (Waveform Selection)
 // Implicit mode: If signals are selected, filter to them. If empty, show all.
+
+// LARGE FILE OPTIMIZATION:
+// If entry count > 100k, use server-side filtering/sorting instead of computed local filters.
+export const useServerSide = computed(() => (currentSession.value?.entryCount ?? 0) > 100000);
+
 export const filteredEntries = computed(() => {
+    // In server-side mode, logEntries already contains the filtered result from backend
+    if (useServerSide.value) {
+        return logEntries.value;
+    }
+
     // 1. Selection Filter (Implicit: if selected, filter. If empty, show all)
     const selected = new Set(selectedSignals.value);
     let entries = logEntries.value;
@@ -180,6 +190,24 @@ effect(() => {
     }
 });
 
+// Trigger server-side fetch when filters/sort change in server-side mode
+effect(() => {
+    if (useServerSide.value && currentSession.value?.status === 'complete') {
+        // Track dependencies
+        searchQuery.value;
+        categoryFilter.value;
+        sortColumn.value;
+        sortDirection.value;
+        signalTypeFilter.value;
+
+        // Debounce fetch slightly
+        const timer = setTimeout(() => {
+            fetchEntries(1, 100); // Back to page 1 on filter change
+        }, 100);
+        return () => clearTimeout(timer);
+    }
+});
+
 export async function initLogStore() {
     try {
         const sessions = await getSessions();
@@ -209,7 +237,7 @@ export async function startParsing(fileId: string) {
         }
         // Create new abort controller for this session
         currentPollAbortController = new AbortController();
-        
+
         logError.value = null;
         isLoadingLog.value = true;
 
@@ -227,16 +255,16 @@ export async function startParsing(fileId: string) {
 async function pollStatus(sessionId: string, abortSignal: AbortSignal) {
     // Check if aborted before starting
     if (abortSignal.aborted) return;
-    
+
     const poll = async () => {
         // Check if aborted before each poll
         if (abortSignal.aborted) {
             return;
         }
-        
+
         try {
             const session = await getParseStatus(sessionId);
-            
+
             // Check again after async call in case it was aborted during the request
             if (abortSignal.aborted) {
                 return;
@@ -354,7 +382,24 @@ export async function fetchEntries(page: number, pageSize: number) {
 
     try {
         isLoadingLog.value = true;
-        const res = await getParseEntries(currentSession.value.id, page, pageSize);
+
+        // Prepare filters for server-side mode
+        const filters = useServerSide.value ? {
+            search: searchQuery.value,
+            category: Array.from(categoryFilter.value).join(','), // Assuming backend can handle CSV if needed, or we just take the first for now. 
+            // Actually my backend only handles ONE category for now. Let's send the first or empty.
+            sort: sortColumn.value || undefined,
+            order: sortDirection.value,
+            type: signalTypeFilter.value || undefined
+        } : undefined;
+
+        // If category filter has multiple, we might need to adjust backend, 
+        // but for now let's just send the first one if present to match backend capability.
+        if (filters && categoryFilter.value.size > 0) {
+            filters.category = Array.from(categoryFilter.value)[0];
+        }
+
+        const res = await getParseEntries(currentSession.value.id, page, pageSize, filters);
 
         logEntries.value = res.entries as LogEntry[];
         totalEntries.value = res.total;
