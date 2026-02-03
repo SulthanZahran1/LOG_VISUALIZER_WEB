@@ -307,10 +307,15 @@ func (h *Handler) HandleParseEntries(c echo.Context) error {
 		SignalType:    c.QueryParam("type"),
 	}
 
+	fmt.Printf("[API] QueryEntries: session=%s page=%d pageSize=%d search='%s'\n", id[:8], page, pageSize, params.Search)
+	start := time.Now()
+
 	entries, total, ok := h.session.QueryEntries(id, params, page, pageSize)
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
 	}
+
+	fmt.Printf("[API] QueryEntries: session=%s done in %v (returning %d/%d entries)\n", id[:8], time.Since(start), len(entries), total)
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"entries":  entries,
@@ -326,13 +331,15 @@ func (h *Handler) HandleParseChunk(c echo.Context) error {
 	startMs, _ := strconv.ParseInt(c.QueryParam("start"), 10, 64)
 	endMs, _ := strconv.ParseInt(c.QueryParam("end"), 10, 64)
 
-	startTs := time.UnixMilli(startMs)
-	endTs := time.UnixMilli(endMs)
+	fmt.Printf("[API] HandleParseChunk: session=%s range=[%d, %d] (%d ms)\n", id[:8], startMs, endMs, endMs-startMs)
+	startTime := time.Now()
 
-	entries, ok := h.session.GetChunk(id, startTs, endTs)
+	entries, ok := h.session.GetChunk(id, time.UnixMilli(startMs), time.UnixMilli(endMs))
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
 	}
+
+	fmt.Printf("[API] HandleParseChunk: session=%s done in %v, returning %d entries\n", id[:8], time.Since(startTime), len(entries))
 
 	return c.JSON(http.StatusOK, entries)
 }

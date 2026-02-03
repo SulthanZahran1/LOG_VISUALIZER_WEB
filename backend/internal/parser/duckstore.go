@@ -173,9 +173,36 @@ func (ds *DuckStore) Finalize() error {
 		return err
 	}
 
+	fmt.Printf("[DuckStore] Finalizing: Creating indexes for %d entries...\n", ds.entryCount)
+	start := time.Now()
+
+	// Apply memory limit before heavy index creation (1.5GB limit)
+	// This helps prevent OOM kills in Docker environments
+	_, err := ds.db.Exec("PRAGMA memory_limit='1536MB'")
+	if err != nil {
+		fmt.Printf("[DuckStore] Warning: failed to set memory limit: %v\n", err)
+	}
+
 	// Create index on timestamp for efficient chunk queries
-	_, err := ds.db.Exec("CREATE INDEX idx_ts ON entries(timestamp)")
-	return err
+	_, err = ds.db.Exec("CREATE INDEX idx_ts ON entries(timestamp)")
+	if err != nil {
+		return fmt.Errorf("idx_ts creation failed: %w", err)
+	}
+
+	// Create indexes for filtering if there are many entries
+	if ds.entryCount > 100000 {
+		_, err = ds.db.Exec("CREATE INDEX idx_device ON entries(device_id)")
+		if err != nil {
+			fmt.Printf("[DuckStore] Warning: idx_device creation failed: %v\n", err)
+		}
+		_, err = ds.db.Exec("CREATE INDEX idx_signal ON entries(signal)")
+		if err != nil {
+			fmt.Printf("[DuckStore] Warning: idx_signal creation failed: %v\n", err)
+		}
+	}
+
+	fmt.Printf("[DuckStore] Finalization complete in %v\n", time.Since(start))
+	return nil
 }
 
 // Len returns the total number of entries
@@ -361,9 +388,11 @@ func (ds *DuckStore) GetChunk(startTs, endTs time.Time) ([]models.LogEntry, erro
 	startMs := startTs.UnixMilli()
 	endMs := endTs.UnixMilli()
 
+	// Safety limit: Don't return more than 500k entries in one chunk to avoid OOM
+	// The caller should use smaller windows or implement downsampling.
 	rows, err := ds.db.Query(`
 		SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
-		FROM entries WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp
+		FROM entries WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp LIMIT 500000
 	`, startMs, endMs)
 	if err != nil {
 		return nil, err
@@ -371,12 +400,18 @@ func (ds *DuckStore) GetChunk(startTs, endTs time.Time) ([]models.LogEntry, erro
 	defer rows.Close()
 
 	entries := make([]models.LogEntry, 0, 1000)
+	count := 0
 	for rows.Next() {
 		entry, err := scanEntryRows(rows)
 		if err != nil {
 			return nil, err
 		}
 		entries = append(entries, entry)
+		count++
+	}
+
+	if count == 500000 {
+		fmt.Printf("[DuckStore] Warning: GetChunk query truncated at 500,000 entries for range [%d, %d]\n", startMs, endMs)
 	}
 
 	return entries, rows.Err()
