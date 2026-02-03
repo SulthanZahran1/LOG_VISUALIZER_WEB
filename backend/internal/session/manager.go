@@ -77,9 +77,15 @@ func (m *Manager) runParse(sessionID, filePath string) {
 	
 	// Progress callback updates session every 100K lines
 	progressCb := func(lines int, bytesRead, totalBytes int64) {
-		progress := 10.0 + float64(bytesRead)*80.0/float64(totalBytes)
-		if progress > 90 {
-			progress = 90
+		var progress float64
+		if totalBytes > 0 {
+			progress = 10.0 + float64(bytesRead)*80.0/float64(totalBytes)
+		} else {
+			progress = 10.0
+		}
+		// Clamp to 89.9% during parsing (90-100% is for finalization)
+		if progress > 89.9 {
+			progress = 89.9
 		}
 		
 		m.mu.Lock()

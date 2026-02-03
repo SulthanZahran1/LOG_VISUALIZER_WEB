@@ -219,6 +219,73 @@ func (h *Handler) HandleParseStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, sess)
 }
 
+// HandleParseProgressStream streams parsing progress via SSE for real-time updates.
+// This provides smooth progress transitions (10% → 89.9% → 100%) without polling.
+func (h *Handler) HandleParseProgressStream(c echo.Context) error {
+	id := c.Param("sessionId")
+
+	// Set SSE headers
+	c.Response().Header().Set("Content-Type", "text/event-stream")
+	c.Response().Header().Set("Cache-Control", "no-cache")
+	c.Response().Header().Set("Connection", "keep-alive")
+	c.Response().Header().Set("X-Accel-Buffering", "no")
+	c.Response().WriteHeader(http.StatusOK)
+
+	// Send initial status immediately
+	sess, ok := h.session.GetSession(id)
+	if !ok {
+		data, _ := json.Marshal(map[string]string{"error": "session not found"})
+		fmt.Fprintf(c.Response(), "data: %s\n\n", data)
+		c.Response().Flush()
+		return nil
+	}
+
+	// Stream progress updates until parsing completes or errors
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	lastProgress := -1.0
+	for {
+		select {
+		case <-c.Request().Context().Done():
+			return nil
+		case <-ticker.C:
+			sess, ok = h.session.GetSession(id)
+			if !ok {
+				data, _ := json.Marshal(map[string]string{"error": "session not found"})
+				fmt.Fprintf(c.Response(), "data: %s\n\n", data)
+				c.Response().Flush()
+				return nil
+			}
+
+			// Only send update if progress changed
+			if sess.Progress != lastProgress {
+				lastProgress = sess.Progress
+				
+				data, err := json.Marshal(map[string]interface{}{
+					"status":       sess.Status,
+					"progress":     sess.Progress,
+					"entryCount":   sess.EntryCount,
+					"signalCount":  sess.SignalCount,
+					"parserName":   sess.ParserName,
+					"error":        sess.Errors,
+				})
+				if err != nil {
+					continue
+				}
+
+				fmt.Fprintf(c.Response(), "data: %s\n\n", data)
+				c.Response().Flush()
+			}
+
+			// Stop if complete or error
+			if sess.Status == models.SessionStatusComplete || sess.Status == models.SessionStatusError {
+				return nil
+			}
+		}
+	}
+}
+
 // HandleParseEntries returns paginated log entries for a session.
 func (h *Handler) HandleParseEntries(c echo.Context) error {
 	id := c.Param("sessionId")

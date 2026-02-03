@@ -191,9 +191,9 @@ export async function initLogStore() {
             if (lastSession.status === 'complete') {
                 fetchEntries(1, 1000); // Fetch more for initial view to support filtering
             } else if (lastSession.status === 'parsing' || lastSession.status === 'pending') {
-                // Create new abort controller for restored session polling
+                // Use SSE for real-time progress on restored session
                 currentPollAbortController = new AbortController();
-                pollStatus(lastSession.id, currentPollAbortController.signal);
+                streamParseProgress(lastSession.id, currentPollAbortController.signal);
             }
         }
     } catch (err) {
@@ -216,8 +216,8 @@ export async function startParsing(fileId: string) {
         const session = await startParse(fileId);
         currentSession.value = session;
 
-        // Start polling for status
-        pollStatus(session.id, currentPollAbortController.signal);
+        // Use SSE for real-time progress instead of polling
+        streamParseProgress(session.id, currentPollAbortController.signal);
     } catch (err) {
         logError.value = (err as Error).message;
         isLoadingLog.value = false;
@@ -346,6 +346,123 @@ async function pollStatus(sessionId: string, abortSignal: AbortSignal) {
     };
 
     poll();
+}
+
+// Stream parse progress via SSE for real-time updates (no more polling!)
+function streamParseProgress(sessionId: string, abortSignal: AbortSignal) {
+    const eventSource = new EventSource(`/api/parse/${sessionId}/progress`);
+    
+    eventSource.onmessage = async (event) => {
+        if (abortSignal.aborted) {
+            eventSource.close();
+            return;
+        }
+        
+        try {
+            const session: ParseSession = JSON.parse(event.data);
+            
+            // Handle errors from SSE
+            if (session.status === 'error' || (session.errors && session.errors.length > 0)) {
+                eventSource.close();
+                logError.value = session.errors?.[0]?.reason || 'Parsing failed';
+                isLoadingLog.value = false;
+                return;
+            }
+            
+            // Only update if it's the current session
+            if (currentSession.value?.id === sessionId) {
+                currentSession.value = session;
+            }
+            
+            if (session.status === 'complete') {
+                eventSource.close();
+                
+                // Use streaming for large files (>10k entries) for better UX
+                const STREAM_THRESHOLD = 10000;
+                if ((session.entryCount ?? 0) > STREAM_THRESHOLD) {
+                    isStreaming.value = true;
+                    streamProgress.value = 0;
+                    logEntries.value = []; // Clear before streaming
+
+                    streamParseEntries(
+                        sessionId,
+                        (batch, progress, total) => {
+                            // Append batch to entries
+                            logEntries.value = [...logEntries.value, ...batch];
+                            streamProgress.value = progress;
+                            totalEntries.value = total;
+                        },
+                        async (total) => {
+                            isStreaming.value = false;
+                            isLoadingLog.value = false;
+                            streamProgress.value = 100;
+                            totalEntries.value = total;
+
+                            // Trigger map update if map viewer is open
+                            const mapStore = await import('./mapStore');
+                            mapStore.updateSignalValues(logEntries.value);
+
+                            // Set playback time range from session metadata
+                            if (session.startTime && session.endTime) {
+                                mapStore.setPlaybackRange(session.startTime, session.endTime);
+                            } else if (logEntries.value.length > 0) {
+                                const timestamps = logEntries.value
+                                    .map(e => e.timestamp ? new Date(e.timestamp).getTime() : null)
+                                    .filter((t): t is number => t !== null && !isNaN(t));
+                                if (timestamps.length > 0) {
+                                    const startTime = Math.min(...timestamps);
+                                    const endTime = Math.max(...timestamps);
+                                    mapStore.setPlaybackRange(startTime, endTime);
+                                }
+                            }
+                        },
+                        (error) => {
+                            isStreaming.value = false;
+                            isLoadingLog.value = false;
+                            logError.value = error;
+                        }
+                    );
+                } else {
+                    // Small file: use regular fetch
+                    isLoadingLog.value = false;
+                    await fetchEntries(1, 1000000);
+
+                    // Trigger map update if map viewer is open
+                    const mapStore = await import('./mapStore');
+                    mapStore.updateSignalValues(logEntries.value);
+
+                    // Set playback time range from session metadata (preferred)
+                    if (session.startTime && session.endTime) {
+                        mapStore.setPlaybackRange(session.startTime, session.endTime);
+                    } else if (logEntries.value.length > 0) {
+                        // Fallback: Set playback time range from log entries
+                        const timestamps = logEntries.value
+                            .map(e => e.timestamp ? new Date(e.timestamp).getTime() : null)
+                            .filter((t): t is number => t !== null && !isNaN(t));
+                        if (timestamps.length > 0) {
+                            const startTime = Math.min(...timestamps);
+                            const endTime = Math.max(...timestamps);
+                            mapStore.setPlaybackRange(startTime, endTime);
+                        }
+                    }
+                }
+                return;
+            }
+            // Note: error status is handled at the beginning of onmessage
+        } catch (err) {
+            console.error('Failed to parse SSE data:', err);
+        }
+    };
+    
+    eventSource.onerror = () => {
+        eventSource.close();
+        // Fallback to polling if SSE fails
+        if (!abortSignal.aborted) {
+            pollStatus(sessionId, abortSignal);
+        }
+    };
+    
+    abortSignal.addEventListener('abort', () => eventSource.close());
 }
 
 export async function fetchEntries(page: number, pageSize: number) {

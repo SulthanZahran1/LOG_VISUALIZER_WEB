@@ -77,6 +77,7 @@ func main() {
 	// Parse management
 	apiGroup.POST("/parse", h.HandleStartParse)
 	apiGroup.GET("/parse/:sessionId/status", h.HandleParseStatus)
+	apiGroup.GET("/parse/:sessionId/progress", h.HandleParseProgressStream)
 	apiGroup.GET("/parse/:sessionId/entries", h.HandleParseEntries)
 	apiGroup.GET("/parse/:sessionId/entries/msgpack", h.HandleParseEntriesMsgpack)
 	apiGroup.GET("/parse/:sessionId/stream", h.HandleParseStream)
