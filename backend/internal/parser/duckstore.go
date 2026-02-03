@@ -1,14 +1,14 @@
 package parser
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
-	_ "github.com/marcboeker/go-duckdb"
+	"github.com/marcboeker/go-duckdb"
 	"github.com/plc-visualizer/backend/internal/models"
 )
 
@@ -60,8 +60,8 @@ func NewDuckStore(tempDir string, sessionID string) (*DuckStore, error) {
 	return &DuckStore{
 		db:        db,
 		dbPath:    dbPath,
-		batchSize: 2000, // Reduced from 100K to avoid SQL parameter limits (2000 * 10 = 20k parameters)
-		batch:     make([]*models.LogEntry, 0, 2000),
+		batchSize: 50000, // 50K entries per batch for high performance with Appender
+		batch:     make([]*models.LogEntry, 0, 50000),
 		signals:   make(map[string]struct{}, 1000),
 		devices:   make(map[string]struct{}, 100),
 		minTs:     0,
@@ -102,48 +102,62 @@ func (ds *DuckStore) LastError() error {
 	return ds.lastError
 }
 
-// flushBatch writes the current batch to DuckDB using bulk insert
+// flushBatch writes the current batch to DuckDB using the native Appender API (very fast)
 func (ds *DuckStore) flushBatch() error {
 	if len(ds.batch) == 0 {
 		return nil
 	}
 
-	batchNum := ds.entryCount / ds.batchSize
+	batchNum := (ds.entryCount - 1) / ds.batchSize
 	startTime := time.Now()
-	fmt.Printf("[DuckStore] Flushing batch %d (%d entries)...\n", batchNum, len(ds.batch))
+	fmt.Printf("[DuckStore] Flushing batch %d (%d entries) using Appender...\n", batchNum, len(ds.batch))
 
-	// Build bulk INSERT with multiple VALUES rows (much faster than row-by-row)
-	var sb strings.Builder
-	sb.WriteString("INSERT INTO entries (id, timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str) VALUES ")
-
-	baseID := ds.entryCount - len(ds.batch)
-	args := make([]interface{}, 0, len(ds.batch)*10)
-
-	for i, entry := range ds.batch {
-		if i > 0 {
-			sb.WriteString(",")
-		}
-		sb.WriteString("(?,?,?,?,?,?,?,?,?,?)")
-
-		valType, valBool, valInt, valFloat, valStr := encodeValue(entry.Value)
-		args = append(args,
-			baseID+i,
-			entry.Timestamp.UnixMilli(),
-			entry.DeviceID,
-			entry.SignalName,
-			entry.Category,
-			valType,
-			valBool,
-			valInt,
-			valFloat,
-			valStr,
-		)
-	}
-
-	_, err := ds.db.Exec(sb.String(), args...)
+	// Get a single connection from the pool
+	conn, err := ds.db.Conn(context.Background())
 	if err != nil {
-		fmt.Printf("[DuckStore] Batch %d FAILED: %v\n", batchNum, err)
-		return err
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+
+	// Access the raw driver connection to use the Appender API
+	err = conn.Raw(func(driverConn interface{}) error {
+		dConn, ok := driverConn.(*duckdb.Conn)
+		if !ok {
+			return fmt.Errorf("failed to cast to duckdb.Conn")
+		}
+
+		appender, err := duckdb.NewAppenderFromConn(dConn, "", "entries")
+		if err != nil {
+			return fmt.Errorf("failed to create appender: %w", err)
+		}
+		defer appender.Close()
+
+		baseID := ds.entryCount - len(ds.batch)
+		for i, entry := range ds.batch {
+			valType, valBool, valInt, valFloat, valStr := encodeValue(entry.Value)
+
+			err := appender.AppendRow(
+				int32(baseID+i),
+				entry.Timestamp.UnixMilli(),
+				entry.DeviceID,
+				entry.SignalName,
+				entry.Category,
+				int8(valType),
+				valBool,
+				valInt,
+				valFloat,
+				valStr,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to append row %d: %w", i, err)
+			}
+		}
+
+		return appender.Flush()
+	})
+
+	if err != nil {
+		return fmt.Errorf("appender error: %w", err)
 	}
 
 	elapsed := time.Since(startTime)

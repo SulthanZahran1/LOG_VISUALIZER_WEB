@@ -162,11 +162,6 @@ func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onP
 			continue
 		}
 
-		// Debug: print first 5 raw lines
-		if lineNum <= 5 {
-			fmt.Printf("[Parse] Raw line %d: %s\n", lineNum, line[:min(len(line), 100)])
-		}
-
 		entry, parseErr := p.parseLine(line, lineNum, intern)
 		if parseErr != nil {
 			errors = append(errors, parseErr)
@@ -219,10 +214,6 @@ func (p *PLCDebugParser) parseLine(line string, lineNum int, intern *StringInter
 	entry := p.fastParseLine(line, intern)
 	if entry != nil {
 		return entry, nil
-	}
-
-	if lineNum <= 5 {
-		fmt.Printf("[Parse] Line %d: fast path failed, falling back to regex\n", lineNum)
 	}
 
 	// Fallback to regex
