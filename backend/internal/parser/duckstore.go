@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/marcboeker/go-duckdb"
@@ -59,8 +60,8 @@ func NewDuckStore(tempDir string, sessionID string) (*DuckStore, error) {
 	return &DuckStore{
 		db:        db,
 		dbPath:    dbPath,
-		batchSize: 10000,
-		batch:     make([]*models.LogEntry, 0, 10000),
+		batchSize: 100000, // 100K entries per batch for speed
+		batch:     make([]*models.LogEntry, 0, 100000),
 		signals:   make(map[string]struct{}, 1000),
 		devices:   make(map[string]struct{}, 100),
 		minTs:     0,
@@ -101,31 +102,27 @@ func (ds *DuckStore) LastError() error {
 	return ds.lastError
 }
 
-// flushBatch writes the current batch to DuckDB
+// flushBatch writes the current batch to DuckDB using bulk insert
 func (ds *DuckStore) flushBatch() error {
 	if len(ds.batch) == 0 {
 		return nil
 	}
 
-	tx, err := ds.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare(`
-		INSERT INTO entries (id, timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
+	// Build bulk INSERT with multiple VALUES rows (much faster than row-by-row)
+	var sb strings.Builder
+	sb.WriteString("INSERT INTO entries (id, timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str) VALUES ")
 
 	baseID := ds.entryCount - len(ds.batch)
+	args := make([]interface{}, 0, len(ds.batch)*10)
+
 	for i, entry := range ds.batch {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("(?,?,?,?,?,?,?,?,?,?)")
+
 		valType, valBool, valInt, valFloat, valStr := encodeValue(entry.Value)
-		_, err := stmt.Exec(
+		args = append(args,
 			baseID+i,
 			entry.Timestamp.UnixMilli(),
 			entry.DeviceID,
@@ -137,12 +134,10 @@ func (ds *DuckStore) flushBatch() error {
 			valFloat,
 			valStr,
 		)
-		if err != nil {
-			return err
-		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	_, err := ds.db.Exec(sb.String(), args...)
+	if err != nil {
 		return err
 	}
 
