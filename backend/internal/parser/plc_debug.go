@@ -6,6 +6,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/plc-visualizer/backend/internal/models"
 )
@@ -124,7 +125,7 @@ func (p *PLCDebugParser) ParseWithProgress(filePath string, onProgress ProgressC
 }
 
 // ParseToDuckStore parses directly into a DuckStore for memory-efficient large file handling.
-// This avoids creating an in-memory copy of all entries.
+// Uses parallel parsing with worker goroutines for speed.
 func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onProgress ProgressCallback) ([]*models.ParseError, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -139,59 +140,96 @@ func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onP
 	}
 	totalBytes := fileInfo.Size()
 
-	errors := make([]*models.ParseError, 0, 100)
+	// Use multiple workers for parallel parsing
+	numWorkers := 4
+	type lineWork struct {
+		lineNum int
+		line    string
+	}
+	type parseResult struct {
+		lineNum int
+		entry   *models.LogEntry
+		err     *models.ParseError
+	}
 
-	// String interning for device IDs and signal names
-	intern := GetGlobalIntern()
+	lineChan := make(chan lineWork, 10000)
+	resultChan := make(chan parseResult, 10000)
 
+	// Start worker goroutines
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			intern := GetGlobalIntern()
+			for work := range lineChan {
+				entry, parseErr := p.parseLine(work.line, work.lineNum, intern)
+				resultChan <- parseResult{lineNum: work.lineNum, entry: entry, err: parseErr}
+			}
+		}()
+	}
+
+	// Close result channel when workers are done
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// Start result collector goroutine
+	var errors []*models.ParseError
+	var errMu sync.Mutex
+	var collectWg sync.WaitGroup
+	collectWg.Add(1)
+	go func() {
+		defer collectWg.Done()
+		for result := range resultChan {
+			if result.err != nil {
+				errMu.Lock()
+				errors = append(errors, result.err)
+				errMu.Unlock()
+			} else if result.entry != nil {
+				store.AddEntry(result.entry)
+			}
+		}
+	}()
+
+	// Read file and send lines to workers
 	scanner := bufio.NewScanner(file)
 	const maxScannerBuffer = 1024 * 1024 // 1MB
 	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
 	lineNum := 0
 	var bytesRead int64
-	lastProgressUpdate := 0
+	lastProgressUpdate := int64(0)
 
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
 		bytesRead += int64(len(line)) + 1
 
-		if strings.TrimSpace(line) == "" {
+		if len(line) == 0 || line[0] == ' ' && len(strings.TrimSpace(line)) == 0 {
 			continue
 		}
 
-		entry, parseErr := p.parseLine(line, lineNum, intern)
-		if parseErr != nil {
-			errors = append(errors, parseErr)
-			continue
-		}
+		lineChan <- lineWork{lineNum: lineNum, line: line}
 
-		// Add directly to DuckStore (batched writes to disk)
-		store.AddEntry(entry)
-
-		// Check for DuckStore flush errors
-		if err := store.LastError(); err != nil {
-			return nil, fmt.Errorf("DuckDB write error at line %d: %w", lineNum, err)
-		}
-
-		// Early debugging: log at 1K, 10K, then every 100K
-		if lineNum == 1000 {
-			fmt.Printf("[Parse] Reached 1K lines (%.1f MB read)\\n", float64(bytesRead)/1024/1024)
-		} else if lineNum == 10000 {
-			fmt.Printf("[Parse] Reached 10K lines (%.1f MB read)\\n", float64(bytesRead)/1024/1024)
-		} else if lineNum%100000 == 0 {
-			fmt.Printf("[Parse] Progress: %d lines (%.1f MB / %.1f MB)\\n", lineNum, float64(bytesRead)/1024/1024, float64(totalBytes)/1024/1024)
-		}
-
-		// Report progress callback every 10K lines
-		if onProgress != nil && lineNum%10000 == 0 && lineNum != lastProgressUpdate {
-			lastProgressUpdate = lineNum
+		// Report progress every ~1% of file
+		if onProgress != nil && bytesRead-lastProgressUpdate > totalBytes/100 {
+			lastProgressUpdate = bytesRead
 			onProgress(lineNum, bytesRead, totalBytes)
 		}
 	}
+	close(lineChan)
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
+	}
+
+	// Wait for all results to be collected
+	collectWg.Wait()
+
+	// Check for DuckStore errors
+	if err := store.LastError(); err != nil {
+		return nil, fmt.Errorf("DuckDB write error: %w", err)
 	}
 
 	// Finalize: flush remaining batch and create indexes
