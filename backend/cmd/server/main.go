@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -38,8 +39,16 @@ func main() {
 
 	e := echo.New()
 
-	// Middleware
-	e.Use(middleware.Logger())
+	// Middleware - skip logging for noisy polling endpoints
+	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+		Skipper: func(c echo.Context) bool {
+			path := c.Request().URL.Path
+			// Skip logging for frequent status polling requests
+			return strings.HasSuffix(path, "/status") ||
+				strings.HasSuffix(path, "/progress") ||
+				path == "/api/health"
+		},
+	}))
 	e.Use(middleware.Recover())
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5, // Balanced compression/speed
