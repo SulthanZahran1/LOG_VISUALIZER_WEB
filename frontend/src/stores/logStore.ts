@@ -276,7 +276,22 @@ async function pollStatus(sessionId: string, abortSignal: AbortSignal) {
             }
 
             if (session.status === 'complete') {
-                // Use streaming for large files (>10k entries) for better UX
+                // LARGE FILE OPTIMIZATION: Bypass streaming if server-side mode is active
+                if (useServerSide.value) {
+                    isLoadingLog.value = false;
+                    await fetchEntries(1, 100);
+
+                    // Trigger map update if map viewer is open
+                    const mapStore = await import('./mapStore');
+                    mapStore.updateSignalValues(logEntries.value);
+
+                    if (session.startTime && session.endTime) {
+                        mapStore.setPlaybackRange(session.startTime, session.endTime);
+                    }
+                    return;
+                }
+
+                // Use streaming for medium-sized files (10k-100k entries) for better UX
                 const STREAM_THRESHOLD = 10000;
                 if ((session.entryCount ?? 0) > STREAM_THRESHOLD) {
                     isStreaming.value = true;
@@ -324,7 +339,7 @@ async function pollStatus(sessionId: string, abortSignal: AbortSignal) {
                 } else {
                     // Small file: use regular fetch
                     isLoadingLog.value = false;
-                    await fetchEntries(1, 1000000);
+                    await fetchEntries(1, 100); // Fixed from large number to match current paging
 
                     // Trigger map update if map viewer is open
                     const mapStore = await import('./mapStore');
