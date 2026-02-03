@@ -228,8 +228,6 @@ async function pollStatus(sessionId: string, abortSignal: AbortSignal) {
     // Check if aborted before starting
     if (abortSignal.aborted) return;
     
-    console.log(`[Poll] Starting polling for session ${sessionId.substring(0,8)}`);
-    
     const poll = async () => {
         // Check if aborted before each poll
         if (abortSignal.aborted) {
@@ -244,14 +242,9 @@ async function pollStatus(sessionId: string, abortSignal: AbortSignal) {
                 return;
             }
 
-            console.log(`[Poll] Session ${sessionId.substring(0,8)}: ${session.status} ${session.progress?.toFixed(1)}%`);
-            
             // Only update if it's the current session
             if (currentSession.value?.id === sessionId) {
                 currentSession.value = session;
-                console.log(`[Poll] Updated currentSession to ${session.progress?.toFixed(1)}%`);
-            } else {
-                console.log(`[Poll] Session ID mismatch: current=${currentSession.value?.id?.substring(0,8)}, poll=${sessionId.substring(0,8)}`);
             }
 
             if (session.status === 'complete') {

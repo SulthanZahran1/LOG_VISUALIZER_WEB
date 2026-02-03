@@ -14,7 +14,7 @@ services:
       - GOGC=50
     restart: unless-stopped
     # Memory limit using simpler format
-    mem_limit: 3g
+    mem_limit: 4g
 
   frontend:
     build:
