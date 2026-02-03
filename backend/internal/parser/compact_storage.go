@@ -1,8 +1,6 @@
 package parser
 
 import (
-	"fmt"
-	"runtime"
 	"time"
 
 	"github.com/plc-visualizer/backend/internal/models"
@@ -95,78 +93,82 @@ func (cs *CompactLogStore) MemoryUsage() int {
 		len(cs.values)*32 // Value struct ~32 bytes
 }
 
-// ToParsedLog converts compact storage to ParsedLog for API compatibility
-func (cs *CompactLogStore) ToParsedLog() *models.ParsedLog {
-	entries := make([]models.LogEntry, 0, cs.entryCount)
-	signals := make(map[string]struct{}, 1000)
-	devices := make(map[string]struct{}, 1000)
+// GetEntry returns a single entry by index (on-demand conversion)
+func (cs *CompactLogStore) GetEntry(i int) models.LogEntry {
+	val := cs.values[i]
+	entry := models.LogEntry{
+		Timestamp:  time.UnixMilli(cs.timestamps[i]),
+		DeviceID:   cs.deviceIDs[i],
+		SignalName: cs.signalNames[i],
+		Category:   cs.categories[i],
+	}
 	
-	// Pre-size maps to avoid reallocations
+	switch val.Type {
+	case ValueTypeBool:
+		entry.Value = val.Bool
+		entry.SignalType = models.SignalTypeBoolean
+	case ValueTypeInt:
+		entry.Value = int(val.Int)
+		entry.SignalType = models.SignalTypeInteger
+	case ValueTypeFloat:
+		entry.Value = val.Float
+		entry.SignalType = models.SignalTypeString
+	case ValueTypeString:
+		entry.Value = val.Str
+		entry.SignalType = models.SignalTypeString
+	}
+	
+	return entry
+}
+
+// Len returns the number of entries
+func (cs *CompactLogStore) Len() int {
+	return cs.entryCount
+}
+
+// GetSignals returns all unique signals
+func (cs *CompactLogStore) GetSignals() map[string]struct{} {
+	signals := make(map[string]struct{}, 1000)
 	for i := 0; i < cs.entryCount; i++ {
-		devices[cs.deviceIDs[i]] = struct{}{}
 		signals[cs.deviceIDs[i]+"::"+cs.signalNames[i]] = struct{}{}
 	}
-	
-	chunkSize := 100000
+	return signals
+}
+
+// GetDevices returns all unique devices
+func (cs *CompactLogStore) GetDevices() map[string]struct{} {
+	devices := make(map[string]struct{}, 1000)
 	for i := 0; i < cs.entryCount; i++ {
-		val := cs.values[i]
-		entry := models.LogEntry{
-			Timestamp:  time.UnixMilli(cs.timestamps[i]),
-			DeviceID:   cs.deviceIDs[i],
-			SignalName: cs.signalNames[i],
-			Category:   cs.categories[i],
-		}
-		
-		switch val.Type {
-		case ValueTypeBool:
-			entry.Value = val.Bool
-			entry.SignalType = models.SignalTypeBoolean
-		case ValueTypeInt:
-			entry.Value = int(val.Int)
-			entry.SignalType = models.SignalTypeInteger
-		case ValueTypeFloat:
-			entry.Value = val.Float
-			entry.SignalType = models.SignalTypeString
-		case ValueTypeString:
-			entry.Value = val.Str
-			entry.SignalType = models.SignalTypeString
-		}
-		
-		entries = append(entries, entry)
-		
-		// Run GC periodically during conversion
-		if i > 0 && i%chunkSize == 0 {
-			runtime.GC()
-			if i%(chunkSize*5) == 0 {
-				var memStats runtime.MemStats
-				runtime.ReadMemStats(&memStats)
-				fmt.Printf("[ToParsedLog] Converted %d/%d entries, memory: %.1f MB\n", 
-					i, cs.entryCount, float64(memStats.Alloc)/1024/1024)
-			}
-		}
+		devices[cs.deviceIDs[i]] = struct{}{}
 	}
-	
-	// Get time range before clearing
-	var timeRange *models.TimeRange
-	if cs.entryCount > 0 {
-		timeRange = &models.TimeRange{
-			Start: time.UnixMilli(cs.timestamps[0]),
-			End:   time.UnixMilli(cs.timestamps[cs.entryCount-1]),
-		}
+	return devices
+}
+
+// GetTimeRange returns the time range of the log
+func (cs *CompactLogStore) GetTimeRange() *models.TimeRange {
+	if cs.entryCount == 0 {
+		return nil
 	}
+	return &models.TimeRange{
+		Start: time.UnixMilli(cs.timestamps[0]),
+		End:   time.UnixMilli(cs.timestamps[cs.entryCount-1]),
+	}
+}
+
+// ToParsedLog converts compact storage to ParsedLog for API compatibility
+// WARNING: This creates a full copy of all entries in memory (~1.3GB for 11M entries)
+// Use GetEntry() for on-demand access instead to save memory
+func (cs *CompactLogStore) ToParsedLog() *models.ParsedLog {
+	entries := make([]models.LogEntry, 0, cs.entryCount)
 	
-	// Clear compact storage to free memory
-	cs.timestamps = nil
-	cs.deviceIDs = nil
-	cs.signalNames = nil
-	cs.categories = nil
-	cs.values = nil
-	runtime.GC()
+	for i := 0; i < cs.entryCount; i++ {
+		entries = append(entries, cs.GetEntry(i))
+	}
 	
 	return &models.ParsedLog{
 		Entries:   entries,
-		Signals:   signals,
-		Devices:   devices,
-		TimeRange: timeRange,
+		Signals:   cs.GetSignals(),
+		Devices:   cs.GetDevices(),
+		TimeRange: cs.GetTimeRange(),
 	}
 }
