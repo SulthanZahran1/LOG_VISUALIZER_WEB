@@ -125,8 +125,10 @@ func (p *PLCDebugParser) ParseWithProgress(filePath string, onProgress ProgressC
 
 // ParseToDuckStore parses directly into a DuckStore for memory-efficient large file handling.
 func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onProgress ProgressCallback) ([]*models.ParseError, error) {
+	fmt.Printf("[Parse] Opening file: %s\n", filePath)
 	file, err := os.Open(filePath)
 	if err != nil {
+		fmt.Printf("[Parse] ERROR opening file: %v\n", err)
 		return nil, err
 	}
 	defer file.Close()
@@ -137,13 +139,15 @@ func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onP
 		return nil, err
 	}
 	totalBytes := fileInfo.Size()
+	fmt.Printf("[Parse] File size: %d bytes (%.1f MB)\n", totalBytes, float64(totalBytes)/1024/1024)
 
 	errors := make([]*models.ParseError, 0, 100)
 	intern := GetGlobalIntern()
 
 	scanner := bufio.NewScanner(file)
-	const maxScannerBuffer = 1024 * 1024 // 1MB
+	const maxScannerBuffer = 4 * 1024 * 1024 // 4MB - increased just in case
 	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
+	fmt.Printf("[Parse] Scanner initialized, starting loop...\n")
 	lineNum := 0
 	var bytesRead int64
 	lastProgressUpdate := int64(0)
@@ -215,6 +219,10 @@ func (p *PLCDebugParser) parseLine(line string, lineNum int, intern *StringInter
 	entry := p.fastParseLine(line, intern)
 	if entry != nil {
 		return entry, nil
+	}
+
+	if lineNum <= 5 {
+		fmt.Printf("[Parse] Line %d: fast path failed, falling back to regex\n", lineNum)
 	}
 
 	// Fallback to regex
