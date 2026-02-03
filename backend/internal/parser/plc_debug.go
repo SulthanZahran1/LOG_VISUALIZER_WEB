@@ -216,6 +216,11 @@ func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onP
 			continue
 		}
 
+		// Debug: print first 5 raw lines
+		if lineNum <= 5 {
+			fmt.Printf("[Parse] Raw line %d: %s\\n", lineNum, line[:min(len(line), 120)])
+		}
+
 		lineChan <- lineWork{lineNum: lineNum, line: line}
 
 		// Report progress every ~1% of file
