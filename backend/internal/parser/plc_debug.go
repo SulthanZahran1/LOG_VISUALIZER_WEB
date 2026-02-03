@@ -81,12 +81,12 @@ func (p *PLCDebugParser) ParseWithProgress(filePath string, onProgress ProgressC
 	lineNum := 0
 	var bytesRead int64
 	lastProgressUpdate := 0
-	
+
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
 		bytesRead += int64(len(line)) + 1 // +1 for newline
-		
+
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -99,7 +99,7 @@ func (p *PLCDebugParser) ParseWithProgress(filePath string, onProgress ProgressC
 
 		// Add to compact storage instead of slice
 		store.AddEntry(entry)
-		
+
 		// Report progress every 100K lines or 1% of file
 		if onProgress != nil && lineNum%100000 == 0 && lineNum != lastProgressUpdate {
 			lastProgressUpdate = lineNum
@@ -118,8 +118,78 @@ func (p *PLCDebugParser) ParseWithProgress(filePath string, onProgress ProgressC
 
 	// Convert compact storage to ParsedLog for API compatibility
 	parsed := store.ToParsedLog()
-	
+
 	return parsed, errors, nil
+}
+
+// ParseToDuckStore parses directly into a DuckStore for memory-efficient large file handling.
+// This avoids creating an in-memory copy of all entries.
+func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onProgress ProgressCallback) ([]*models.ParseError, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	// Get file size for progress calculation
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	totalBytes := fileInfo.Size()
+
+	errors := make([]*models.ParseError, 0, 100)
+
+	// String interning for device IDs and signal names
+	intern := GetGlobalIntern()
+
+	scanner := bufio.NewScanner(file)
+	const maxScannerBuffer = 1024 * 1024 // 1MB
+	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
+	lineNum := 0
+	var bytesRead int64
+	lastProgressUpdate := 0
+
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		bytesRead += int64(len(line)) + 1
+
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		entry, parseErr := p.parseLine(line, lineNum, intern)
+		if parseErr != nil {
+			errors = append(errors, parseErr)
+			continue
+		}
+
+		// Add directly to DuckStore (batched writes to disk)
+		store.AddEntry(entry)
+
+		// Report progress every 100K lines
+		if onProgress != nil && lineNum%100000 == 0 && lineNum != lastProgressUpdate {
+			lastProgressUpdate = lineNum
+			onProgress(lineNum, bytesRead, totalBytes)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	// Finalize: flush remaining batch and create indexes
+	if err := store.Finalize(); err != nil {
+		return nil, err
+	}
+
+	// Final progress update
+	if onProgress != nil {
+		onProgress(lineNum, bytesRead, totalBytes)
+	}
+
+	return errors, nil
 }
 
 func (p *PLCDebugParser) parseLine(line string, lineNum int, intern *StringIntern) (*models.LogEntry, *models.ParseError) {

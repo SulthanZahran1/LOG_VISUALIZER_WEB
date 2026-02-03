@@ -16,19 +16,27 @@ type Manager struct {
 	sessions map[string]*SessionState
 	mu       sync.RWMutex
 	registry *parser.Registry
+	tempDir  string
 }
 
-// SessionState holds the session metadata and the resulting parsed log.
+// SessionState holds the session metadata and the DuckDB-backed storage.
 type SessionState struct {
-	Session *models.ParseSession
-	Result  *models.ParsedLog
+	Session   *models.ParseSession
+	Result    *models.ParsedLog // Legacy: used for backward compatibility with non-DuckDB parsers
+	DuckStore *parser.DuckStore // Memory-efficient storage for large files
 }
 
 // NewManager creates a new session manager.
 func NewManager() *Manager {
+	return NewManagerWithTempDir("/tmp")
+}
+
+// NewManagerWithTempDir creates a session manager with a specific temp directory.
+func NewManagerWithTempDir(tempDir string) *Manager {
 	return &Manager{
 		sessions: make(map[string]*SessionState),
 		registry: parser.GetGlobalRegistry(),
+		tempDir:  tempDir,
 	}
 }
 
@@ -63,7 +71,7 @@ func (m *Manager) runParse(sessionID, filePath string) {
 	}()
 
 	start := time.Now()
-	
+
 	fmt.Printf("[Parse %s] Starting parse of %s\n", sessionID[:8], filePath)
 
 	p, err := m.registry.FindParser(filePath)
@@ -72,7 +80,7 @@ func (m *Manager) runParse(sessionID, filePath string) {
 		m.updateSessionError(sessionID, fmt.Sprintf("failed to find parser: %v", err))
 		return
 	}
-	
+
 	fmt.Printf("[Parse %s] Using parser: %s\n", sessionID[:8], p.Name())
 
 	m.mu.Lock()
@@ -83,7 +91,7 @@ func (m *Manager) runParse(sessionID, filePath string) {
 	m.mu.Unlock()
 
 	fmt.Printf("[Parse %s] Beginning parse...\n", sessionID[:8])
-	
+
 	// Progress callback updates session every 100K lines
 	progressCb := func(lines int, bytesRead, totalBytes int64) {
 		var progress float64
@@ -96,7 +104,7 @@ func (m *Manager) runParse(sessionID, filePath string) {
 		if progress > 89.9 {
 			progress = 89.9
 		}
-		
+
 		m.mu.Lock()
 		if state, ok := m.sessions[sessionID]; ok {
 			state.Session.Progress = progress
@@ -104,25 +112,32 @@ func (m *Manager) runParse(sessionID, filePath string) {
 			state.Session.EntryCount = lines
 		}
 		m.mu.Unlock()
-		
+
 		// Log memory usage every 500K lines
 		if lines%500000 == 0 {
 			var memStats runtime.MemStats
 			runtime.ReadMemStats(&memStats)
 			allocMB := float64(memStats.Alloc) / 1024 / 1024
 			sysMB := float64(memStats.Sys) / 1024 / 1024
-			fmt.Printf("[Parse %s] Progress: %.1f%% (%d lines) - Memory: %.1f MB (alloc) / %.1f MB (sys)\n", 
+			fmt.Printf("[Parse %s] Progress: %.1f%% (%d lines) - Memory: %.1f MB (alloc) / %.1f MB (sys)\n",
 				sessionID[:8], progress, lines, allocMB, sysMB)
 		}
 	}
-	
+
+	// Try DuckDB-backed parsing for memory efficiency
+	if plcParser, ok := p.(*parser.PLCDebugParser); ok {
+		m.runParseToDuckStore(sessionID, filePath, plcParser, progressCb, start)
+		return
+	}
+
+	// Fallback to legacy in-memory parsing for other parsers
 	result, parseErrors, err := p.ParseWithProgress(filePath, progressCb)
 	if err != nil {
 		fmt.Printf("[Parse %s] ERROR: parse failed: %v\n", sessionID[:8], err)
 		m.updateSessionError(sessionID, fmt.Sprintf("parse failed: %v", err))
 		return
 	}
-	
+
 	fmt.Printf("[Parse %s] Parse complete: %d entries, %d errors\n", sessionID[:8], len(result.Entries), len(parseErrors))
 
 	elapsed := time.Since(start).Milliseconds()
@@ -148,10 +163,59 @@ func (m *Manager) runParse(sessionID, filePath string) {
 		state.Session.EndTime = result.TimeRange.End.UnixMilli()
 	}
 
-	// Convert models.ParseError to non-pointer for the slice if needed
-	// (Check models/session.go:22 says []ParseError, but parser returns []*ParseError)
-	// Wait, internal/models/session.go:22: Errors []ParseError
-	// internal/parser/parser.go:19: []*models.ParseError
+	errs := make([]models.ParseError, 0, len(parseErrors))
+	for _, e := range parseErrors {
+		if e != nil {
+			errs = append(errs, *e)
+		}
+	}
+	state.Session.Errors = errs
+}
+
+// runParseToDuckStore handles DuckDB-backed parsing for memory efficiency
+func (m *Manager) runParseToDuckStore(sessionID, filePath string, p *parser.PLCDebugParser, progressCb parser.ProgressCallback, start time.Time) {
+	// Create DuckStore for this session
+	store, err := parser.NewDuckStore(m.tempDir, sessionID)
+	if err != nil {
+		fmt.Printf("[Parse %s] ERROR: failed to create DuckStore: %v\n", sessionID[:8], err)
+		m.updateSessionError(sessionID, fmt.Sprintf("failed to create storage: %v", err))
+		return
+	}
+
+	// Parse directly to DuckStore
+	parseErrors, err := p.ParseToDuckStore(filePath, store, progressCb)
+	if err != nil {
+		store.Close()
+		fmt.Printf("[Parse %s] ERROR: parse failed: %v\n", sessionID[:8], err)
+		m.updateSessionError(sessionID, fmt.Sprintf("parse failed: %v", err))
+		return
+	}
+
+	fmt.Printf("[Parse %s] Parse complete: %d entries (DuckDB), %d errors\n", sessionID[:8], store.Len(), len(parseErrors))
+
+	elapsed := time.Since(start).Milliseconds()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	state, ok := m.sessions[sessionID]
+	if !ok {
+		store.Close()
+		return
+	}
+
+	state.DuckStore = store
+	state.Session.Status = models.SessionStatusComplete
+	state.Session.Progress = 100
+	state.Session.EntryCount = store.Len()
+	state.Session.SignalCount = len(store.GetSignals())
+	state.Session.ProcessingTimeMs = elapsed
+	state.Session.ParserName = p.Name()
+
+	if tr := store.GetTimeRange(); tr != nil {
+		state.Session.StartTime = tr.Start.UnixMilli()
+		state.Session.EndTime = tr.End.UnixMilli()
+	}
 
 	errs := make([]models.ParseError, 0, len(parseErrors))
 	for _, e := range parseErrors {
@@ -195,7 +259,35 @@ func (m *Manager) GetEntries(id string, page, pageSize int) ([]models.LogEntry, 
 	defer m.mu.RUnlock()
 
 	state, ok := m.sessions[id]
-	if !ok || state.Result == nil {
+	if !ok {
+		return nil, 0, false
+	}
+
+	// Use DuckStore if available (memory-efficient)
+	if state.DuckStore != nil {
+		total := state.DuckStore.Len()
+		start := (page - 1) * pageSize
+		if start < 0 {
+			start = 0
+		}
+		if start >= total {
+			return []models.LogEntry{}, total, true
+		}
+
+		end := start + pageSize
+		if end > total {
+			end = total
+		}
+
+		entries, err := state.DuckStore.GetEntries(start, end)
+		if err != nil {
+			return nil, 0, false
+		}
+		return entries, total, true
+	}
+
+	// Fallback to legacy in-memory Result
+	if state.Result == nil {
 		return nil, 0, false
 	}
 
@@ -222,7 +314,21 @@ func (m *Manager) GetChunk(id string, startTs, endTs time.Time) ([]models.LogEnt
 	defer m.mu.RUnlock()
 
 	state, ok := m.sessions[id]
-	if !ok || state.Result == nil {
+	if !ok {
+		return nil, false
+	}
+
+	// Use DuckStore if available (memory-efficient + indexed)
+	if state.DuckStore != nil {
+		entries, err := state.DuckStore.GetChunk(startTs, endTs)
+		if err != nil {
+			return nil, false
+		}
+		return entries, true
+	}
+
+	// Fallback to legacy in-memory Result
+	if state.Result == nil {
 		return nil, false
 	}
 
@@ -244,7 +350,22 @@ func (m *Manager) GetSignals(id string) ([]string, bool) {
 	defer m.mu.RUnlock()
 
 	state, ok := m.sessions[id]
-	if !ok || state.Result == nil {
+	if !ok {
+		return nil, false
+	}
+
+	// Use DuckStore if available
+	if state.DuckStore != nil {
+		sigMap := state.DuckStore.GetSignals()
+		signals := make([]string, 0, len(sigMap))
+		for s := range sigMap {
+			signals = append(signals, s)
+		}
+		return signals, true
+	}
+
+	// Fallback to legacy in-memory Result
+	if state.Result == nil {
 		return nil, false
 	}
 

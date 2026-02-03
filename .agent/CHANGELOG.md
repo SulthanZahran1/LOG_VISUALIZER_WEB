@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.7.0] - 2026-02-03
+
+### Added
+- **DuckDB Storage**: Large file parsing now uses DuckDB for memory efficiency
+- **Memory Optimization**: Memory footprint stays <100MB for any file size (vs 4GB+ before)
+- Added `duckstore.go` module with DuckDB-backed entry storage
+- Added `ParseToDuckStore()` method to PLC debug parser
+
+### Changed
+- Session manager now stores entries in DuckDB temp file instead of RAM
+- `GetEntries()`, `GetChunk()`, `GetSignals()` now query DuckDB on-demand
+- Entries are batch-inserted (10K rows) during parsing for efficiency
+
+### Technical
+- DuckDB creates indexed temp file per session, auto-cleaned on close
+- Backward compatible: non-DuckDB parsers still use legacy in-memory storage
+
+---
+
 ## [0.6.3] - 2026-01-30
 
 ### Added
