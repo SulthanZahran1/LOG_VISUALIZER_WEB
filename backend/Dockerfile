@@ -1,8 +1,8 @@
 # Build stage
 FROM golang:1.24-alpine AS builder
 
-# Install build dependencies for DuckDB (requires CGO)
-RUN apk add --no-cache gcc musl-dev
+# Install build dependencies for DuckDB (requires CGO and C++ libs)
+RUN apk add --no-cache gcc g++ musl-dev libstdc++
 
 WORKDIR /app
 
