@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"fmt"
+	"runtime"
 	"time"
 	"github.com/plc-visualizer/backend/internal/models"
 )
@@ -125,14 +127,28 @@ func (cs *CompactLogStore) ToParsedLog() *models.ParsedLog {
 	signals := make(map[string]struct{})
 	devices := make(map[string]struct{})
 	
+	// Process in chunks to reduce memory pressure and allow GC
+	chunkSize := 100000
 	for i := 0; i < cs.entryCount; i++ {
 		entry := cs.getEntry(i)
 		entries = append(entries, entry)
 		
 		signals[entry.DeviceID + "::" + entry.SignalName] = struct{}{}
 		devices[entry.DeviceID] = struct{}{}
+		
+		// Run GC every chunk to free intermediate allocations
+		if i > 0 && i%chunkSize == 0 {
+			runtime.GC()
+			if i%(chunkSize*5) == 0 {
+				var memStats runtime.MemStats
+				runtime.ReadMemStats(&memStats)
+				fmt.Printf("[ToParsedLog] Converted %d/%d entries, memory: %.1f MB\n", 
+					i, cs.entryCount, float64(memStats.Alloc)/1024/1024)
+			}
+		}
 	}
 	
+	// Get time range before clearing
 	var timeRange *models.TimeRange
 	if cs.entryCount > 0 {
 		timeRange = &models.TimeRange{
@@ -140,6 +156,19 @@ func (cs *CompactLogStore) ToParsedLog() *models.ParsedLog {
 			End:   time.UnixMilli(int64(cs.timestamps[cs.entryCount-1])),
 		}
 	}
+	
+	// Clear compact storage to free memory before returning
+	cs.timestamps = nil
+	cs.deviceIdx = nil
+	cs.signalIdx = nil
+	cs.categories = nil
+	cs.valueTypes = nil
+	cs.valueIndices = nil
+	cs.boolValues = nil
+	cs.intValues = nil
+	cs.floatValues = nil
+	cs.stringValues = nil
+	runtime.GC()
 	
 	return &models.ParsedLog{
 		Entries:   entries,
