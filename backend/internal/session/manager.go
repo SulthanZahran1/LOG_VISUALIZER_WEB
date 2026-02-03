@@ -287,6 +287,27 @@ func (m *Manager) QueryEntries(id string, params parser.QueryParams, page, pageS
 	return entries, total, ok
 }
 
+// GetCategories returns all unique categories for a session.
+func (m *Manager) GetCategories(id string) ([]string, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	state, ok := m.sessions[id]
+	if !ok {
+		return nil, false
+	}
+
+	if state.DuckStore != nil {
+		cats, err := state.DuckStore.GetCategories()
+		if err != nil {
+			return nil, false
+		}
+		return cats, true
+	}
+
+	return []string{}, true
+}
+
 // GetEntries returns paginated entries for a session.
 func (m *Manager) GetEntries(id string, page, pageSize int) ([]models.LogEntry, int, bool) {
 	m.mu.RLock()

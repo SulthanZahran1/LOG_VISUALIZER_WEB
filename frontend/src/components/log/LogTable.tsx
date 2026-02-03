@@ -3,6 +3,7 @@ import { useSignal } from '@preact/signals';
 import { useRef, useEffect, useState } from 'preact/hooks';
 import {
     filteredEntries,
+    currentSession,
     isLoadingLog,
     sortColumn,
     sortDirection,
@@ -11,7 +12,9 @@ import {
     searchCaseSensitive,
     showChangedOnly,
     signalTypeFilter,
+    totalEntries,
     fetchEntries,
+    useServerSide,
     openView,
     selectedLogTime,
     isStreaming,
@@ -181,8 +184,30 @@ export function LogTable() {
         }
     }, [selectedRows.value]);
 
+    const lastFetchedPage = useRef(1);
+
+    // Reset scroll and page when session or filters change
+    useEffect(() => {
+        if (tableRef.current) {
+            tableRef.current.scrollTop = 0;
+            scrollSignal.value = 0;
+        }
+        lastFetchedPage.current = 1;
+    }, [currentSession.value?.id, searchQuery.value, categoryFilter.value, sortColumn.value, sortDirection.value]);
+
     const onScroll = (e: Event) => {
-        scrollSignal.value = (e.target as HTMLDivElement).scrollTop;
+        const scrollTop = (e.target as HTMLDivElement).scrollTop;
+        scrollSignal.value = scrollTop;
+
+        if (useServerSide.value) {
+            // Calculate which page we should be looking at (100 is current pageSize in fetchEntries)
+            const page = Math.floor(scrollTop / (100 * ROW_HEIGHT)) + 1;
+            if (page !== lastFetchedPage.current) {
+                lastFetchedPage.current = page;
+                fetchEntries(page, 100);
+            }
+        }
+
         if (contextMenu.value.visible) contextMenu.value = { ...contextMenu.value, visible: false };
     };
 
@@ -323,12 +348,12 @@ export function LogTable() {
     const handleColumnDrop = (targetColKey: ColumnKey, e: DragEvent) => {
         e.preventDefault();
         const sourceColKey = e.dataTransfer!.getData('text/plain') as ColumnKey;
-        
+
         if (sourceColKey && sourceColKey !== targetColKey) {
             const newOrder = [...columnOrder.value];
             const sourceIdx = newOrder.indexOf(sourceColKey);
             const targetIdx = newOrder.indexOf(targetColKey);
-            
+
             if (sourceIdx !== -1 && targetIdx !== -1) {
                 // Remove from source and insert at target
                 newOrder.splice(sourceIdx, 1);
@@ -336,7 +361,7 @@ export function LogTable() {
                 columnOrder.value = newOrder;
             }
         }
-        
+
         draggedColumn.value = null;
         dragOverColumn.value = null;
     };
@@ -476,14 +501,22 @@ export function LogTable() {
 
     // Viewport calculations
     const viewportHeight = tableRef.current?.clientHeight || 600;
-    const totalCount = filteredEntries.value.length;
+    const totalCount = useServerSide.value ? totalEntries.value : filteredEntries.value.length;
     const totalHeight = totalCount * ROW_HEIGHT;
 
-    const startIdx = Math.max(0, Math.floor(scrollSignal.value / ROW_HEIGHT) - BUFFER);
-    const endIdx = Math.min(totalCount, Math.ceil((scrollSignal.value + viewportHeight) / ROW_HEIGHT) + BUFFER);
+    const startIdx = useServerSide.value
+        ? 0 // In server-side mode, filteredEntries IS the current page
+        : Math.max(0, Math.floor(scrollSignal.value / ROW_HEIGHT) - BUFFER);
+
+    const endIdx = useServerSide.value
+        ? filteredEntries.value.length
+        : Math.min(totalCount, Math.ceil((scrollSignal.value + viewportHeight) / ROW_HEIGHT) + BUFFER);
 
     const visibleEntries = filteredEntries.value.slice(startIdx, endIdx);
-    const offsetTop = startIdx * ROW_HEIGHT;
+
+    const offsetTop = useServerSide.value
+        ? (lastFetchedPage.current - 1) * 100 * ROW_HEIGHT
+        : startIdx * ROW_HEIGHT;
 
     return (
         <div className="log-table-container"
@@ -557,7 +590,7 @@ export function LogTable() {
                             const col = COLUMNS.find(c => c.key === colKey)!;
                             const isDragOver = dragOverColumn.value === colKey;
                             const isDraggingCol = draggedColumn.value === colKey;
-                            
+
                             // Special rendering for category column with filter popover
                             if (col.key === 'category') {
                                 return (
@@ -594,7 +627,7 @@ export function LogTable() {
                                     </div>
                                 );
                             }
-                            
+
                             // Standard rendering for other columns
                             return (
                                 <div
@@ -634,7 +667,7 @@ export function LogTable() {
                                             {columnOrder.value.map((colKey) => {
                                                 const col = COLUMNS.find(c => c.key === colKey)!;
                                                 const width = columnWidths.value[col.id as keyof typeof columnWidths.value];
-                                                
+
                                                 switch (col.key) {
                                                     case 'timestamp':
                                                         return <div key={col.key} className="log-col" style={{ width }}>{formatDateTime(entry.timestamp)}</div>;

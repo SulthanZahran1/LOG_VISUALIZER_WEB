@@ -1,5 +1,5 @@
 import { signal, computed, effect } from '@preact/signals';
-import { startParse, getParseStatus, getParseEntries, streamParseEntries } from '../api/client';
+import { startParse, getParseStatus, getParseEntries, streamParseEntries, getParseCategories } from '../api/client';
 import type { LogEntry, ParseSession } from '../models/types';
 import { saveSession, getSessions } from '../utils/persistence';
 import { selectedSignals } from './selectionStore';
@@ -30,6 +30,7 @@ export const showChangedOnly = signal(false);
 
 // Category filter - Set of selected categories (empty = show all)
 export const categoryFilter = signal<Set<string>>(new Set());
+export const serverSideCategories = signal<string[]>([]);
 
 // Layout - View types matching desktop reference
 export type ViewType = 'home' | 'log-table' | 'waveform' | 'map-viewer' | 'transitions';
@@ -79,6 +80,9 @@ export const isParsing = computed(() =>
 
 // Available categories - extracted from current log entries
 export const availableCategories = computed(() => {
+    if (useServerSide.value) {
+        return serverSideCategories.value;
+    }
     const categories = new Set<string>();
     for (const entry of logEntries.value) {
         // Include empty string for uncategorized entries
@@ -217,7 +221,7 @@ export async function initLogStore() {
             currentSession.value = lastSession;
 
             if (lastSession.status === 'complete') {
-                fetchEntries(1, 1000); // Fetch more for initial view to support filtering
+                handleSessionComplete(lastSession);
             } else if (lastSession.status === 'parsing' || lastSession.status === 'pending') {
                 // Resume polling for restored session
                 currentPollAbortController = new AbortController();
@@ -244,8 +248,12 @@ export async function startParsing(fileId: string) {
         const session = await startParse(fileId);
         currentSession.value = session;
 
-        // Start polling for status (reliable, works with all setups)
-        pollStatus(session.id, currentPollAbortController.signal);
+        if (session.status === 'complete') {
+            handleSessionComplete(session);
+        } else {
+            // Start polling for status (reliable, works with all setups)
+            pollStatus(session.id, currentPollAbortController.signal);
+        }
     } catch (err) {
         logError.value = (err as Error).message;
         isLoadingLog.value = false;
@@ -276,90 +284,7 @@ async function pollStatus(sessionId: string, abortSignal: AbortSignal) {
             }
 
             if (session.status === 'complete') {
-                // LARGE FILE OPTIMIZATION: Bypass streaming if server-side mode is active
-                if (useServerSide.value) {
-                    isLoadingLog.value = false;
-                    await fetchEntries(1, 100);
-
-                    // Trigger map update if map viewer is open
-                    const mapStore = await import('./mapStore');
-                    mapStore.updateSignalValues(logEntries.value);
-
-                    if (session.startTime && session.endTime) {
-                        mapStore.setPlaybackRange(session.startTime, session.endTime);
-                    }
-                    return;
-                }
-
-                // Use streaming for medium-sized files (10k-100k entries) for better UX
-                const STREAM_THRESHOLD = 10000;
-                if ((session.entryCount ?? 0) > STREAM_THRESHOLD) {
-                    isStreaming.value = true;
-                    streamProgress.value = 0;
-                    logEntries.value = []; // Clear before streaming
-
-                    streamParseEntries(
-                        sessionId,
-                        (batch, progress, total) => {
-                            // Append batch to entries
-                            logEntries.value = [...logEntries.value, ...batch];
-                            streamProgress.value = progress;
-                            totalEntries.value = total;
-                        },
-                        async (total) => {
-                            isStreaming.value = false;
-                            isLoadingLog.value = false;
-                            streamProgress.value = 100;
-                            totalEntries.value = total;
-
-                            // Trigger map update if map viewer is open
-                            const mapStore = await import('./mapStore');
-                            mapStore.updateSignalValues(logEntries.value);
-
-                            // Set playback time range from session metadata
-                            if (session.startTime && session.endTime) {
-                                mapStore.setPlaybackRange(session.startTime, session.endTime);
-                            } else if (logEntries.value.length > 0) {
-                                const timestamps = logEntries.value
-                                    .map(e => e.timestamp ? new Date(e.timestamp).getTime() : null)
-                                    .filter((t): t is number => t !== null && !isNaN(t));
-                                if (timestamps.length > 0) {
-                                    const startTime = Math.min(...timestamps);
-                                    const endTime = Math.max(...timestamps);
-                                    mapStore.setPlaybackRange(startTime, endTime);
-                                }
-                            }
-                        },
-                        (error) => {
-                            isStreaming.value = false;
-                            isLoadingLog.value = false;
-                            logError.value = error;
-                        }
-                    );
-                } else {
-                    // Small file: use regular fetch
-                    isLoadingLog.value = false;
-                    await fetchEntries(1, 100); // Fixed from large number to match current paging
-
-                    // Trigger map update if map viewer is open
-                    const mapStore = await import('./mapStore');
-                    mapStore.updateSignalValues(logEntries.value);
-
-                    // Set playback time range from session metadata (preferred)
-                    if (session.startTime && session.endTime) {
-                        mapStore.setPlaybackRange(session.startTime, session.endTime);
-                    } else if (logEntries.value.length > 0) {
-                        // Fallback: Set playback time range from log entries
-                        const timestamps = logEntries.value
-                            .map(e => e.timestamp ? new Date(e.timestamp).getTime() : null)
-                            .filter((t): t is number => t !== null && !isNaN(t));
-                        if (timestamps.length > 0) {
-                            const startTime = Math.min(...timestamps);
-                            const endTime = Math.max(...timestamps);
-                            mapStore.setPlaybackRange(startTime, endTime);
-                        }
-                    }
-                }
+                handleSessionComplete(session);
                 return;
             }
 
@@ -389,6 +314,80 @@ async function pollStatus(sessionId: string, abortSignal: AbortSignal) {
     };
 
     poll();
+}
+
+/**
+ * Handles all logic when a parsing session is complete or loaded.
+ * Centralizes data fetching, metadata loading, and view updates.
+ */
+async function handleSessionComplete(session: ParseSession) {
+    isLoadingLog.value = false;
+
+    // 1. Initial Data Load
+    if (useServerSide.value) {
+        // Large file: Fetch first page and global categories
+        await fetchEntries(1, 100);
+        getParseCategories(session.id)
+            .then(cats => serverSideCategories.value = cats)
+            .catch(err => console.error('Failed to fetch categories:', err));
+    } else {
+        // SMALL/MEDIUM FILE optimization:
+        const STREAM_THRESHOLD = 10000;
+        if ((session.entryCount ?? 0) > STREAM_THRESHOLD) {
+            isStreaming.value = true;
+            streamProgress.value = 0;
+            logEntries.value = [];
+
+            streamParseEntries(
+                session.id,
+                (batch, progress, total) => {
+                    logEntries.value = [...logEntries.value, ...batch];
+                    streamProgress.value = progress;
+                    totalEntries.value = total;
+                },
+                async (total) => {
+                    isStreaming.value = false;
+                    streamProgress.value = 100;
+                    totalEntries.value = total;
+                    finalizeSessionLoad(session);
+                },
+                (error) => {
+                    isStreaming.value = false;
+                    logError.value = error;
+                }
+            );
+            return; // finalizeSessionLoad will be called by streaming completion
+        } else {
+            // Very small file: Load everything in one go
+            await fetchEntries(1, 100000);
+        }
+    }
+
+    finalizeSessionLoad(session);
+}
+
+/**
+ * Common finalization tasks for a loaded session
+ */
+async function finalizeSessionLoad(session: ParseSession) {
+    // 2. Trigger map and view updates
+    const mapStore = await import('./mapStore');
+    mapStore.updateSignalValues(logEntries.value);
+
+    // 3. Set playback time range from session metadata (preferred)
+    if (session.startTime && session.endTime) {
+        mapStore.setPlaybackRange(session.startTime, session.endTime);
+    } else if (logEntries.value.length > 0) {
+        // Fallback: Set from available entries
+        const timestamps = logEntries.value
+            .map(e => e.timestamp ? new Date(e.timestamp).getTime() : null)
+            .filter((t): t is number => t !== null && !isNaN(t));
+        if (timestamps.length > 0) {
+            const startTime = Math.min(...timestamps);
+            const endTime = Math.max(...timestamps);
+            mapStore.setPlaybackRange(startTime, endTime);
+        }
+    }
 }
 
 

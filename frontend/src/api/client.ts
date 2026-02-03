@@ -130,6 +130,10 @@ export async function getParseSignals(sessionId: string): Promise<string[]> {
     return request<string[]>(`/parse/${sessionId}/signals`);
 }
 
+export async function getParseCategories(sessionId: string): Promise<string[]> {
+    return request<string[]>(`/parse/${sessionId}/categories`);
+}
+
 export interface PaginatedEntries {
     entries: LogEntry[];
     total: number;

@@ -304,6 +304,25 @@ func (ds *DuckStore) QueryEntries(params QueryParams, page, pageSize int) ([]mod
 	return entries, total, rows.Err()
 }
 
+// GetCategories returns all unique categories in the store
+func (ds *DuckStore) GetCategories() ([]string, error) {
+	rows, err := ds.db.Query("SELECT DISTINCT category FROM entries WHERE category IS NOT NULL AND category != '' ORDER BY category")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var categories []string
+	for rows.Next() {
+		var cat string
+		if err := rows.Scan(&cat); err != nil {
+			return nil, err
+		}
+		categories = append(categories, cat)
+	}
+	return categories, nil
+}
+
 func (ds *DuckStore) buildWhereClause(params QueryParams) (string, []interface{}) {
 	var clauses []string
 	var args []interface{}

@@ -355,6 +355,17 @@ func (h *Handler) HandleGetSignals(c echo.Context) error {
 	return c.JSON(http.StatusOK, signals)
 }
 
+// HandleGetCategories returns the list of all unique categories for a session.
+func (h *Handler) HandleGetCategories(c echo.Context) error {
+	id := c.Param("sessionId")
+	cats, ok := h.session.GetCategories(id)
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
+	}
+
+	return c.JSON(http.StatusOK, cats)
+}
+
 // HandleGetMapLayout returns the currently active map layout.
 func (h *Handler) HandleGetMapLayout(c echo.Context) error {
 	if h.currentMapID == "" {
