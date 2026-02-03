@@ -60,8 +60,8 @@ func NewDuckStore(tempDir string, sessionID string) (*DuckStore, error) {
 	return &DuckStore{
 		db:        db,
 		dbPath:    dbPath,
-		batchSize: 100000, // 100K entries per batch for speed
-		batch:     make([]*models.LogEntry, 0, 100000),
+		batchSize: 2000, // Reduced from 100K to avoid SQL parameter limits (2000 * 10 = 20k parameters)
+		batch:     make([]*models.LogEntry, 0, 2000),
 		signals:   make(map[string]struct{}, 1000),
 		devices:   make(map[string]struct{}, 100),
 		minTs:     0,
@@ -110,7 +110,7 @@ func (ds *DuckStore) flushBatch() error {
 
 	batchNum := ds.entryCount / ds.batchSize
 	startTime := time.Now()
-	fmt.Printf("[DuckStore] Flushing batch %d (%d entries)...\\n", batchNum, len(ds.batch))
+	fmt.Printf("[DuckStore] Flushing batch %d (%d entries)...\n", batchNum, len(ds.batch))
 
 	// Build bulk INSERT with multiple VALUES rows (much faster than row-by-row)
 	var sb strings.Builder
@@ -142,12 +142,12 @@ func (ds *DuckStore) flushBatch() error {
 
 	_, err := ds.db.Exec(sb.String(), args...)
 	if err != nil {
-		fmt.Printf("[DuckStore] Batch %d FAILED: %v\\n", batchNum, err)
+		fmt.Printf("[DuckStore] Batch %d FAILED: %v\n", batchNum, err)
 		return err
 	}
 
 	elapsed := time.Since(startTime)
-	fmt.Printf("[DuckStore] Batch %d complete in %v\\n", batchNum, elapsed)
+	fmt.Printf("[DuckStore] Batch %d complete in %v\n", batchNum, elapsed)
 
 	ds.batch = ds.batch[:0]
 	return nil

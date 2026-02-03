@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -71,8 +72,14 @@ func (m *Manager) runParse(sessionID, filePath string) {
 	}()
 
 	start := time.Now()
-
 	fmt.Printf("[Parse %s] Starting parse of %s\n", sessionID[:8], filePath)
+
+	// Verify file existence and size
+	if info, err := os.Stat(filePath); err != nil {
+		fmt.Printf("[Parse %s] ERROR stat file: %v\n", sessionID[:8], err)
+	} else {
+		fmt.Printf("[Parse %s] File info: size=%d bytes, mode=%v\n", sessionID[:8], info.Size(), info.Mode())
+	}
 
 	p, err := m.registry.FindParser(filePath)
 	if err != nil {
