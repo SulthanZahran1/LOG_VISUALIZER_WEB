@@ -179,6 +179,7 @@ func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onP
 	var errors []*models.ParseError
 	var errMu sync.Mutex
 	var collectWg sync.WaitGroup
+	successCount := 0
 	collectWg.Add(1)
 	go func() {
 		defer collectWg.Done()
@@ -189,6 +190,11 @@ func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onP
 				errMu.Unlock()
 			} else if result.entry != nil {
 				store.AddEntry(result.entry)
+				// Log first 10 successful entries to verify parser works
+				if successCount < 10 {
+					fmt.Printf("[Parse] Entry %d: %s::%s = %v\\n", successCount+1, result.entry.DeviceID, result.entry.SignalName, result.entry.Value)
+				}
+				successCount++
 			}
 		}
 	}()
