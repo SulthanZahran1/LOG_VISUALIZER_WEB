@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/marcboeker/go-duckdb"
@@ -403,16 +404,36 @@ func (ds *DuckStore) GetEntries(start, end int) ([]models.LogEntry, error) {
 }
 
 // GetChunk returns entries within a time range (startTs <= ts <= endTs)
-func (ds *DuckStore) GetChunk(startTs, endTs time.Time) ([]models.LogEntry, error) {
+// Optional signals parameter filters results to specific signals (deviceId::signalName).
+func (ds *DuckStore) GetChunk(startTs, endTs time.Time, signals []string) ([]models.LogEntry, error) {
 	startMs := startTs.UnixMilli()
 	endMs := endTs.UnixMilli()
 
-	// Safety limit: Don't return more than 500k entries in one chunk to avoid OOM
-	// The caller should use smaller windows or implement downsampling.
-	rows, err := ds.db.Query(`
+	query := `
 		SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
-		FROM entries WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp LIMIT 500000
-	`, startMs, endMs)
+		FROM entries WHERE timestamp >= ? AND timestamp <= ?
+	`
+	var args []interface{}
+	args = append(args, startMs, endMs)
+
+	if len(signals) > 0 {
+		var signalClauses []string
+		for _, s := range signals {
+			parts := strings.Split(s, "::")
+			if len(parts) == 2 {
+				signalClauses = append(signalClauses, "(device_id = ? AND signal = ?)")
+				args = append(args, parts[0], parts[1])
+			}
+		}
+		if len(signalClauses) > 0 {
+			query += " AND (" + strings.Join(signalClauses, " OR ") + ")"
+		}
+	}
+
+	query += " ORDER BY timestamp LIMIT 500000"
+
+	// Safety limit: Don't return more than 500k entries in one chunk to avoid OOM
+	rows, err := ds.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -431,6 +452,62 @@ func (ds *DuckStore) GetChunk(startTs, endTs time.Time) ([]models.LogEntry, erro
 
 	if count == 500000 {
 		fmt.Printf("[DuckStore] Warning: GetChunk query truncated at 500,000 entries for range [%d, %d]\n", startMs, endMs)
+	}
+
+	return entries, rows.Err()
+}
+
+// GetValuesAtTime returns the most recent value for all signals at or before the given timestamp.
+func (ds *DuckStore) GetValuesAtTime(ts time.Time, signals []string) ([]models.LogEntry, error) {
+	tsMs := ts.UnixMilli()
+
+	// Use window function to get the latest entry for each signal
+	query := `
+		WITH latest_entries AS (
+			SELECT 
+				timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str,
+				ROW_NUMBER() OVER(PARTITION BY device_id, signal ORDER BY timestamp DESC) as rn
+			FROM entries
+			WHERE timestamp <= ?
+	`
+
+	var args []interface{}
+	args = append(args, tsMs)
+
+	if len(signals) > 0 {
+		var signalClauses []string
+		for _, s := range signals {
+			parts := strings.Split(s, "::")
+			if len(parts) == 2 {
+				signalClauses = append(signalClauses, "(device_id = ? AND signal = ?)")
+				args = append(args, parts[0], parts[1])
+			}
+		}
+		if len(signalClauses) > 0 {
+			query += " AND (" + strings.Join(signalClauses, " OR ") + ")"
+		}
+	}
+
+	query += `
+		)
+		SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
+		FROM latest_entries
+		WHERE rn = 1
+	`
+
+	rows, err := ds.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []models.LogEntry
+	for rows.Next() {
+		entry, err := scanEntryRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
 	}
 
 	return entries, rows.Err()

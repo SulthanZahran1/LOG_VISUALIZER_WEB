@@ -364,7 +364,8 @@ func (m *Manager) GetEntries(id string, page, pageSize int) ([]models.LogEntry, 
 }
 
 // GetChunk returns entries within a time window.
-func (m *Manager) GetChunk(id string, startTs, endTs time.Time) ([]models.LogEntry, bool) {
+// GetChunk returns entries within a time range for a session.
+func (m *Manager) GetChunk(id string, startTs, endTs time.Time, signals []string) ([]models.LogEntry, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -375,28 +376,36 @@ func (m *Manager) GetChunk(id string, startTs, endTs time.Time) ([]models.LogEnt
 
 	// Use DuckStore if available (memory-efficient + indexed)
 	if state.DuckStore != nil {
-		entries, err := state.DuckStore.GetChunk(startTs, endTs)
+		entries, err := state.DuckStore.GetChunk(startTs, endTs, signals)
 		if err != nil {
 			return nil, false
 		}
 		return entries, true
 	}
 
-	// Fallback to legacy in-memory Result
-	if state.Result == nil {
+	// Fallback to legacy in-memory Result (not supported for now)
+	return []models.LogEntry{}, true
+}
+
+// GetValuesAtTime returns the most recent value for all signals at or before the given timestamp.
+func (m *Manager) GetValuesAtTime(id string, ts time.Time, signals []string) ([]models.LogEntry, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	state, ok := m.sessions[id]
+	if !ok {
 		return nil, false
 	}
 
-	// Simple linear search for now. Optimize with binary search if needed later.
-	entries := make([]models.LogEntry, 0)
-	for _, e := range state.Result.Entries {
-		if (e.Timestamp.After(startTs) || e.Timestamp.Equal(startTs)) &&
-			(e.Timestamp.Before(endTs) || e.Timestamp.Equal(endTs)) {
-			entries = append(entries, e)
+	if state.DuckStore != nil {
+		entries, err := state.DuckStore.GetValuesAtTime(ts, signals)
+		if err != nil {
+			return nil, false
 		}
+		return entries, true
 	}
 
-	return entries, true
+	return []models.LogEntry{}, true
 }
 
 // GetSignals returns the full list of signal keys for a session.

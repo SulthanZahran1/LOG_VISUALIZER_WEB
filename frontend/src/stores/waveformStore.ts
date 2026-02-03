@@ -1,6 +1,6 @@
 import { signal, computed, effect } from '@preact/signals';
 import { getParseChunk, getParseSignals } from '../api/client';
-import { currentSession, logEntries, clearSession } from './logStore';
+import { currentSession, logEntries, clearSession, useServerSide } from './logStore';
 import { selectedSignals, focusedSignal, isSignalSelected, toggleSignal } from './selectionStore';
 import type { LogEntry, TimeRange, SignalType } from '../models/types';
 
@@ -215,6 +215,8 @@ effect(() => {
         return;
     }
 
+    // LARGE FILE OPTIMIZATION: Only fetch chunk if we are actually viewing a segment
+    // We pass empty signals list to GetChunk to indicate we want "everything" in that window for identifying changes
     getParseChunk(session.id, range.start, range.end).then(chunk => {
         const changed = new Set<string>();
         for (const e of chunk) {
@@ -250,8 +252,8 @@ export async function updateWaveformEntries() {
     if (!session || session.status !== 'complete' || selectedSignals.value.length === 0) return;
     if (session.startTime === undefined || session.endTime === undefined) return;
 
-    // Use the same threshold as logStore
-    const isLarge = (session.entryCount ?? 0) > 100000;
+    // Use centralized server-side flag
+    const isLarge = useServerSide.value;
     const range = isLarge ? viewRange.value : { start: session.startTime, end: session.endTime };
 
     if (!range) return;
@@ -269,8 +271,8 @@ export async function updateWaveformEntries() {
         const start = range.start;
         const end = range.end;
 
-        // Fetch entries for the specific range
-        const entries = await getParseChunk(sessionId, start, end);
+        // Fetch entries for the specific range and SPECIFIC signals
+        const entries = await getParseChunk(sessionId, start, end, selectedSignals.value);
 
         // Race Condition Check: If a newer request started, ignore this result
         if (requestId !== activeRequestId) {
@@ -282,7 +284,7 @@ export async function updateWaveformEntries() {
         (entries as LogEntry[]).forEach((e: LogEntry) => {
             const key = `${e.deviceId}::${e.signalName}`;
             // If in large mode, we only want entries for SELECTED signals
-            // (The backend chunk API returns everything in that window, so we filter locally)
+            // (The backend chunk API returns everything in that window, so we filter locally as well for safety)
             const isSelected = selectedSignals.value.includes(key);
             if (!isSelected) return;
 

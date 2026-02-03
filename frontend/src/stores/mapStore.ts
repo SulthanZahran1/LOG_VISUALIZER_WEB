@@ -1,9 +1,10 @@
 import { signal, computed, effect } from '@preact/signals';
 import {
     getMapLayout, getMapRules, getRecentMapFiles, getCarrierLog, getCarrierEntries, setActiveMap,
-    getDefaultMaps, loadDefaultMap,
+    getDefaultMaps, loadDefaultMap, getValuesAtTime,
     type MapRules, type RecentMapFiles, type CarrierLogInfo, type CarrierEntry, type DefaultMapInfo
 } from '../api/client';
+import { useServerSide, currentSession } from './logStore';
 
 
 export interface MapObject {
@@ -707,4 +708,39 @@ effect(() => {
 
     lastSyncedTime = time;
     syncFromMapFn(time);
+});
+
+/**
+ * LARGE FILE OPTIMIZATION: 
+ * If in server-side mode, fetch signal state on-demand for the current playback time.
+ */
+effect(() => {
+    const time = playbackTime.value;
+    const session = currentSession.value;
+    const large = useServerSide.value;
+
+    if (!large || !time || !session || session.status !== 'complete') return;
+
+    // Debounce slightly to avoid slamming backend during playback
+    const timer = setTimeout(async () => {
+        try {
+            // We want latest state for "all" signals used in map/rules
+            // For now, we fetch ALL signals (backend rn=1 logic handles this efficiently)
+            const entries = await getValuesAtTime(session.id, time);
+
+            // Map the entries to the format updateSignalValues expects
+            const signalEntries = entries.map(e => ({
+                deviceId: e.deviceId,
+                signalName: e.signalName,
+                value: e.value,
+                timestamp: e.timestamp.getTime()
+            }));
+
+            updateSignalValues(signalEntries);
+        } catch (err) {
+            console.error('Failed to fetch signal state for Map Viewer (server-side):', err);
+        }
+    }, 150);
+
+    return () => clearTimeout(timer);
 });

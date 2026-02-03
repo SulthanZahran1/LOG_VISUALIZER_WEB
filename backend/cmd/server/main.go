@@ -93,6 +93,7 @@ func main() {
 	apiGroup.GET("/parse/:sessionId/chunk", h.HandleParseChunk)
 	apiGroup.GET("/parse/:sessionId/signals", h.HandleGetSignals)
 	apiGroup.GET("/parse/:sessionId/categories", h.HandleGetCategories)
+	apiGroup.GET("/parse/:sessionId/at-time", h.HandleGetValuesAtTime)
 
 	// Config
 	// Map Layout

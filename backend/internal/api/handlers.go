@@ -332,9 +332,16 @@ func (h *Handler) HandleParseChunk(c echo.Context) error {
 	endMs, _ := strconv.ParseInt(c.QueryParam("end"), 10, 64)
 
 	fmt.Printf("[API] HandleParseChunk: session=%s range=[%d, %d] (%d ms)\n", id[:8], startMs, endMs, endMs-startMs)
+	signalsParam := c.QueryParam("signals")
+
+	var signals []string
+	if signalsParam != "" {
+		signals = strings.Split(signalsParam, ",")
+	}
+
 	startTime := time.Now()
 
-	entries, ok := h.session.GetChunk(id, time.UnixMilli(startMs), time.UnixMilli(endMs))
+	entries, ok := h.session.GetChunk(id, time.UnixMilli(startMs), time.UnixMilli(endMs), signals)
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
 	}
@@ -364,6 +371,28 @@ func (h *Handler) HandleGetCategories(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, cats)
+}
+
+// HandleGetValuesAtTime returns the state of signals at a specific time.
+func (h *Handler) HandleGetValuesAtTime(c echo.Context) error {
+	id := c.Param("sessionId")
+	tsMs, err := strconv.ParseInt(c.QueryParam("ts"), 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid timestamp"})
+	}
+
+	signalsParam := c.QueryParam("signals")
+	var signals []string
+	if signalsParam != "" {
+		signals = strings.Split(signalsParam, ",")
+	}
+
+	entries, ok := h.session.GetValuesAtTime(id, time.UnixMilli(tsMs), signals)
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found"})
+	}
+
+	return c.JSON(http.StatusOK, entries)
 }
 
 // HandleGetMapLayout returns the currently active map layout.

@@ -195,11 +195,27 @@ export async function getParseEntries(
 export async function getParseChunk(
     sessionId: string,
     start: number,
-    end: number
+    end: number,
+    signals?: string[]
 ): Promise<LogEntry[]> {
-    const res = await request<RawLogEntry[]>(
-        `/parse/${sessionId}/chunk?start=${start}&end=${end}`
-    );
+    let url = `/parse/${sessionId}/chunk?start=${start}&end=${end}`;
+    if (signals && signals.length > 0) {
+        url += `&signals=${encodeURIComponent(signals.join(','))}`;
+    }
+    const res = await request<RawLogEntry[]>(url);
+    return res.map(transformEntry);
+}
+
+export async function getValuesAtTime(
+    sessionId: string,
+    ts: number,
+    signals?: string[]
+): Promise<LogEntry[]> {
+    let url = `/parse/${sessionId}/at-time?ts=${ts}`;
+    if (signals && signals.length > 0) {
+        url += `&signals=${encodeURIComponent(signals.join(','))}`;
+    }
+    const res = await request<RawLogEntry[]>(url);
     return res.map(transformEntry);
 }
 
