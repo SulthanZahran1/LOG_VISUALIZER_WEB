@@ -1,8 +1,10 @@
-# Build stage
-FROM golang:1.24-alpine AS builder
+# Build stage - use Debian for glibc compatibility (DuckDB requires glibc)
+FROM golang:1.24-bookworm AS builder
 
-# Install build dependencies for DuckDB (requires CGO and C++ libs)
-RUN apk add --no-cache gcc g++ musl-dev libstdc++
+# Install build dependencies for DuckDB (requires CGO)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ libc-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -17,10 +19,15 @@ COPY . .
 RUN mkdir -p /app/config
 RUN CGO_ENABLED=1 GOOS=linux go build -o /server ./cmd/server
 
-# Production stage
-FROM alpine:3.19
+# Production stage - use Debian slim for glibc runtime
+FROM debian:bookworm-slim
 
 WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy binary
 COPY --from=builder /server .
@@ -30,10 +37,8 @@ RUN mkdir -p config
 COPY --from=builder /app/config* ./config/
 
 # Copy defaults directory for persistent default maps and rules
-# Copy from build context, not builder stage (static assets don't need Go build)
 COPY data/defaults ./data/defaults/
 
 EXPOSE 8089
 
 CMD ["./server"]
-
