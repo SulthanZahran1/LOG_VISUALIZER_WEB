@@ -3,6 +3,7 @@ package parser
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/plc-visualizer/backend/internal/models"
 )
@@ -147,5 +148,62 @@ func TestCSVSignalParser(t *testing.T) {
 
 	if parsed.TimeRange == nil {
 		t.Error("Expected TimeRange to be set")
+	}
+}
+
+// Benchmarks for the optimized parsing functions
+
+func BenchmarkFastTimestamp(b *testing.B) {
+	ts := "2025-09-22 13:00:00.199"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = FastTimestamp(ts)
+	}
+}
+
+func BenchmarkFastTimestampStdLib(b *testing.B) {
+	ts := "2025-09-22 13:00:00.199"
+	layout := "2006-01-02 15:04:05.999999999"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = time.Parse(layout, ts)
+	}
+}
+
+func BenchmarkExtractDeviceID(b *testing.B) {
+	path := "SYSTEM/PATH/DEVICE-123@D19"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = ExtractDeviceID(path)
+	}
+}
+
+func BenchmarkInferType(b *testing.B) {
+	values := []string{"123", "ON", "hello", "0xFF", "-456"}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, v := range values {
+			_ = InferType(v)
+		}
+	}
+}
+
+func BenchmarkPLCDebugParseLine(b *testing.B) {
+	p := NewPLCDebugParser()
+	intern := NewStringIntern()
+	line := "2025-09-22 13:00:00.199 [Debug] [SYSTEM/PATH/DEV-123] [INPUT2:I_MOVE_IN] (Boolean) : ON"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = p.parseLine(line, 1, intern)
+	}
+}
+
+func BenchmarkPLCTabParseLine(b *testing.B) {
+	p := NewPLCTabParser()
+	intern := NewStringIntern()
+	line := "2025-09-22 13:00:00.199 [] SYSTEM/PATH/DEV-456\tMY_SIGNAL\tIN\t123\t\tLOC\tF1\tF2\t2025-09-22 13:00:00.199"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = p.parseLine(line, 1, intern)
 	}
 }

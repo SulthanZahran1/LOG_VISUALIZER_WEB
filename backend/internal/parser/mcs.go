@@ -2,7 +2,6 @@ package parser
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -141,7 +140,7 @@ func (p *MCSLogParser) ParseWithProgress(filePath string, onProgress ProgressCal
 
 		for _, entry := range lineEntries {
 			entries = append(entries, entry)
-			signals[fmt.Sprintf("%s::%s", entry.DeviceID, entry.SignalName)] = struct{}{}
+			signals[entry.DeviceID+"::"+entry.SignalName] = struct{}{}
 			devices[entry.DeviceID] = struct{}{}
 		}
 	}

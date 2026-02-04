@@ -2,7 +2,6 @@ package parser
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -122,7 +121,7 @@ func (p *PLCTabParser) ParseWithProgress(filePath string, onProgress ProgressCal
 		}
 
 		entries = append(entries, *entry)
-		signals[fmt.Sprintf("%s::%s", entry.DeviceID, entry.SignalName)] = struct{}{}
+		signals[entry.DeviceID+"::"+entry.SignalName] = struct{}{}
 		devices[entry.DeviceID] = struct{}{}
 	}
 
@@ -201,10 +200,8 @@ func (p *PLCTabParser) parseLine(line string, lineNum int, intern *StringIntern)
 }
 
 func (p *PLCTabParser) fastParseLine(line string, intern *StringIntern) *models.LogEntry {
-	if !strings.Contains(line, "\t") {
-		return nil
-	}
-
+	// Format: "YYYY-MM-DD HH:MM:SS.fff [] path\tsignal\tdirection\tvalue\t..."
+	// Find " [] " marker
 	bracketIdx := strings.Index(line, " [] ")
 	if bracketIdx == -1 {
 		return nil
@@ -216,14 +213,37 @@ func (p *PLCTabParser) fastParseLine(line string, intern *StringIntern) *models.
 	}
 
 	remainder := line[bracketIdx+4:]
-	parts := strings.Split(remainder, "\t")
-	if len(parts) < 8 {
+
+	// Find tabs using IndexByte instead of Split (avoids slice allocation)
+	// We need: parts[0]=path, parts[1]=signal, parts[3]=value
+	tab1 := strings.IndexByte(remainder, '\t')
+	if tab1 == -1 {
 		return nil
 	}
+	path := strings.TrimSpace(remainder[:tab1])
 
-	path := strings.TrimSpace(parts[0])
-	signal := strings.TrimSpace(parts[1])
-	valueStr := strings.TrimSpace(parts[3])
+	rest := remainder[tab1+1:]
+	tab2 := strings.IndexByte(rest, '\t')
+	if tab2 == -1 {
+		return nil
+	}
+	signal := strings.TrimSpace(rest[:tab2])
+
+	rest = rest[tab2+1:]
+	tab3 := strings.IndexByte(rest, '\t')
+	if tab3 == -1 {
+		return nil
+	}
+	// Skip parts[2] (direction)
+
+	rest = rest[tab3+1:]
+	tab4 := strings.IndexByte(rest, '\t')
+	var valueStr string
+	if tab4 == -1 {
+		valueStr = strings.TrimSpace(rest)
+	} else {
+		valueStr = strings.TrimSpace(rest[:tab4])
+	}
 
 	ts, err := FastTimestamp(tsStr)
 	if err != nil {

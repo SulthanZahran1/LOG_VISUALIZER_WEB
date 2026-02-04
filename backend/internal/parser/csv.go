@@ -2,7 +2,6 @@ package parser
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -153,7 +152,7 @@ func (p *CSVSignalParser) ParseWithProgress(filePath string, onProgress Progress
 					SignalType: stype,
 				}
 				entries = append(entries, entry)
-				signals[fmt.Sprintf("%s::%s", entry.DeviceID, entry.SignalName)] = struct{}{}
+				signals[entry.DeviceID+"::"+entry.SignalName] = struct{}{}
 				devices[entry.DeviceID] = struct{}{}
 				continue
 			}
@@ -197,7 +196,7 @@ func (p *CSVSignalParser) ParseWithProgress(filePath string, onProgress Progress
 			SignalType: stype,
 		}
 		entries = append(entries, entry)
-		signals[fmt.Sprintf("%s::%s", entry.DeviceID, entry.SignalName)] = struct{}{}
+		signals[entry.DeviceID+"::"+entry.SignalName] = struct{}{}
 		devices[entry.DeviceID] = struct{}{}
 	}
 

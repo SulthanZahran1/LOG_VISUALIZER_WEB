@@ -83,16 +83,8 @@ func NewDuckStore(tempDir string, sessionID string) (*DuckStore, error) {
 		return nil, fmt.Errorf("failed to create table: %w", err)
 	}
 
-	// Create indexes for fast querying
-	_, err = db.Exec(`
-		CREATE INDEX idx_entries_timestamp ON entries(timestamp);
-		CREATE INDEX idx_entries_device ON entries(device_id);
-		CREATE INDEX idx_entries_signal ON entries(signal);
-	`)
-	if err != nil {
-		// Non-fatal: indexes are optimizations
-		fmt.Printf("[DuckStore] Warning: failed to create indexes: %v\n", err)
-	}
+	// NOTE: Indexes are created in Finalize() after all inserts for better performance.
+	// Creating indexes during inserts significantly slows down the parsing phase.
 
 	return &DuckStore{
 		db:         db,
@@ -112,8 +104,8 @@ func NewDuckStore(tempDir string, sessionID string) (*DuckStore, error) {
 func (ds *DuckStore) AddEntry(entry *models.LogEntry) {
 	ds.batch = append(ds.batch, entry)
 
-	// Track signals and devices
-	sigKey := fmt.Sprintf("%s::%s", entry.DeviceID, entry.SignalName)
+	// Track signals and devices (use string concatenation instead of fmt.Sprintf for speed)
+	sigKey := entry.DeviceID + "::" + entry.SignalName
 	ds.signals[sigKey] = struct{}{}
 	ds.devices[entry.DeviceID] = struct{}{}
 
