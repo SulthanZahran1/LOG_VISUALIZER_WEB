@@ -17,7 +17,11 @@
 import type { FileInfo } from '../models/types';
 import { blobToBase64 } from '../utils/base64';
 
+// WebSocket URL - goes through Vite proxy to backend
+// Vite dev server proxies /api to http://localhost:8089
+// In production, nginx handles the proxy
 const WS_BASE = (() => {
+    // Use same host:port as the page (works with Vite proxy)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
     return `${protocol}//${host}/api/ws/uploads`;
