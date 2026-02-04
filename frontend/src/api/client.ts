@@ -212,11 +212,13 @@ export async function getParseChunk(
     end: number,
     signals?: string[]
 ): Promise<LogEntry[]> {
-    let url = `/parse/${sessionId}/chunk?start=${start}&end=${end}`;
-    if (signals && signals.length > 0) {
-        url += `&signals=${encodeURIComponent(signals.join(','))}`;
-    }
-    const res = await request<RawLogEntry[]>(url);
+    // Use POST to avoid 414 URI Too Long when signals list is large
+    const url = `/parse/${sessionId}/chunk?start=${start}&end=${end}`;
+    const body = signals && signals.length > 0 ? { signals } : undefined;
+    const res = await request<RawLogEntry[]>(url, {
+        method: 'POST',
+        body: body ? JSON.stringify(body) : undefined,
+    });
     return res.map(transformEntry);
 }
 

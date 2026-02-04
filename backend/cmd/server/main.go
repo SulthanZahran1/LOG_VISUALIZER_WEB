@@ -22,8 +22,17 @@ func main() {
 		return
 	}
 
-	// Initialize session manager
+	// Initialize session manager (uses DUCKDB_TEMP_DIR env var for temp storage)
 	sessionMgr := session.NewManager()
+	
+	// Start background session cleanup (every 5 minutes)
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			sessionMgr.CleanupOldSessions(30 * time.Minute)
+		}
+	}()
 
 	// Initialize upload processing manager
 	uploadMgr := upload.NewManager("./data/uploads", fileStore)
@@ -118,7 +127,7 @@ func main() {
 	apiGroup.GET("/parse/:sessionId/entries", h.HandleParseEntries)
 	apiGroup.GET("/parse/:sessionId/entries/msgpack", h.HandleParseEntriesMsgpack)
 	apiGroup.GET("/parse/:sessionId/stream", h.HandleParseStream)
-	apiGroup.GET("/parse/:sessionId/chunk", h.HandleParseChunk)
+	apiGroup.POST("/parse/:sessionId/chunk", h.HandleParseChunk)
 	apiGroup.GET("/parse/:sessionId/signals", h.HandleGetSignals)
 	apiGroup.GET("/parse/:sessionId/categories", h.HandleGetCategories)
 	apiGroup.GET("/parse/:sessionId/at-time", h.HandleGetValuesAtTime)

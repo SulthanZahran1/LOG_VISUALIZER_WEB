@@ -339,17 +339,28 @@ func (h *Handler) HandleParseEntries(c echo.Context) error {
 }
 
 // HandleParseChunk returns a time-windowed chunk of log entries.
+// Accepts start/end via query params and signals via JSON body to avoid 414 URI Too Long errors.
 func (h *Handler) HandleParseChunk(c echo.Context) error {
 	id := c.Param("sessionId")
 	startMs, _ := strconv.ParseInt(c.QueryParam("start"), 10, 64)
 	endMs, _ := strconv.ParseInt(c.QueryParam("end"), 10, 64)
 
 	fmt.Printf("[API] HandleParseChunk: session=%s range=[%d, %d] (%d ms)\n", id[:8], startMs, endMs, endMs-startMs)
-	signalsParam := c.QueryParam("signals")
 
 	var signals []string
-	if signalsParam != "" {
-		signals = strings.Split(signalsParam, ",")
+
+	// Try to read signals from JSON body first (POST request)
+	var body struct {
+		Signals []string `json:"signals"`
+	}
+	if err := c.Bind(&body); err == nil && len(body.Signals) > 0 {
+		signals = body.Signals
+	} else {
+		// Fallback to query param for backward compatibility
+		signalsParam := c.QueryParam("signals")
+		if signalsParam != "" {
+			signals = strings.Split(signalsParam, ",")
+		}
 	}
 
 	startTime := time.Now()
