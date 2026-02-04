@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -49,7 +50,28 @@ func main() {
 				path == "/api/health"
 		},
 	}))
-	e.Use(middleware.Recover())
+	
+	// Recovery with custom error handling
+	e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
+		StackSize:         1024 * 4, // 4KB
+		DisablePrintStack: false,
+		LogLevel:          0, // ERROR level
+	}))
+	
+	// Timeout middleware - prevents long-running queries from crashing the server
+	// SSE streams and uploads are excluded from timeout
+	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
+		Timeout: 30 * time.Second,
+		Skipper: func(c echo.Context) bool {
+			// Skip timeout for SSE streams and upload endpoints
+			path := c.Request().URL.Path
+			return strings.Contains(path, "/stream") ||
+				strings.Contains(path, "/upload") ||
+				c.Request().Header.Get("Accept") == "text/event-stream"
+		},
+		ErrorMessage: "Request timeout - query took too long",
+	}))
+	
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5, // Balanced compression/speed
 		Skipper: func(c echo.Context) bool {
@@ -116,6 +138,14 @@ func main() {
 	apiGroup.GET("/config/validation-rules", h.HandleGetValidationRules)
 	apiGroup.PUT("/config/validation-rules", h.HandleUpdateValidationRules)
 
-	// Start server
-	e.Logger.Fatal(e.Start(":8089"))
+	// Configure server with timeouts
+	s := &http.Server{
+		Addr:         ":8089",
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+	
+	fmt.Println("Server starting on :8089")
+	e.Logger.Fatal(e.StartServer(s))
 }

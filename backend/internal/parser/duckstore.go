@@ -242,10 +242,14 @@ type QueryParams struct {
 }
 
 // QueryEntries returns filtered, sorted, and paginated entries
-func (ds *DuckStore) QueryEntries(params QueryParams, page, pageSize int) ([]models.LogEntry, int, error) {
+func (ds *DuckStore) QueryEntries(ctx context.Context, params QueryParams, page, pageSize int) ([]models.LogEntry, int, error) {
 	// Acquire semaphore to limit concurrent queries
-	ds.querySem <- struct{}{}
-	defer func() { <-ds.querySem }()
+	select {
+	case ds.querySem <- struct{}{}:
+		defer func() { <-ds.querySem }()
+	case <-ctx.Done():
+		return nil, 0, ctx.Err()
+	}
 
 	where, args := ds.buildWhereClause(params)
 
@@ -267,7 +271,14 @@ func (ds *DuckStore) QueryEntries(params QueryParams, page, pageSize int) ([]mod
 			countQuery += " WHERE " + where
 		}
 
-		err := ds.db.QueryRow(countQuery, args...).Scan(&total)
+		// Check context before query
+		select {
+		case <-ctx.Done():
+			return nil, 0, ctx.Err()
+		default:
+		}
+
+		err := ds.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
 		if err != nil {
 			return nil, 0, fmt.Errorf("count query failed: %w", err)
 		}
@@ -288,7 +299,7 @@ func (ds *DuckStore) QueryEntries(params QueryParams, page, pageSize int) ([]mod
 	// OPTIMIZATION: Use keyset pagination for deep pages to avoid OFFSET overhead
 	// OFFSET is O(n) - the further you scroll, the slower it gets
 	// Keyset pagination is O(log n) regardless of position
-	entries, err := ds.queryWithKeysetPagination(params, pageSize, offset, where, args)
+	entries, err := ds.queryWithKeysetPagination(ctx, params, pageSize, offset, where, args)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -298,7 +309,13 @@ func (ds *DuckStore) QueryEntries(params QueryParams, page, pageSize int) ([]mod
 
 // queryWithKeysetPagination uses efficient keyset pagination for deep pages
 // Falls back to OFFSET for first few pages or complex sort orders
-func (ds *DuckStore) queryWithKeysetPagination(params QueryParams, pageSize, offset int, where string, args []interface{}) ([]models.LogEntry, error) {
+func (ds *DuckStore) queryWithKeysetPagination(ctx context.Context, params QueryParams, pageSize, offset int, where string, args []interface{}) ([]models.LogEntry, error) {
+	// Check context
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
 	// Determine sort column
 	sortCol := "id"
 	if params.SortColumn != "" {
@@ -334,7 +351,7 @@ func (ds *DuckStore) queryWithKeysetPagination(params QueryParams, pageSize, off
 		}
 		query += fmt.Sprintf(" ORDER BY %s %s LIMIT %d OFFSET %d", sortCol, dir, pageSize, offset)
 
-		rows, err := ds.db.Query(query, args...)
+		rows, err := ds.db.QueryContext(ctx, query, args...)
 		if err != nil {
 			return nil, fmt.Errorf("query failed: %w", err)
 		}
@@ -355,7 +372,7 @@ func (ds *DuckStore) queryWithKeysetPagination(params QueryParams, pageSize, off
 	}
 
 	var cursorValue interface{}
-	err := ds.db.QueryRow(cursorQuery, args...).Scan(&cursorValue)
+	err := ds.db.QueryRowContext(ctx, cursorQuery, args...).Scan(&cursorValue)
 	if err == sql.ErrNoRows {
 		// Beyond end of results
 		return []models.LogEntry{}, nil
@@ -371,12 +388,19 @@ func (ds *DuckStore) queryWithKeysetPagination(params QueryParams, pageSize, off
 		}
 		query += fmt.Sprintf(" ORDER BY %s %s LIMIT %d OFFSET %d", sortCol, dir, pageSize, offset)
 
-		rows, err := ds.db.Query(query, args...)
+		rows, err := ds.db.QueryContext(ctx, query, args...)
 		if err != nil {
 			return nil, fmt.Errorf("fallback query failed: %w", err)
 		}
 		defer rows.Close()
 		return scanEntries(rows, pageSize)
+	}
+
+	// Check context before main query
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
 	}
 
 	// Now fetch rows starting from cursor value
@@ -404,7 +428,7 @@ func (ds *DuckStore) queryWithKeysetPagination(params QueryParams, pageSize, off
 		queryArgs = []interface{}{cursorValue}
 	}
 
-	rows, err := ds.db.Query(query, queryArgs...)
+	rows, err := ds.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		// Fall back to OFFSET
 		query := `
@@ -416,7 +440,7 @@ func (ds *DuckStore) queryWithKeysetPagination(params QueryParams, pageSize, off
 		}
 		query += fmt.Sprintf(" ORDER BY %s %s LIMIT %d OFFSET %d", sortCol, dir, pageSize, offset)
 
-		rows, err := ds.db.Query(query, args...)
+		rows, err := ds.db.QueryContext(ctx, query, args...)
 		if err != nil {
 			return nil, fmt.Errorf("fallback query failed: %w", err)
 		}

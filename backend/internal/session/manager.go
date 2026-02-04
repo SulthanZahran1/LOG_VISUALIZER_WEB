@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime"
@@ -263,7 +264,7 @@ func (m *Manager) GetSession(id string) (*models.ParseSession, bool) {
 }
 
 // QueryEntries returns filtered, sorted and paginated entries for a session.
-func (m *Manager) QueryEntries(id string, params parser.QueryParams, page, pageSize int) ([]models.LogEntry, int, bool) {
+func (m *Manager) QueryEntries(ctx context.Context, id string, params parser.QueryParams, page, pageSize int) ([]models.LogEntry, int, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -274,9 +275,13 @@ func (m *Manager) QueryEntries(id string, params parser.QueryParams, page, pageS
 
 	// Use DuckStore if available (memory-efficient + filtered)
 	if state.DuckStore != nil {
-		entries, total, err := state.DuckStore.QueryEntries(params, page, pageSize)
+		entries, total, err := state.DuckStore.QueryEntries(ctx, params, page, pageSize)
 		if err != nil {
-			fmt.Printf("[Manager] QueryEntries error: %v\n", err)
+			if err == context.DeadlineExceeded || err == context.Canceled {
+				fmt.Printf("[Manager] QueryEntries timeout/cancelled for session %s\n", id[:8])
+			} else {
+				fmt.Printf("[Manager] QueryEntries error: %v\n", err)
+			}
 			return nil, 0, false
 		}
 		return entries, total, true

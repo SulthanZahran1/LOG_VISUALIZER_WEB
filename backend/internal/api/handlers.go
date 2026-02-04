@@ -305,6 +305,10 @@ func (h *Handler) HandleParseEntries(c echo.Context) error {
 	if pageSize < 1 {
 		pageSize = 100
 	}
+	// Cap page size to prevent excessive memory usage
+	if pageSize > 1000 {
+		pageSize = 1000
+	}
 
 	// Extract filter parameters
 	params := parser.QueryParams{
@@ -318,7 +322,8 @@ func (h *Handler) HandleParseEntries(c echo.Context) error {
 	fmt.Printf("[API] QueryEntries: session=%s page=%d pageSize=%d search='%s'\n", id[:8], page, pageSize, params.Search)
 	start := time.Now()
 
-	entries, total, ok := h.session.QueryEntries(id, params, page, pageSize)
+	// Pass request context for timeout/cancellation support
+	entries, total, ok := h.session.QueryEntries(c.Request().Context(), id, params, page, pageSize)
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
 	}
