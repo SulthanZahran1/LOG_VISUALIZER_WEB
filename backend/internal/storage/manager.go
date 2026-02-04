@@ -16,12 +16,14 @@ import (
 // Store defines the interface for file storage.
 type Store interface {
 	Save(name string, r io.Reader) (*models.FileInfo, error)
+	SaveBytes(name string, data []byte) (*models.FileInfo, error)
 	Get(id string) (*models.FileInfo, error)
 	List(limit int) ([]*models.FileInfo, error)
 	Delete(id string) error
 	Rename(id string, newName string) (*models.FileInfo, error)
 	GetFilePath(id string) (string, error)
 	SaveChunk(uploadID string, chunkIndex int, r io.Reader) error
+	SaveChunkBytes(uploadID string, chunkIndex int, data []byte) error
 	CompleteChunkedUpload(uploadID string, name string, totalChunks int) (*models.FileInfo, error)
 }
 
@@ -65,6 +67,30 @@ func (s *LocalStore) Save(name string, r io.Reader) (*models.FileInfo, error) {
 		ID:         id,
 		Name:       name,
 		Size:       size,
+		UploadedAt: time.Now(),
+		Status:     "uploaded",
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.files[id] = info
+
+	return info, nil
+}
+
+// SaveBytes saves a file from byte slice to the local filesystem.
+func (s *LocalStore) SaveBytes(name string, data []byte) (*models.FileInfo, error) {
+	id := uuid.New().String()
+	path := filepath.Join(s.uploadDir, id)
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return nil, fmt.Errorf("writing file: %w", err)
+	}
+
+	info := &models.FileInfo{
+		ID:         id,
+		Name:       name,
+		Size:       int64(len(data)),
 		UploadedAt: time.Now(),
 		Status:     "uploaded",
 	}
@@ -174,6 +200,21 @@ func (s *LocalStore) SaveChunk(uploadID string, chunkIndex int, r io.Reader) err
 
 	_, err = io.Copy(f, r)
 	if err != nil {
+		return fmt.Errorf("writing chunk: %w", err)
+	}
+
+	return nil
+}
+
+// SaveChunkBytes saves a single chunk from byte slice to a temporary location.
+func (s *LocalStore) SaveChunkBytes(uploadID string, chunkIndex int, data []byte) error {
+	chunkDir := filepath.Join(s.uploadDir, "chunks", uploadID)
+	if err := os.MkdirAll(chunkDir, 0755); err != nil {
+		return fmt.Errorf("creating chunk directory: %w", err)
+	}
+
+	path := filepath.Join(chunkDir, fmt.Sprintf("chunk_%d", chunkIndex))
+	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("writing chunk: %w", err)
 	}
 

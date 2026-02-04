@@ -2,6 +2,7 @@ package api
 
 import (
 	"compress/gzip"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -72,20 +73,27 @@ func (h *Handler) HandleHealth(c echo.Context) error {
 	})
 }
 
-// HandleUploadFile accepts a multipart file upload and saves it to storage.
+// HandleUploadFile accepts a file as base64 JSON and saves it to storage.
 func (h *Handler) HandleUploadFile(c echo.Context) error {
-	file, err := c.FormFile("file")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing file in request"})
+	var req struct {
+		Name string `json:"name"`
+		Data string `json:"data"` // Base64-encoded file content
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 	}
 
-	src, err := file.Open()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to open uploaded file"})
+	if req.Name == "" || req.Data == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name and data are required"})
 	}
-	defer src.Close()
 
-	info, err := h.store.Save(file.Filename, src)
+	// Decode base64
+	decoded, err := base64.StdEncoding.DecodeString(req.Data)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid base64 data"})
+	}
+
+	info, err := h.store.SaveBytes(req.Name, decoded)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save file: %v", err)})
 	}
@@ -437,20 +445,27 @@ func (h *Handler) HandleGetMapLayout(c echo.Context) error {
 	})
 }
 
-// HandleUploadMapLayout accepts a map XML file and sets it as the active layout.
+// HandleUploadMapLayout accepts a map XML file as base64 JSON and sets it as the active layout.
 func (h *Handler) HandleUploadMapLayout(c echo.Context) error {
-	file, err := c.FormFile("file")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing file in request"})
+	var req struct {
+		Name string `json:"name"`
+		Data string `json:"data"` // Base64-encoded file content
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 	}
 
-	src, err := file.Open()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to open uploaded file"})
+	if req.Name == "" || req.Data == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name and data are required"})
 	}
-	defer src.Close()
 
-	info, err := h.store.Save(file.Filename, src)
+	// Decode base64
+	decoded, err := base64.StdEncoding.DecodeString(req.Data)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid base64 data"})
+	}
+
+	info, err := h.store.SaveBytes(req.Name, decoded)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save map file: %v", err)})
 	}
@@ -482,30 +497,33 @@ func (h *Handler) HandleSetActiveMap(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "active map updated"})
 }
 
-// HandleUploadMapRules accepts a YAML rules file and sets it as the active rules.
+// HandleUploadMapRules accepts a YAML rules file as base64 JSON and sets it as the active rules.
 func (h *Handler) HandleUploadMapRules(c echo.Context) error {
-	file, err := c.FormFile("file")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing file in request"})
+	var req struct {
+		Name string `json:"name"`
+		Data string `json:"data"` // Base64-encoded file content
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 	}
 
-	src, err := file.Open()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to open uploaded file"})
+	if req.Name == "" || req.Data == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name and data are required"})
 	}
-	defer src.Close()
+
+	// Decode base64
+	decoded, err := base64.StdEncoding.DecodeString(req.Data)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid base64 data"})
+	}
 
 	// Parse the YAML to validate it
-	rules, err := parser.ParseMapRulesFromReader(src)
+	rules, err := parser.ParseMapRulesFromBytes(decoded)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid YAML format: %v", err)})
 	}
 
-	// Reopen to save
-	src2, _ := file.Open()
-	defer src2.Close()
-
-	info, err := h.store.Save(file.Filename, src2)
+	info, err := h.store.SaveBytes(req.Name, decoded)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save rules file: %v", err)})
 	}
@@ -573,21 +591,28 @@ func (h *Handler) HandleRecentMapFiles(c echo.Context) error {
 	})
 }
 
-// HandleUploadCarrierLog uploads and parses a carrier log (MCS format) for carrier tracking.
+// HandleUploadCarrierLog uploads and parses a carrier log (MCS format) as base64 JSON for carrier tracking.
 func (h *Handler) HandleUploadCarrierLog(c echo.Context) error {
-	file, err := c.FormFile("file")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing file in request"})
+	var req struct {
+		Name string `json:"name"`
+		Data string `json:"data"` // Base64-encoded file content
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 	}
 
-	src, err := file.Open()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to open uploaded file"})
+	if req.Name == "" || req.Data == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name and data are required"})
 	}
-	defer src.Close()
+
+	// Decode base64
+	decoded, err := base64.StdEncoding.DecodeString(req.Data)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid base64 data"})
+	}
 
 	// Save the file
-	info, err := h.store.Save(file.Filename, src)
+	info, err := h.store.SaveBytes(req.Name, decoded)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save file: %v", err)})
 	}
@@ -764,32 +789,31 @@ func (h *Handler) HandleLoadDefaultMap(c echo.Context) error {
 	})
 }
 
-// HandleUploadChunk accepts a single chunk of a file.
+// HandleUploadChunk accepts a single chunk of a file as base64 JSON.
 func (h *Handler) HandleUploadChunk(c echo.Context) error {
-	uploadID := c.FormValue("uploadId")
-	chunkIndexStr := c.FormValue("chunkIndex")
-
-	if uploadID == "" || chunkIndexStr == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "uploadId and chunkIndex are required"})
+	var req struct {
+		UploadID    string `json:"uploadId"`
+		ChunkIndex  int    `json:"chunkIndex"`
+		Data        string `json:"data"` // Base64-encoded chunk
+		TotalChunks int    `json:"totalChunks"`
+		Compressed  bool   `json:"compressed"`
 	}
 
-	chunkIndex, err := strconv.Atoi(chunkIndexStr)
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+	}
+
+	if req.UploadID == "" || req.Data == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "uploadId and data are required"})
+	}
+
+	// Decode base64
+	decoded, err := base64.StdEncoding.DecodeString(req.Data)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid chunkIndex"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid base64 data"})
 	}
 
-	file, err := c.FormFile("file")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing file chunk in request"})
-	}
-
-	src, err := file.Open()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to open chunk"})
-	}
-	defer src.Close()
-
-	err = h.store.SaveChunk(uploadID, chunkIndex, src)
+	err = h.store.SaveChunkBytes(req.UploadID, req.ChunkIndex, decoded)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save chunk: %v", err)})
 	}
@@ -957,37 +981,38 @@ func (h *Handler) decompressFile(fileID string) error {
 	return nil
 }
 
-// HandleUploadBinary accepts pre-encoded binary log files.
+// HandleUploadBinary accepts pre-encoded binary log files as base64 JSON.
 // This format is 85-95% smaller than raw text and requires zero parsing on backend.
 func (h *Handler) HandleUploadBinary(c echo.Context) error {
-	file, err := c.FormFile("file")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing file in request"})
+	var req struct {
+		Name string `json:"name"`
+		Data string `json:"data"` // Base64-encoded file content
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 	}
 
-	src, err := file.Open()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to open uploaded file"})
+	if req.Name == "" || req.Data == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name and data are required"})
 	}
-	defer src.Close()
+
+	// Decode base64
+	decoded, err := base64.StdEncoding.DecodeString(req.Data)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid base64 data"})
+	}
 
 	// Check magic number to verify it's a valid binary format
-	var magic uint32
-	if err := binary.Read(src, binary.BigEndian, &magic); err != nil {
+	if len(decoded) < 4 {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid binary file"})
 	}
-
+	magic := binary.BigEndian.Uint32(decoded[0:4])
 	if magic != parser.BinaryMagic {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid binary format magic number"})
 	}
 
-	// Reset reader to beginning
-	if _, err := src.Seek(0, 0); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to reset file reader"})
-	}
-
 	// Save the binary file
-	info, err := h.store.Save(file.Filename, src)
+	info, err := h.store.SaveBytes(req.Name, decoded)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save file: %v", err)})
 	}

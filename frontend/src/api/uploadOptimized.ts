@@ -6,10 +6,13 @@
  * 2. Gzip compression (additional 50-70% reduction)
  * 
  * Combined: 1GB log → ~50-150MB on wire (85-95% reduction)
+ * 
+ * Upload format: Base64 JSON (no FormData)
  */
 
 import type { FileInfo } from '../models/types';
 import { trackUploadProgress } from './upload';
+import { uint8ArrayToBase64 } from '../utils/base64';
 
 const API_BASE = '/api';
 
@@ -75,7 +78,7 @@ function createEncoderWorker(): Worker {
 
 
 /**
- * Upload a single chunk
+ * Upload a single chunk (base64 JSON format)
  */
 async function uploadChunk(
     uploadId: string,
@@ -89,17 +92,22 @@ async function uploadChunk(
     const RETRY_DELAY = 1000;
 
     try {
+        // Convert Uint8Array to base64
+        const base64Data = uint8ArrayToBase64(data);
+        
         const response = await fetch(`${API_BASE}/files/upload/chunk`, {
             method: 'POST',
             headers: {
-                'Content-Type': isBinary ? 'application/octet-stream' : 'text/plain',
-                'X-Upload-Id': uploadId,
-                'X-Chunk-Index': chunkIndex.toString(),
-                'X-Total-Chunks': totalChunks.toString(),
-                'X-Compressed': 'true',
+                'Content-Type': 'application/json',
                 'Connection': 'keep-alive',
             },
-            body: new Blob([data.buffer as ArrayBuffer]),
+            body: JSON.stringify({
+                uploadId,
+                chunkIndex,
+                data: base64Data,
+                totalChunks,
+                compressed: true,
+            }),
         });
 
         if (!response.ok) {
@@ -133,23 +141,15 @@ export async function uploadLogFileOptimized(
     const cfg = { ...DEFAULT_CONFIG, ...config };
     const uploadId = generateUploadId();
     
-    // For small files, skip the complex encoding
+    // Import here to avoid circular dependency
+    const { uploadFile } = await import('./client');
+    
+    // For small files, use simple upload
     if (file.size < 1024 * 1024) {
         onProgress?.(0, 'uploading');
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        const response = await fetch(`${API_BASE}/files/upload`, {
-            method: 'POST',
-            body: formData,
-        });
-        
-        if (!response.ok) {
-            throw new Error('Upload failed');
-        }
-        
+        const result = await uploadFile(file);
         onProgress?.(100, 'complete');
-        return response.json();
+        return result;
     }
 
     // For large files, use optimized pipeline

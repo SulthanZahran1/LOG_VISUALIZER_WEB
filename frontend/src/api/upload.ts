@@ -6,13 +6,14 @@
  * - Parallel chunk uploads with concurrency control
  * - Compression using native CompressionStream API
  * - Larger chunk size (5MB) for reduced HTTP overhead
- * - Connection keep-alive for persistent connections
+ * - Base64 JSON upload format (no FormData)
  * - Exponential backoff retry logic
  * - Minimal packet overhead
  * - Async processing with SSE progress tracking (no timeouts!)
  */
 
 import type { FileInfo } from '../models/types';
+import { blobToBase64 } from '../utils/base64';
 
 const API_BASE = '/api';
 
@@ -75,7 +76,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Upload a single chunk with retry logic
+ * Upload a single chunk with retry logic (base64 JSON format)
  */
 async function uploadChunkWithRetry(
     uploadId: string,
@@ -85,26 +86,23 @@ async function uploadChunkWithRetry(
     compressed: boolean,
     retryCount = 0
 ): Promise<void> {
-    const formData = new FormData();
-    formData.append('file', chunk, `chunk_${chunkIndex}`);
-    formData.append('uploadId', uploadId);
-    formData.append('chunkIndex', chunkIndex.toString());
+    // Convert blob to base64
+    const base64Data = await blobToBase64(chunk);
 
     try {
         const response = await fetch(`${API_BASE}/files/upload/chunk`, {
             method: 'POST',
-            body: formData,
             headers: {
-                // Keep connection alive for subsequent chunks
+                'Content-Type': 'application/json',
                 'Connection': 'keep-alive',
-                // Indicate if this chunk is compressed
-                ...(compressed && { 'X-Chunk-Compressed': 'gzip' }),
-                // Help server optimize storage
-                'X-Chunk-Index': chunkIndex.toString(),
-                'X-Total-Chunks': totalChunks.toString(),
             },
-            // @ts-ignore - duplex option for streaming
-            duplex: 'half',
+            body: JSON.stringify({
+                uploadId,
+                chunkIndex,
+                data: base64Data,
+                totalChunks,
+                compressed,
+            }),
         });
 
         if (!response.ok) {
@@ -349,14 +347,19 @@ export async function uploadFileChunkedLegacy(
         const end = Math.min(start + CHUNK_SIZE, file.size);
         const chunk = file.slice(start, end);
 
-        const formData = new FormData();
-        formData.append('file', chunk);
-        formData.append('uploadId', uploadId);
-        formData.append('chunkIndex', i.toString());
-
+        // Convert to base64 and upload as JSON
+        const base64Data = await blobToBase64(chunk);
+        
         const response = await fetch(`${API_BASE}/files/upload/chunk`, {
             method: 'POST',
-            body: formData,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                uploadId,
+                chunkIndex: i,
+                data: base64Data,
+                totalChunks,
+                compressed: false,
+            }),
         });
 
         if (!response.ok) {

@@ -2,8 +2,9 @@ package api
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -36,14 +37,14 @@ func TestMapHandlers(t *testing.T) {
 	}
 
 	// 2. Upload map
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-	part, _ := writer.CreateFormFile("file", "test_map.xml")
-	part.Write([]byte(`<?xml version="1.0" ?><ConveyorMap><Object name="O1" type="T"><Size>1,1</Size><Location>0,0</Location></Object></ConveyorMap>`))
-	writer.Close()
+	xmlData := `<?xml version="1.0" ?><ConveyorMap><Object name="O1" type="T"><Size>1,1</Size><Location>0,0</Location></Object></ConveyorMap>`
+	uploadBody, _ := json.Marshal(map[string]string{
+		"name": "test_map.xml",
+		"data": base64.StdEncoding.EncodeToString([]byte(xmlData)),
+	})
 
-	req = httptest.NewRequest(http.MethodPost, "/api/map/upload", body)
-	req.Header.Set(echo.HeaderContentType, writer.FormDataContentType())
+	req = httptest.NewRequest(http.MethodPost, "/api/map/upload", bytes.NewBuffer(uploadBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec = httptest.NewRecorder()
 	c = e.NewContext(req, rec)
 	if assert.NoError(t, h.HandleUploadMapLayout(c)) {
@@ -73,17 +74,16 @@ func TestChunkedUpload(t *testing.T) {
 	chunk2 := []byte("chunk two")
 
 	// 1. Upload chunk 1
-	body1 := new(bytes.Buffer)
-	writer1 := multipart.NewWriter(body1)
-	part1, _ := writer1.CreateFormFile("file", "blob")
-	part1.Write(chunk1)
-	writer1.Close()
+	chunkBody1, _ := json.Marshal(map[string]interface{}{
+		"uploadId":    uploadID,
+		"chunkIndex":  0,
+		"data":        base64.StdEncoding.EncodeToString(chunk1),
+		"totalChunks": 2,
+		"compressed":  false,
+	})
 
-	req1 := httptest.NewRequest(http.MethodPost, "/api/files/upload/chunk", body1)
-	req1.Header.Set(echo.HeaderContentType, writer1.FormDataContentType())
-	req1.Form = make(map[string][]string)
-	req1.Form.Set("uploadId", uploadID)
-	req1.Form.Set("chunkIndex", "0")
+	req1 := httptest.NewRequest(http.MethodPost, "/api/files/upload/chunk", bytes.NewBuffer(chunkBody1))
+	req1.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec1 := httptest.NewRecorder()
 	c1 := e.NewContext(req1, rec1)
 	if assert.NoError(t, h.HandleUploadChunk(c1)) {
@@ -91,17 +91,16 @@ func TestChunkedUpload(t *testing.T) {
 	}
 
 	// 2. Upload chunk 2
-	body2 := new(bytes.Buffer)
-	writer2 := multipart.NewWriter(body2)
-	part2, _ := writer2.CreateFormFile("file", "blob")
-	part2.Write(chunk2)
-	writer2.Close()
+	chunkBody2, _ := json.Marshal(map[string]interface{}{
+		"uploadId":    uploadID,
+		"chunkIndex":  1,
+		"data":        base64.StdEncoding.EncodeToString(chunk2),
+		"totalChunks": 2,
+		"compressed":  false,
+	})
 
-	req2 := httptest.NewRequest(http.MethodPost, "/api/files/upload/chunk", body2)
-	req2.Header.Set(echo.HeaderContentType, writer2.FormDataContentType())
-	req2.Form = make(map[string][]string)
-	req2.Form.Set("uploadId", uploadID)
-	req2.Form.Set("chunkIndex", "1")
+	req2 := httptest.NewRequest(http.MethodPost, "/api/files/upload/chunk", bytes.NewBuffer(chunkBody2))
+	req2.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec2 := httptest.NewRecorder()
 	c2 := e.NewContext(req2, rec2)
 	if assert.NoError(t, h.HandleUploadChunk(c2)) {

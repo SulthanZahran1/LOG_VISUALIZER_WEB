@@ -5,6 +5,7 @@
 
 import type { FileInfo, ParseSession, HealthResponse, LogEntry } from '../models/types';
 export { uploadFileOptimized, CONFIG as UPLOAD_CONFIG } from './upload';
+import { fileToBase64 } from '../utils/base64';
 
 const API_BASE = '/api';
 
@@ -48,12 +49,15 @@ export async function checkHealth(): Promise<HealthResponse> {
 
 // Files
 export async function uploadFile(file: File): Promise<FileInfo> {
-    const formData = new FormData();
-    formData.append('file', file);
+    const base64Data = await fileToBase64(file);
 
     const response = await fetch(`${API_BASE}/files/upload`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            name: file.name,
+            data: base64Data,
+        }),
     });
 
     if (!response.ok) {
@@ -277,12 +281,15 @@ export async function getMapLayout(): Promise<any> {
 }
 
 export async function uploadMapLayout(file: File): Promise<FileInfo> {
-    const formData = new FormData();
-    formData.append('file', file);
+    const base64Data = await fileToBase64(file);
 
     const response = await fetch(`${API_BASE}/map/upload`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            name: file.name,
+            data: base64Data,
+        }),
     });
 
     if (!response.ok) {
@@ -327,12 +334,15 @@ export interface MapRules {
 }
 
 export async function uploadMapRules(file: File): Promise<RulesInfo> {
-    const formData = new FormData();
-    formData.append('file', file);
+    const base64Data = await fileToBase64(file);
 
     const response = await fetch(`${API_BASE}/map/rules`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            name: file.name,
+            data: base64Data,
+        }),
     });
 
     if (!response.ok) {
@@ -405,12 +415,15 @@ export interface CarrierEntriesResponse {
 }
 
 export async function uploadCarrierLog(file: File): Promise<{ sessionId: string; fileId: string; fileName: string }> {
-    const formData = new FormData();
-    formData.append('file', file);
+    const base64Data = await fileToBase64(file);
 
     const response = await fetch(`${API_BASE}/map/carrier-log`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            name: file.name,
+            data: base64Data,
+        }),
     });
 
     if (!response.ok) {

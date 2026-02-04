@@ -27,6 +27,11 @@ func ParseMapRulesFromReader(r io.Reader) (*models.MapRules, error) {
 		return nil, err
 	}
 
+	return ParseMapRulesFromBytes(data)
+}
+
+// ParseMapRulesFromBytes parses rules from a byte slice.
+func ParseMapRulesFromBytes(data []byte) (*models.MapRules, error) {
 	var rules models.MapRules
 	if err := yaml.Unmarshal(data, &rules); err != nil {
 		return nil, err
