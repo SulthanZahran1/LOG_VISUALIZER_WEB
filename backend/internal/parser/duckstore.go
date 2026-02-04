@@ -282,17 +282,25 @@ func (ds *DuckStore) QueryEntries(params QueryParams, page, pageSize int) ([]mod
 		return []models.LogEntry{}, 0, nil
 	}
 
-	// Build main query
-	query := `
-		SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
-		FROM entries
-	`
-	if where != "" {
-		query += " WHERE " + where
+	// Calculate offset
+	offset := (page - 1) * pageSize
+
+	// OPTIMIZATION: Use keyset pagination for deep pages to avoid OFFSET overhead
+	// OFFSET is O(n) - the further you scroll, the slower it gets
+	// Keyset pagination is O(log n) regardless of position
+	entries, err := ds.queryWithKeysetPagination(params, pageSize, offset, where, args)
+	if err != nil {
+		return nil, 0, err
 	}
 
-	// Sorting
-	sortCol := "id" // Default sorting by insertion order if nothing else specified
+	return entries, total, nil
+}
+
+// queryWithKeysetPagination uses efficient keyset pagination for deep pages
+// Falls back to OFFSET for first few pages or complex sort orders
+func (ds *DuckStore) queryWithKeysetPagination(params QueryParams, pageSize, offset int, where string, args []interface{}) ([]models.LogEntry, error) {
+	// Determine sort column
+	sortCol := "id"
 	if params.SortColumn != "" {
 		switch params.SortColumn {
 		case "timestamp":
@@ -311,29 +319,132 @@ func (ds *DuckStore) QueryEntries(params QueryParams, page, pageSize int) ([]mod
 		dir = "DESC"
 	}
 
-	query += fmt.Sprintf(" ORDER BY %s %s", sortCol, dir)
+	// Use OFFSET for first 1000 rows (first 5 pages at 200/page) - it's fast enough
+	// Use keyset pagination for deeper pages
+	const offsetThreshold = 1000
 
-	// Pagination
-	limit := pageSize
-	offset := (page - 1) * pageSize
-	query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+	if offset < offsetThreshold || sortCol == "category" || sortCol == "signal" {
+		// Simple OFFSET pagination for shallow pages or complex sorts
+		query := `
+			SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
+			FROM entries
+		`
+		if where != "" {
+			query += " WHERE " + where
+		}
+		query += fmt.Sprintf(" ORDER BY %s %s LIMIT %d OFFSET %d", sortCol, dir, pageSize, offset)
 
-	rows, err := ds.db.Query(query, args...)
+		rows, err := ds.db.Query(query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("query failed: %w", err)
+		}
+		defer rows.Close()
+
+		return scanEntries(rows, pageSize)
+	}
+
+	// Keyset pagination for deep pages
+	// Get the cursor value (id/timestamp) at the offset position
+	var cursorQuery string
+	if where != "" {
+		cursorQuery = fmt.Sprintf("SELECT %s FROM entries WHERE %s ORDER BY %s %s LIMIT 1 OFFSET %d",
+			sortCol, where, sortCol, dir, offset)
+	} else {
+		cursorQuery = fmt.Sprintf("SELECT %s FROM entries ORDER BY %s %s LIMIT 1 OFFSET %d",
+			sortCol, sortCol, dir, offset)
+	}
+
+	var cursorValue interface{}
+	err := ds.db.QueryRow(cursorQuery, args...).Scan(&cursorValue)
+	if err == sql.ErrNoRows {
+		// Beyond end of results
+		return []models.LogEntry{}, nil
+	}
 	if err != nil {
-		return nil, 0, fmt.Errorf("query failed: %w", err)
+		// Fall back to OFFSET if cursor query fails
+		query := `
+			SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
+			FROM entries
+		`
+		if where != "" {
+			query += " WHERE " + where
+		}
+		query += fmt.Sprintf(" ORDER BY %s %s LIMIT %d OFFSET %d", sortCol, dir, pageSize, offset)
+
+		rows, err := ds.db.Query(query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("fallback query failed: %w", err)
+		}
+		defer rows.Close()
+		return scanEntries(rows, pageSize)
+	}
+
+	// Now fetch rows starting from cursor value
+	// Use (sort_col, id) as composite key for stable ordering
+	var query string
+	var queryArgs []interface{}
+
+	if where != "" {
+		query = fmt.Sprintf(`
+			SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
+			FROM entries
+			WHERE %s AND %s %s ?
+			ORDER BY %s %s, id %s
+			LIMIT %d
+		`, where, sortCol, getComparisonOp(dir), sortCol, dir, dir, pageSize)
+		queryArgs = append(args, cursorValue)
+	} else {
+		query = fmt.Sprintf(`
+			SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
+			FROM entries
+			WHERE %s %s ?
+			ORDER BY %s %s, id %s
+			LIMIT %d
+		`, sortCol, getComparisonOp(dir), sortCol, dir, dir, pageSize)
+		queryArgs = []interface{}{cursorValue}
+	}
+
+	rows, err := ds.db.Query(query, queryArgs...)
+	if err != nil {
+		// Fall back to OFFSET
+		query := `
+			SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
+			FROM entries
+		`
+		if where != "" {
+			query += " WHERE " + where
+		}
+		query += fmt.Sprintf(" ORDER BY %s %s LIMIT %d OFFSET %d", sortCol, dir, pageSize, offset)
+
+		rows, err := ds.db.Query(query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("fallback query failed: %w", err)
+		}
+		defer rows.Close()
+		return scanEntries(rows, pageSize)
 	}
 	defer rows.Close()
 
-	entries := make([]models.LogEntry, 0, pageSize)
+	return scanEntries(rows, pageSize)
+}
+
+func getComparisonOp(dir string) string {
+	if dir == "DESC" {
+		return "<"
+	}
+	return ">"
+}
+
+func scanEntries(rows *sql.Rows, capacity int) ([]models.LogEntry, error) {
+	entries := make([]models.LogEntry, 0, capacity)
 	for rows.Next() {
 		entry, err := scanEntryRows(rows)
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		entries = append(entries, entry)
 	}
-
-	return entries, total, rows.Err()
+	return entries, rows.Err()
 }
 
 // ClearCountCache clears the count cache (call when data changes)
