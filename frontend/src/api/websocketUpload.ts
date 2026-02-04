@@ -37,6 +37,8 @@ const MsgTypeMapUpload = 'map:upload';
 const MsgTypeRulesUpload = 'rules:upload';
 const MsgTypeCarrierUpload = 'carrier:upload';
 const MsgTypeAck = 'ack';
+const MsgTypeProgress = 'progress';
+const MsgTypeProcessing = 'processing';
 const MsgTypeComplete = 'complete';
 const MsgTypeError = 'error';
 
@@ -101,6 +103,14 @@ interface WSErrorResponse {
     type: string;
     message: string;
     code?: string;
+}
+
+interface WSProgressResponse {
+    type: string;
+    uploadId?: string;
+    progress: number;
+    stage?: string;
+    message?: string;
 }
 
 class WebSocketUploadClient {
@@ -316,7 +326,7 @@ class WebSocketUploadClient {
 
         onProgress?.(5, 'Uploading chunks...');
 
-        // 2. Upload chunks
+        // 2. Upload chunks with progress tracking
         const chunks: Blob[] = [];
         for (let i = 0; i < totalChunks; i++) {
             const start = i * CONFIG.CHUNK_SIZE;
@@ -324,66 +334,92 @@ class WebSocketUploadClient {
             chunks.push(compressedBlob.slice(start, end));
         }
 
-        // Upload chunks sequentially with acknowledgment
-        // This prevents overwhelming the server and detects disconnects early
-        for (let i = 0; i < totalChunks; i++) {
-            const chunk = chunks[i];
-            const base64Data = await blobToBase64(chunk);
+        // Set up progress handler to receive server confirmations
+        const progressHandler = this.on(MsgTypeProgress, (msg) => {
+            const progress = msg.payload as WSProgressResponse;
+            if (progress.uploadId === uploadId) {
+                // Map server progress (0-100 during upload) to our range (5-85%)
+                const clientProgress = Math.round(progress.progress * 0.8) + 5;
+                onProgress?.(clientProgress, progress.message || 'Uploading...');
+            }
+        });
 
-            const chunkPayload: UploadChunkPayload = {
+        // Handle processing stage updates (assembling, decompressing, etc.)
+        const processingHandler = this.on(MsgTypeProcessing, (msg) => {
+            const progress = msg.payload as WSProgressResponse;
+            if (progress.uploadId === uploadId) {
+                // Processing is 85-95% range
+                const clientProgress = Math.round(progress.progress * 0.1) + 85;
+                onProgress?.(clientProgress, progress.message || 'Processing...');
+            }
+        });
+
+        try {
+            // Upload chunks with pacing - wait for server acknowledgment periodically
+            for (let i = 0; i < totalChunks; i++) {
+                const chunk = chunks[i];
+                const base64Data = await blobToBase64(chunk);
+
+                const chunkPayload: UploadChunkPayload = {
+                    uploadId,
+                    chunkIndex: i,
+                    data: base64Data,
+                    isLast: i === totalChunks - 1,
+                };
+
+                this.send({
+                    type: MsgTypeUploadChunk,
+                    payload: chunkPayload as unknown as Record<string, unknown>,
+                    timestamp: Date.now(),
+                });
+
+                // Update progress based on client sending (not server ack) for smooth UI
+                const clientProgress = Math.round((i + 1) / totalChunks * 80) + 5;
+                onProgress?.(clientProgress, `Uploading chunk ${i + 1}/${totalChunks}...`);
+
+                // Every 5 chunks, give the server time to process and send progress updates
+                // This prevents overwhelming the connection and keeps progress updates flowing
+                if ((i + 1) % 5 === 0 && i < totalChunks - 1) {
+                    await sleep(100); // 100ms delay to let server catch up
+                }
+            }
+
+            onProgress?.(90, 'Processing...');
+
+            // 3. Complete upload
+            const completePayload: UploadCompletePayload = {
                 uploadId,
-                chunkIndex: i,
-                data: base64Data,
-                isLast: i === totalChunks - 1,
+                fileName: file.name,
+                totalChunks,
+                originalSize: file.size,
+                compressedSize: compressedBlob.size,
+                encoding: isCompressed ? 'gzip' : 'none',
             };
 
             this.send({
-                type: MsgTypeUploadChunk,
-                payload: chunkPayload as unknown as Record<string, unknown>,
+                type: MsgTypeUploadComplete,
+                payload: completePayload as unknown as Record<string, unknown>,
                 timestamp: Date.now(),
             });
 
-            const progress = Math.round((i + 1) / totalChunks * 80) + 5;
-            onProgress?.(progress, `Uploading chunk ${i + 1}/${totalChunks}...`);
+            // Wait for completion or error
+            const result = await Promise.race([
+                this.waitForMessage(MsgTypeComplete, 180000), // 3 min for large file processing
+                this.waitForMessage(MsgTypeError, 180000).then(msg => {
+                    const error = msg.payload as WSErrorResponse;
+                    throw new Error(error.message);
+                }),
+            ]);
 
-            // Small delay every 3 chunks to prevent overwhelming the server
-            // and to allow the connection to stay alive
-            if ((i + 1) % 3 === 0 && i < totalChunks - 1) {
-                await sleep(50); // 50ms delay
-            }
+            onProgress?.(100, 'Complete!');
+
+            const response = result.payload as WSCompleteResponse;
+            return response.fileInfo!;
+        } finally {
+            // Clean up handlers
+            progressHandler();
+            processingHandler();
         }
-
-        onProgress?.(90, 'Processing...');
-
-        // 3. Complete upload
-        const completePayload: UploadCompletePayload = {
-            uploadId,
-            fileName: file.name,
-            totalChunks,
-            originalSize: file.size,
-            compressedSize: compressedBlob.size,
-            encoding: isCompressed ? 'gzip' : 'none',
-        };
-
-        this.send({
-            type: MsgTypeUploadComplete,
-            payload: completePayload as unknown as Record<string, unknown>,
-            timestamp: Date.now(),
-        });
-
-        // Wait for completion or error
-        const result = await Promise.race([
-            this.waitForMessage(MsgTypeComplete, 120000),
-            this.waitForMessage(MsgTypeError, 120000).then(msg => {
-                const error = msg.payload as WSErrorResponse;
-                throw new Error(error.message);
-            }),
-        ]);
-
-        onProgress?.(100, 'Complete!');
-
-        const response = result.payload as WSCompleteResponse;
-        return response.fileInfo!;
     }
 
     /**
