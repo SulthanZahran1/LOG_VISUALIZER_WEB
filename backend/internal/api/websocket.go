@@ -5,7 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -100,12 +103,13 @@ type WSErrorResponse struct {
 }
 
 // UploadSession tracks an in-progress upload over WebSocket
+// Uses disk storage to minimize memory usage for large files
 type UploadSession struct {
 	ID             string
 	FileName       string
 	TotalChunks    int
 	ReceivedChunks map[int]bool
-	Chunks         [][]byte
+	TempDir        string // Directory for chunk files
 	OriginalSize   int64
 	Encoding       string
 	CreatedAt      time.Time
@@ -197,12 +201,20 @@ func (wsh *WebSocketHandler) handleUploadInit(ws *websocket.Conn, msg WSMessage)
 	}
 
 	sessionID := generateUploadID()
+	
+	// Create temp directory for chunks (disk storage to minimize memory)
+	tempDir := filepath.Join("./data/uploads", ".ws_temp", sessionID)
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		wsh.sendError(ws, "Failed to create temp directory: "+err.Error(), "INTERNAL_ERROR")
+		return
+	}
+	
 	session := &UploadSession{
 		ID:             sessionID,
 		FileName:       payload.FileName,
 		TotalChunks:    payload.TotalChunks,
 		ReceivedChunks: make(map[int]bool),
-		Chunks:         make([][]byte, payload.TotalChunks),
+		TempDir:        tempDir,
 		OriginalSize:   payload.TotalSize,
 		Encoding:       payload.Encoding,
 		CreatedAt:      time.Now(),
@@ -219,11 +231,11 @@ func (wsh *WebSocketHandler) handleUploadInit(ws *websocket.Conn, msg WSMessage)
 		Timestamp: time.Now().UnixMilli(),
 	})
 
-	fmt.Printf("[WebSocket] Upload initialized: %s (%d chunks, %d bytes)\n", 
-		sessionID, payload.TotalChunks, payload.TotalSize)
+	fmt.Printf("[WebSocket] Upload initialized: %s (%d chunks, %d bytes, temp: %s)\n", 
+		sessionID, payload.TotalChunks, payload.TotalSize, tempDir)
 }
 
-// handleUploadChunk receives and stores a chunk
+// handleUploadChunk receives and stores a chunk to disk
 func (wsh *WebSocketHandler) handleUploadChunk(ws *websocket.Conn, msg WSMessage) {
 	var payload UploadChunkPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
@@ -247,9 +259,15 @@ func (wsh *WebSocketHandler) handleUploadChunk(ws *websocket.Conn, msg WSMessage
 		return
 	}
 
-	// Store chunk
+	// Write chunk to disk (not memory) to handle large files
+	chunkPath := filepath.Join(session.TempDir, fmt.Sprintf("chunk_%d", payload.ChunkIndex))
+	if err := os.WriteFile(chunkPath, chunkData, 0644); err != nil {
+		wsh.sendError(ws, "Failed to write chunk: "+err.Error(), "WRITE_ERROR")
+		return
+	}
+
+	// Mark as received
 	session.ReceivedChunks[payload.ChunkIndex] = true
-	session.Chunks[payload.ChunkIndex] = chunkData
 
 	// Calculate progress
 	received := len(session.ReceivedChunks)
@@ -270,7 +288,8 @@ func (wsh *WebSocketHandler) handleUploadChunk(ws *websocket.Conn, msg WSMessage
 	})
 }
 
-// handleUploadComplete assembles chunks and processes the file
+// handleUploadComplete assembles chunks from disk and processes the file
+// Uses streaming to minimize memory usage for large files
 func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMessage) {
 	var payload UploadCompletePayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
@@ -308,18 +327,35 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 		}),
 	})
 
-	// Concatenate all chunks
-	totalSize := 0
-	for _, chunk := range session.Chunks {
-		totalSize += len(chunk)
+	// Create assembled file path
+	assembledPath := filepath.Join(session.TempDir, "assembled")
+	
+	// Stream concatenate chunks to disk (low memory usage)
+	assembledFile, err := os.Create(assembledPath)
+	if err != nil {
+		wsh.sendError(ws, "Failed to create assembled file: "+err.Error(), "WRITE_ERROR")
+		return
 	}
 	
-	assembledData := make([]byte, 0, totalSize)
-	for _, chunk := range session.Chunks {
-		assembledData = append(assembledData, chunk...)
+	for i := 0; i < session.TotalChunks; i++ {
+		chunkPath := filepath.Join(session.TempDir, fmt.Sprintf("chunk_%d", i))
+		chunkData, err := os.ReadFile(chunkPath)
+		if err != nil {
+			assembledFile.Close()
+			wsh.sendError(ws, fmt.Sprintf("Failed to read chunk %d: %v", i, err), "READ_ERROR")
+			return
+		}
+		if _, err := assembledFile.Write(chunkData); err != nil {
+			assembledFile.Close()
+			wsh.sendError(ws, fmt.Sprintf("Failed to write chunk %d: %v", i, err), "WRITE_ERROR")
+			return
+		}
 	}
+	assembledFile.Close()
 
-	// Decompress if needed
+	var finalPath string
+
+	// Decompress if needed (streaming)
 	if payload.Encoding == "gzip" || session.Encoding == "gzip" {
 		wsh.sendMessage(ws, WSMessage{
 			Type:      MsgTypeProcessing,
@@ -334,22 +370,27 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 			}),
 		})
 
-		decompressed, err := decompressGzip(assembledData)
-		if err != nil {
+		decompressedPath := filepath.Join(session.TempDir, "decompressed")
+		if err := wsh.streamDecompressGzip(assembledPath, decompressedPath); err != nil {
 			fmt.Printf("[WebSocket] Decompression failed, using as-is: %v\n", err)
-			// Continue with assembled data
+			finalPath = assembledPath
 		} else {
-			assembledData = decompressed
+			finalPath = decompressedPath
 		}
+	} else {
+		finalPath = assembledPath
 	}
 
-	// Save file
-	info, err := wsh.handler.store.SaveBytes(payload.FileName, assembledData)
+	// Save file using storage manager (streaming copy)
+	info, err := wsh.saveFileToStorage(payload.FileName, finalPath)
 	if err != nil {
 		wsh.sendError(ws, "Failed to save file: "+err.Error(), "SAVE_ERROR")
 		return
 	}
 
+	// Clean up temp directory
+	os.RemoveAll(session.TempDir)
+	
 	// Clean up session
 	wsh.sessionsMu.Lock()
 	delete(wsh.sessions, payload.UploadID)
@@ -621,4 +662,46 @@ func (r *BytesReader) Read(p []byte) (int, error) {
 	n := copy(p, r.data[r.pos:])
 	r.pos += n
 	return n, nil
+}
+
+// streamDecompressGzip decompresses src file to dst file using streaming
+func (wsh *WebSocketHandler) streamDecompressGzip(srcPath, dstPath string) error {
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	reader, err := gzip.NewReader(srcFile)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	dstFile, err := os.Create(dstPath)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	buf := make([]byte, 256*1024) // 256KB buffer for efficient streaming
+	_, err = io.CopyBuffer(dstFile, reader, buf)
+	return err
+}
+
+// saveFileToStorage saves a file from disk to the storage manager
+func (wsh *WebSocketHandler) saveFileToStorage(filename, srcPath string) (*models.FileInfo, error) {
+	// Open source file
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return nil, err
+	}
+	defer srcFile.Close()
+
+	// Use storage manager's Save method which handles everything
+	return wsh.handler.store.Save(filename, srcFile)
+}
+
+func generateFileID() string {
+	return fmt.Sprintf("%d-%d", time.Now().UnixMilli(), time.Now().Nanosecond())
 }
