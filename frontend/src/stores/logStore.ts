@@ -420,9 +420,10 @@ export async function fetchEntries(page: number, pageSize: number) {
     }
 
     try {
-        // Don't show loading spinner for cached/prefetch scenarios in server-side mode
-        // This prevents visual flicker during scrolling
-        if (!useServerSide.value) {
+        // Always show loading for initial fetch or when entries are empty
+        // This gives users feedback that data is being loaded
+        const isInitialFetch = logEntries.value.length === 0;
+        if (!useServerSide.value || isInitialFetch) {
             isLoadingLog.value = true;
         }
 

@@ -195,6 +195,17 @@ export function LogTable() {
     // Track loaded page range for server-side mode
     const loadedRangeRef = useRef({ start: 1, end: 1 });
     const pendingFetchRef = useRef<Promise<void> | null>(null);
+    const [isFetchingPage, setIsFetchingPage] = useState(false);
+    
+    // Force re-render when entries change (for server-side virtual scrolling)
+    // Debounced to prevent excessive re-renders during rapid scrolling
+    const [, forceRender] = useState({});
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            forceRender({});
+        }, 50); // 50ms debounce
+        return () => clearTimeout(timer);
+    }, [filteredEntries.value, totalEntries.value]);
 
     // Reset scroll and page when session or filters change
     useEffect(() => {
@@ -206,6 +217,9 @@ export function LogTable() {
         loadedRangeRef.current = { start: 1, end: 1 };
     }, [currentSession.value?.id, searchQuery.value, categoryFilter.value, sortColumn.value, sortDirection.value]);
 
+    // Separate ref for fetch debouncing
+    const fetchTimeoutRef = useRef<number | null>(null);
+    
     // Optimized scroll handler with throttling and RAF
     const onScroll = useCallback((e: Event) => {
         const scrollTop = (e.target as HTMLDivElement).scrollTop;
@@ -220,9 +234,12 @@ export function LogTable() {
             scrollSignal.value = scrollTop;
         }
         
-        // Clear existing timeout
+        // Clear existing timeouts
         if (scrollTimeoutRef.current) {
             window.clearTimeout(scrollTimeoutRef.current);
+        }
+        if (fetchTimeoutRef.current) {
+            window.clearTimeout(fetchTimeoutRef.current);
         }
         
         // Mark as actively scrolling
@@ -243,22 +260,19 @@ export function LogTable() {
             if (targetPage + bufferPages > loadedRangeRef.current.end || 
                 targetPage < loadedRangeRef.current.start) {
                 
-                // Debounce the fetch
-                if (scrollTimeoutRef.current) {
-                    window.clearTimeout(scrollTimeoutRef.current);
-                }
-                
-                scrollTimeoutRef.current = window.setTimeout(() => {
+                fetchTimeoutRef.current = window.setTimeout(() => {
                     const fetchPage = Math.max(1, targetPage);
                     
                     // Avoid duplicate fetches
                     if (!pendingFetchRef.current) {
+                        setIsFetchingPage(true);
                         pendingFetchRef.current = fetchEntries(fetchPage, SERVER_PAGE_SIZE).finally(() => {
                             pendingFetchRef.current = null;
+                            setIsFetchingPage(false);
                         });
                         loadedRangeRef.current = { start: fetchPage, end: fetchPage + 2 };
                     }
-                }, 100);
+                }, 150); // Slightly longer debounce for smoother scrolling
             }
         }
 
@@ -270,6 +284,9 @@ export function LogTable() {
         return () => {
             if (scrollTimeoutRef.current) {
                 window.clearTimeout(scrollTimeoutRef.current);
+            }
+            if (fetchTimeoutRef.current) {
+                window.clearTimeout(fetchTimeoutRef.current);
             }
         };
     }, []);
@@ -770,8 +787,16 @@ export function LogTable() {
                                     </div>
                                 </div>
                             ) : (
-                                <span>Processing Log...</span>
+                                <span>Loading Log Data...</span>
                             )}
+                        </div>
+                    )}
+
+                    {/* Server-side page fetching indicator */}
+                    {useServerSide.value && isFetchingPage && !isLoadingLog.value && (
+                        <div className="log-loading-indicator">
+                            <div className="loader-small"></div>
+                            <span>Loading more entries...</span>
                         </div>
                     )}
 

@@ -72,13 +72,15 @@ func main() {
 	
 	// Timeout middleware - prevents long-running queries from crashing the server
 	// SSE streams and uploads are excluded from timeout
+	// Note: /entries endpoint is also excluded for large file queries
 	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
-		Timeout: 30 * time.Second,
+		Timeout: 60 * time.Second,
 		Skipper: func(c echo.Context) bool {
-			// Skip timeout for SSE streams and upload endpoints
+			// Skip timeout for SSE streams, upload endpoints, and entry queries
 			path := c.Request().URL.Path
 			return strings.Contains(path, "/stream") ||
 				strings.Contains(path, "/upload") ||
+				strings.Contains(path, "/entries") ||
 				c.Request().Header.Get("Accept") == "text/event-stream"
 		},
 		ErrorMessage: "Request timeout - query took too long",

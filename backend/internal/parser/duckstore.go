@@ -3,6 +3,7 @@ package parser
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,12 +41,28 @@ type DuckStore struct {
 func NewDuckStore(tempDir string, sessionID string) (*DuckStore, error) {
 	dbPath := filepath.Join(tempDir, fmt.Sprintf("session_%s.duckdb", sessionID))
 
-	db, err := sql.Open("duckdb", dbPath)
+	// Open with optimized settings for large datasets
+	connector, err := duckdb.NewConnector(dbPath, func(execer driver.ExecerContext) error {
+		// Set memory limit and other pragmas
+		pragmas := []string{
+			"PRAGMA memory_limit='1GB'",
+			"PRAGMA threads=4",
+			"PRAGMA enable_progress_bar=false",
+		}
+		for _, pragma := range pragmas {
+			if _, err := execer.ExecContext(context.Background(), pragma, nil); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to open DuckDB: %w", err)
+		return nil, fmt.Errorf("failed to create DuckDB connector: %w", err)
 	}
 
-	// Create the entries table
+	db := sql.OpenDB(connector)
+
+	// Create the entries table with optimized schema
 	_, err = db.Exec(`
 		CREATE TABLE entries (
 			id        INTEGER PRIMARY KEY,
@@ -64,6 +81,17 @@ func NewDuckStore(tempDir string, sessionID string) (*DuckStore, error) {
 		db.Close()
 		os.Remove(dbPath)
 		return nil, fmt.Errorf("failed to create table: %w", err)
+	}
+
+	// Create indexes for fast querying
+	_, err = db.Exec(`
+		CREATE INDEX idx_entries_timestamp ON entries(timestamp);
+		CREATE INDEX idx_entries_device ON entries(device_id);
+		CREATE INDEX idx_entries_signal ON entries(signal);
+	`)
+	if err != nil {
+		// Non-fatal: indexes are optimizations
+		fmt.Printf("[DuckStore] Warning: failed to create indexes: %v\n", err)
 	}
 
 	return &DuckStore{
