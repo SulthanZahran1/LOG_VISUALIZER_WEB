@@ -22,3 +22,7 @@ frontend/playwright-report/
 frontend/coverage/
 example_map.xml
 mapping_and_rules.yaml
+
+# Go build artifacts
+backend/server
+*.exe
