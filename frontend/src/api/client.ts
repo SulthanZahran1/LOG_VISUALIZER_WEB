@@ -5,6 +5,16 @@
 
 import type { FileInfo, ParseSession, HealthResponse, LogEntry } from '../models/types';
 export { uploadFileOptimized, CONFIG as UPLOAD_CONFIG } from './upload';
+export {
+    uploadFileWebSocket,
+    uploadMapWebSocket,
+    uploadRulesWebSocket,
+    uploadCarrierLogWebSocket,
+    closeWebSocket,
+    getWebSocketClient,
+    WebSocketUploadClient,
+    WS_CONFIG,
+} from './websocketUpload';
 import { fileToBase64 } from '../utils/base64';
 
 const API_BASE = '/api';

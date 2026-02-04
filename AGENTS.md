@@ -267,6 +267,7 @@ Key rules from `frontend/eslint.config.js`:
 | POST | `/api/files/upload` | Upload log file (<5MB) |
 | POST | `/api/files/upload/chunk` | Upload chunk (5MB) |
 | POST | `/api/files/upload/complete` | Complete chunked upload |
+| WS | `/api/ws/uploads` | WebSocket upload endpoint |
 | GET | `/api/files/recent` | List recent files |
 | GET | `/api/files/:id` | Get file info |
 | DELETE | `/api/files/:id` | Delete file |
@@ -295,6 +296,50 @@ Key rules from `frontend/eslint.config.js`:
 | POST | `/api/map/defaults/load` | Load default map |
 | POST | `/api/map/carrier-log` | Upload carrier log |
 | GET | `/api/map/carrier-log/entries` | Carrier positions |
+
+### WebSocket Upload (Alternative)
+
+WebSocket-based uploads provide better performance for large files by maintaining a persistent connection:
+
+```
+WS /api/ws/uploads
+```
+
+**Protocol:**
+
+| Message Type | Direction | Description |
+|--------------|-----------|-------------|
+| `upload:init` | Client → Server | Initialize chunked upload |
+| `upload:chunk` | Client → Server | Send file chunk (base64) |
+| `upload:complete` | Client → Server | Finalize upload |
+| `map:upload` | Client → Server | Upload map XML (single) |
+| `rules:upload` | Client → Server | Upload rules YAML (single) |
+| `carrier:upload` | Client → Server | Upload carrier log (single) |
+| `ack` | Server → Client | Upload initialized |
+| `progress` | Server → Client | Chunk received progress |
+| `processing` | Server → Client | Server-side processing status |
+| `complete` | Server → Client | Upload finished |
+| `error` | Server → Client | Error occurred |
+
+**Frontend Usage:**
+
+```typescript
+import { uploadFileWebSocket, uploadMapWebSocket } from './api/client';
+
+// Upload large file with progress
+const fileInfo = await uploadFileWebSocket(file, (progress, stage) => {
+    console.log(`${stage}: ${progress}%`);
+});
+
+// Upload map over WebSocket
+const mapInfo = await uploadMapWebSocket(mapFile);
+```
+
+**Benefits over HTTP:**
+- Single persistent connection (no HTTP overhead per chunk)
+- Lower latency for many small chunks
+- Bidirectional real-time progress updates
+- Automatic compression support
 
 ---
 

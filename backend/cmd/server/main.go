@@ -31,6 +31,9 @@ func main() {
 	// Initialize API handler
 	h := api.NewHandler(fileStore, sessionMgr, uploadMgr)
 
+	// Initialize WebSocket handler
+	wsHandler := api.NewWebSocketHandler(h)
+
 	// Load default rules on startup
 	if err := h.LoadDefaultRules(); err != nil {
 		fmt.Printf("Warning: failed to load default rules: %v\n", err)
@@ -93,6 +96,9 @@ func main() {
 
 	// Health check
 	apiGroup.GET("/health", h.HandleHealth)
+
+	// WebSocket endpoint for uploads
+	apiGroup.GET("/ws/uploads", wsHandler.HandleWebSocket)
 
 	// File management
 	apiGroup.POST("/files/upload", h.HandleUploadFile)
