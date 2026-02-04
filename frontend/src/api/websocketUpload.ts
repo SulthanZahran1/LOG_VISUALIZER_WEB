@@ -28,6 +28,8 @@ const WS_BASE = (() => {
 })();
 
 // Message types
+const MsgTypePing = 'ping';
+const MsgTypePong = 'pong';
 const MsgTypeUploadInit = 'upload:init';
 const MsgTypeUploadChunk = 'upload:chunk';
 const MsgTypeUploadComplete = 'upload:complete';
@@ -44,7 +46,13 @@ const CONFIG = {
     RECONNECT_ATTEMPTS: 3,
     RECONNECT_DELAY_MS: 1000,
     CONNECTION_TIMEOUT_MS: 10000,
+    KEEPALIVE_INTERVAL_MS: 30000, // Send ping every 30s
 } as const;
+
+// Sleep utility
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // WebSocket message interface
 interface WSMessage {
@@ -101,6 +109,7 @@ class WebSocketUploadClient {
     private pendingMessages: WSMessage[] = [];
     private isConnected = false;
     private connectPromise: Promise<void> | null = null;
+    private keepaliveInterval: number | null = null;
 
     /**
      * Connect to WebSocket server
@@ -125,6 +134,9 @@ class WebSocketUploadClient {
                 console.log('[WebSocket] Connected');
                 this.isConnected = true;
                 clearTimeout(timeout);
+                
+                // Start keepalive pings to prevent connection timeout
+                this.startKeepalive();
                 
                 // Send any pending messages
                 while (this.pendingMessages.length > 0) {
@@ -155,6 +167,7 @@ class WebSocketUploadClient {
                 console.log('[WebSocket] Disconnected');
                 this.isConnected = false;
                 this.connectPromise = null;
+                this.stopKeepalive();
             };
         });
 
@@ -165,10 +178,36 @@ class WebSocketUploadClient {
      * Disconnect from WebSocket server
      */
     disconnect(): void {
+        this.stopKeepalive();
         if (this.ws) {
             this.ws.close();
             this.ws = null;
             this.isConnected = false;
+        }
+    }
+
+    /**
+     * Start keepalive ping interval
+     */
+    private startKeepalive(): void {
+        this.stopKeepalive();
+        this.keepaliveInterval = window.setInterval(() => {
+            if (this.ws?.readyState === WebSocket.OPEN) {
+                this.send({
+                    type: MsgTypePing,
+                    timestamp: Date.now(),
+                });
+            }
+        }, CONFIG.KEEPALIVE_INTERVAL_MS);
+    }
+
+    /**
+     * Stop keepalive ping interval
+     */
+    private stopKeepalive(): void {
+        if (this.keepaliveInterval !== null) {
+            clearInterval(this.keepaliveInterval);
+            this.keepaliveInterval = null;
         }
     }
 
@@ -206,6 +245,15 @@ class WebSocketUploadClient {
      * Handle incoming message
      */
     private handleMessage(msg: WSMessage): void {
+        // Handle ping/pong internally
+        if (msg.type === MsgTypePing) {
+            this.send({ type: MsgTypePong, timestamp: Date.now() });
+            return;
+        }
+        if (msg.type === MsgTypePong) {
+            return; // Just keep connection alive
+        }
+
         const handlers = this.messageHandlers.get(msg.type);
         if (handlers) {
             handlers.forEach(h => h(msg));
@@ -276,7 +324,8 @@ class WebSocketUploadClient {
             chunks.push(compressedBlob.slice(start, end));
         }
 
-        // Upload chunks sequentially over the same connection
+        // Upload chunks sequentially with acknowledgment
+        // This prevents overwhelming the server and detects disconnects early
         for (let i = 0; i < totalChunks; i++) {
             const chunk = chunks[i];
             const base64Data = await blobToBase64(chunk);
@@ -296,6 +345,12 @@ class WebSocketUploadClient {
 
             const progress = Math.round((i + 1) / totalChunks * 80) + 5;
             onProgress?.(progress, `Uploading chunk ${i + 1}/${totalChunks}...`);
+
+            // Small delay every 3 chunks to prevent overwhelming the server
+            // and to allow the connection to stay alive
+            if ((i + 1) % 3 === 0 && i < totalChunks - 1) {
+                await sleep(50); // 50ms delay
+            }
         }
 
         onProgress?.(90, 'Processing...');

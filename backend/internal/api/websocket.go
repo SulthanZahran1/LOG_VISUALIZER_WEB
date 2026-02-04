@@ -18,12 +18,13 @@ import (
 // WebSocket message types for upload protocol
 const (
 	// Client -> Server messages
-	MsgTypeUploadInit    = "upload:init"
-	MsgTypeUploadChunk   = "upload:chunk"
+	MsgTypeUploadInit     = "upload:init"
+	MsgTypeUploadChunk    = "upload:chunk"
 	MsgTypeUploadComplete = "upload:complete"
-	MsgTypeMapUpload     = "map:upload"
-	MsgTypeRulesUpload   = "rules:upload"
-	MsgTypeCarrierUpload = "carrier:upload"
+	MsgTypeMapUpload      = "map:upload"
+	MsgTypeRulesUpload    = "rules:upload"
+	MsgTypeCarrierUpload  = "carrier:upload"
+	MsgTypePing           = "ping"
 
 	// Server -> Client messages
 	MsgTypeAck        = "ack"
@@ -31,6 +32,7 @@ const (
 	MsgTypeComplete   = "complete"
 	MsgTypeError      = "error"
 	MsgTypeProcessing = "processing"
+	MsgTypePong       = "pong"
 )
 
 // WebSocket message structure
@@ -162,6 +164,9 @@ func (wsh *WebSocketHandler) HandleWebSocket(c echo.Context) error {
 
 		// Handle message based on type
 		switch msg.Type {
+		case MsgTypePing:
+			// Respond with pong to keep connection alive
+			wsh.sendMessage(ws, WSMessage{Type: MsgTypePong, Timestamp: time.Now().UnixMilli()})
 		case MsgTypeUploadInit:
 			wsh.handleUploadInit(ws, msg)
 		case MsgTypeUploadChunk:
