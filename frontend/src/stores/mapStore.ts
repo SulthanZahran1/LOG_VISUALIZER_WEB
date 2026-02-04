@@ -733,7 +733,7 @@ effect(() => {
                 deviceId: e.deviceId,
                 signalName: e.signalName,
                 value: e.value,
-                timestamp: e.timestamp.getTime()
+                timestamp: e.timestamp
             }));
 
             updateSignalValues(signalEntries);
