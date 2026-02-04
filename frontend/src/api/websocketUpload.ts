@@ -141,9 +141,10 @@ class WebSocketUploadClient {
             };
 
             this.ws.onerror = (error) => {
-                console.error('[WebSocket] Error:', error);
+                console.error('[WebSocket] Connection error:', error);
+                console.log('[WebSocket] Attempted URL:', WS_BASE);
                 clearTimeout(timeout);
-                reject(new Error('WebSocket connection failed'));
+                reject(new Error('WebSocket connection failed - check if server is running with WebSocket support'));
             };
 
             this.ws.onclose = () => {

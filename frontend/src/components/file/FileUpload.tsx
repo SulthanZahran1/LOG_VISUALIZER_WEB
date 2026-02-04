@@ -1,6 +1,6 @@
 /* global ClipboardEvent, HTMLTextAreaElement */
 import { useSignal } from '@preact/signals';
-import { uploadFile, uploadFileWebSocket } from '../../api/client';
+import { uploadFile, uploadFileWebSocket, uploadFileOptimized } from '../../api/client';
 import type { FileInfo } from '../../models/types';
 
 interface FileUploadProps {
@@ -36,9 +36,21 @@ export function FileUpload({
         try {
             // Use WebSocket upload for files > 5MB (single connection, firewall-friendly)
             const CHUNK_THRESHOLD = 5 * 1024 * 1024;
-            const info = file.size > CHUNK_THRESHOLD
-                ? await uploadFileWebSocket(file, (p, _stage) => uploadProgress.value = p)
-                : await uploadFn(file);
+            let info: FileInfo;
+            
+            if (file.size > CHUNK_THRESHOLD) {
+                try {
+                    // Try WebSocket first
+                    info = await uploadFileWebSocket(file, (p, _stage) => uploadProgress.value = p);
+                } catch (wsErr) {
+                    // Fall back to HTTP if WebSocket fails
+                    console.warn('WebSocket failed, falling back to HTTP:', wsErr);
+                    uploadProgress.value = 0;
+                    info = await uploadFileOptimized(file, (p) => uploadProgress.value = p);
+                }
+            } else {
+                info = await uploadFn(file);
+            }
 
             onUploadSuccess(info);
             // Reset state
