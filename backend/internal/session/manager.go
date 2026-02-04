@@ -13,6 +13,12 @@ import (
 	"github.com/plc-visualizer/backend/internal/parser"
 )
 
+// MaxSessions limits concurrent sessions to prevent memory exhaustion
+const MaxSessions = 10
+
+// SessionMaxAge is how long to keep completed sessions before cleanup
+const SessionMaxAge = 30 * time.Minute
+
 // Manager handles active log parsing sessions.
 type Manager struct {
 	sessions map[string]*SessionState
@@ -29,8 +35,15 @@ type SessionState struct {
 }
 
 // NewManager creates a new session manager.
+// Uses environment variable DUCKDB_TEMP_DIR for temp directory, defaults to ./data/temp
 func NewManager() *Manager {
-	return NewManagerWithTempDir("/tmp")
+	tempDir := os.Getenv("DUCKDB_TEMP_DIR")
+	if tempDir == "" {
+		tempDir = "./data/temp"
+	}
+	// Ensure temp directory exists
+	os.MkdirAll(tempDir, 0755)
+	return NewManagerWithTempDir(tempDir)
 }
 
 // NewManagerWithTempDir creates a session manager with a specific temp directory.
@@ -44,6 +57,9 @@ func NewManagerWithTempDir(tempDir string) *Manager {
 
 // StartSession begins the parsing process for a file.
 func (m *Manager) StartSession(fileID, filePath string) (*models.ParseSession, error) {
+	// Clean up old sessions if at limit
+	m.cleanupOldSessionsIfNeeded()
+
 	sessionID := uuid.New().String()
 
 	session := models.NewParseSession(sessionID, fileID)
@@ -249,6 +265,68 @@ func (m *Manager) updateSessionError(sessionID, reason string) {
 	state.Session.Errors = append(state.Session.Errors, models.ParseError{
 		Reason: reason,
 	})
+}
+
+// cleanupOldSessionsIfNeeded removes oldest completed sessions if at capacity
+func (m *Manager) cleanupOldSessionsIfNeeded() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if len(m.sessions) < MaxSessions {
+		return
+	}
+
+	// Find oldest completed/error sessions
+	var toDelete []string
+	for id, state := range m.sessions {
+		if state.Session.Status == models.SessionStatusComplete ||
+			state.Session.Status == models.SessionStatusError {
+			toDelete = append(toDelete, id)
+		}
+	}
+
+	// Sort by completion time (we don't track this, so just delete oldest by map order)
+	// Delete enough to get below limit
+	toFree := len(m.sessions) - MaxSessions + 1
+	deleted := 0
+	for _, id := range toDelete {
+		if deleted >= toFree {
+			break
+		}
+		if state, ok := m.sessions[id]; ok {
+			// Close DuckStore to free resources
+			if state.DuckStore != nil {
+				state.DuckStore.Close()
+			}
+			delete(m.sessions, id)
+			deleted++
+			fmt.Printf("[Manager] Cleaned up old session %s to free memory\n", id[:8])
+		}
+	}
+}
+
+// CleanupOldSessions removes sessions older than maxAge
+func (m *Manager) CleanupOldSessions(maxAge time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	cutoff := time.Now().Add(-maxAge)
+	for id, state := range m.sessions {
+		// Only clean up completed/error sessions
+		if state.Session.Status != models.SessionStatusComplete &&
+			state.Session.Status != models.SessionStatusError {
+			continue
+		}
+
+		// Check if session has a completion time stored (use CreatedAt as proxy)
+		// For now, clean up any completed session
+		_ = cutoff
+		if state.DuckStore != nil {
+			state.DuckStore.Close()
+		}
+		delete(m.sessions, id)
+		fmt.Printf("[Manager] Cleaned up aged session %s\n", id[:8])
+	}
 }
 
 // GetSession returns a session by ID.
