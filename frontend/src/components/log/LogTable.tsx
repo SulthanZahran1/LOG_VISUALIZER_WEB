@@ -1,6 +1,6 @@
 
 import { useSignal } from '@preact/signals';
-import { useRef, useEffect, useState } from 'preact/hooks';
+import { useRef, useEffect, useState, useCallback } from 'preact/hooks';
 import {
     filteredEntries,
     currentSession,
@@ -29,8 +29,10 @@ import { SignalSidebar } from '../waveform/SignalSidebar';
 import { SearchIcon, ChartIcon, CopyIcon, RefreshIcon, ChevronUpIcon, ChevronDownIcon, FilterIcon } from '../icons';
 import './LogTable.css';
 
-const ROW_HEIGHT = 28; // Increased for better readability
-const BUFFER = 10;
+const ROW_HEIGHT = 28;
+const BUFFER = 15; // Increased buffer for smoother scrolling
+const SCROLL_THROTTLE_MS = 16; // ~60fps
+const SERVER_PAGE_SIZE = 200; // Larger pages = fewer requests
 
 /**
  * Category Filter Popover Component
@@ -184,32 +186,93 @@ export function LogTable() {
         }
     }, [selectedRows.value]);
 
-    const lastFetchedPage = useRef(1);
+    // Use a ref for scroll position to avoid signal update overhead during scroll
+    const scrollTopRef = useRef(0);
+    const lastScrollTime = useRef(0);
+    const scrollTimeoutRef = useRef<number | null>(null);
+    const isScrollingRef = useRef(false);
+    
+    // Track loaded page range for server-side mode
+    const loadedRangeRef = useRef({ start: 1, end: 1 });
+    const pendingFetchRef = useRef<Promise<void> | null>(null);
 
     // Reset scroll and page when session or filters change
     useEffect(() => {
         if (tableRef.current) {
             tableRef.current.scrollTop = 0;
+            scrollTopRef.current = 0;
             scrollSignal.value = 0;
         }
-        lastFetchedPage.current = 1;
+        loadedRangeRef.current = { start: 1, end: 1 };
     }, [currentSession.value?.id, searchQuery.value, categoryFilter.value, sortColumn.value, sortDirection.value]);
 
-    const onScroll = (e: Event) => {
+    // Optimized scroll handler with throttling and RAF
+    const onScroll = useCallback((e: Event) => {
         const scrollTop = (e.target as HTMLDivElement).scrollTop;
-        scrollSignal.value = scrollTop;
+        scrollTopRef.current = scrollTop;
+        
+        const now = performance.now();
+        const elapsed = now - lastScrollTime.current;
+        
+        // Throttle scroll signal updates to ~60fps
+        if (elapsed >= SCROLL_THROTTLE_MS) {
+            lastScrollTime.current = now;
+            scrollSignal.value = scrollTop;
+        }
+        
+        // Clear existing timeout
+        if (scrollTimeoutRef.current) {
+            window.clearTimeout(scrollTimeoutRef.current);
+        }
+        
+        // Mark as actively scrolling
+        isScrollingRef.current = true;
+        
+        // Set scroll end detection
+        scrollTimeoutRef.current = window.setTimeout(() => {
+            isScrollingRef.current = false;
+            scrollSignal.value = scrollTopRef.current; // Final update
+        }, 150);
 
+        // Server-side: Debounced page fetching
         if (useServerSide.value) {
-            // Calculate which page we should be looking at (100 is current pageSize in fetchEntries)
-            const page = Math.floor(scrollTop / (100 * ROW_HEIGHT)) + 1;
-            if (page !== lastFetchedPage.current) {
-                lastFetchedPage.current = page;
-                fetchEntries(page, 100);
+            const targetPage = Math.floor(scrollTop / (SERVER_PAGE_SIZE * ROW_HEIGHT)) + 1;
+            const bufferPages = 2; // Preload 2 pages ahead
+            
+            // Check if we need to fetch (with buffer for prefetching)
+            if (targetPage + bufferPages > loadedRangeRef.current.end || 
+                targetPage < loadedRangeRef.current.start) {
+                
+                // Debounce the fetch
+                if (scrollTimeoutRef.current) {
+                    window.clearTimeout(scrollTimeoutRef.current);
+                }
+                
+                scrollTimeoutRef.current = window.setTimeout(() => {
+                    const fetchPage = Math.max(1, targetPage);
+                    
+                    // Avoid duplicate fetches
+                    if (!pendingFetchRef.current) {
+                        pendingFetchRef.current = fetchEntries(fetchPage, SERVER_PAGE_SIZE).finally(() => {
+                            pendingFetchRef.current = null;
+                        });
+                        loadedRangeRef.current = { start: fetchPage, end: fetchPage + 2 };
+                    }
+                }, 100);
             }
         }
 
         if (contextMenu.value.visible) contextMenu.value = { ...contextMenu.value, visible: false };
-    };
+    }, []);
+    
+    // Cleanup timeout on unmount
+    useEffect(() => {
+        return () => {
+            if (scrollTimeoutRef.current) {
+                window.clearTimeout(scrollTimeoutRef.current);
+            }
+        };
+    }, []);
 
     // --- Keyboard Navigation ---
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -499,23 +562,27 @@ export function LogTable() {
     };
 
 
-    // Viewport calculations
+    // Viewport calculations - use ref for scroll position to avoid signal dependency
     const viewportHeight = tableRef.current?.clientHeight || 600;
     const totalCount = useServerSide.value ? totalEntries.value : filteredEntries.value.length;
     const totalHeight = totalCount * ROW_HEIGHT;
 
+    // Use scrollTopRef for calculations during active scrolling for smoother performance
+    const currentScroll = isScrollingRef.current ? scrollTopRef.current : scrollSignal.value;
+
     const startIdx = useServerSide.value
-        ? 0 // In server-side mode, filteredEntries IS the current page
-        : Math.max(0, Math.floor(scrollSignal.value / ROW_HEIGHT) - BUFFER);
+        ? 0
+        : Math.max(0, Math.floor(currentScroll / ROW_HEIGHT) - BUFFER);
 
     const endIdx = useServerSide.value
         ? filteredEntries.value.length
-        : Math.min(totalCount, Math.ceil((scrollSignal.value + viewportHeight) / ROW_HEIGHT) + BUFFER);
+        : Math.min(totalCount, Math.ceil((currentScroll + viewportHeight) / ROW_HEIGHT) + BUFFER);
 
     const visibleEntries = filteredEntries.value.slice(startIdx, endIdx);
 
+    // For server-side, calculate offset based on current page position
     const offsetTop = useServerSide.value
-        ? (lastFetchedPage.current - 1) * 100 * ROW_HEIGHT
+        ? Math.floor(currentScroll / (SERVER_PAGE_SIZE * ROW_HEIGHT)) * SERVER_PAGE_SIZE * ROW_HEIGHT
         : startIdx * ROW_HEIGHT;
 
     return (

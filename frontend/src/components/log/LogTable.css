@@ -225,10 +225,16 @@
 /* === Viewport & Rows === */
 .log-table-viewport {
     flex: 1;
-    overflow-y: overlay;
+    overflow-y: auto;
+    overflow-x: hidden;
     /* Fancy overlay scrollbar if supported */
     position: relative;
     background: var(--bg-primary);
+    /* Performance optimizations for smooth scrolling */
+    will-change: scroll-position;
+    contain: layout style;
+    /* Enable momentum scrolling on iOS */
+    -webkit-overflow-scrolling: touch;
 }
 
 /* Custom Scrollbar */
@@ -254,6 +260,8 @@
 .log-table-spacer {
     position: relative;
     width: 100%;
+    /* GPU acceleration for transform */
+    will-change: transform;
 }
 
 .log-table-rows {
@@ -261,6 +269,10 @@
     top: 0;
     left: 0;
     width: 100%;
+    /* Use transform instead of top for GPU acceleration */
+    will-change: transform;
+    /* Contain layout for better performance */
+    contain: layout style paint;
 }
 
 .log-table-row {
@@ -273,6 +285,9 @@
     font-family: 'JetBrains Mono', var(--font-mono);
     font-size: 12px;
     user-select: none;
+    /* Performance optimizations */
+    contain: layout style;
+    content-visibility: auto;
     /* CRITICAL: Prevents native text selection during drag */
 }
 

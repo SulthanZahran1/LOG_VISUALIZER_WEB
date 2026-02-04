@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/marcboeker/go-duckdb"
@@ -26,6 +27,13 @@ type DuckStore struct {
 	minTs      int64
 	maxTs      int64
 	lastError  error // stores the last flush error
+	
+	// Cache for total counts by filter to avoid repeated COUNT queries
+	countCache     map[string]int
+	countCacheMu   sync.RWMutex
+	
+	// Semaphore to limit concurrent queries (prevents memory spikes during rapid scrolling)
+	querySem chan struct{}
 }
 
 // NewDuckStore creates a new DuckDB-backed store in the given temp directory.
@@ -59,14 +67,16 @@ func NewDuckStore(tempDir string, sessionID string) (*DuckStore, error) {
 	}
 
 	return &DuckStore{
-		db:        db,
-		dbPath:    dbPath,
-		batchSize: 50000, // 50K entries per batch for high performance with Appender
-		batch:     make([]*models.LogEntry, 0, 50000),
-		signals:   make(map[string]struct{}, 1000),
-		devices:   make(map[string]struct{}, 100),
-		minTs:     0,
-		maxTs:     0,
+		db:         db,
+		dbPath:     dbPath,
+		batchSize:  50000, // 50K entries per batch for high performance with Appender
+		batch:      make([]*models.LogEntry, 0, 50000),
+		signals:    make(map[string]struct{}, 1000),
+		devices:    make(map[string]struct{}, 100),
+		minTs:      0,
+		maxTs:      0,
+		countCache: make(map[string]int),
+		querySem:   make(chan struct{}, 3), // Max 3 concurrent queries
 	}, nil
 }
 
@@ -233,18 +243,39 @@ type QueryParams struct {
 
 // QueryEntries returns filtered, sorted, and paginated entries
 func (ds *DuckStore) QueryEntries(params QueryParams, page, pageSize int) ([]models.LogEntry, int, error) {
+	// Acquire semaphore to limit concurrent queries
+	ds.querySem <- struct{}{}
+	defer func() { <-ds.querySem }()
+
 	where, args := ds.buildWhereClause(params)
 
-	// Count total matches for pagination
-	countQuery := "SELECT COUNT(*) FROM entries"
-	if where != "" {
-		countQuery += " WHERE " + where
+	// Create cache key from where clause (filters determine count)
+	cacheKey := where
+	if cacheKey == "" {
+		cacheKey = "__total__"
 	}
 
-	var total int
-	err := ds.db.QueryRow(countQuery, args...).Scan(&total)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count query failed: %w", err)
+	// Check cache for total count
+	ds.countCacheMu.RLock()
+	total, found := ds.countCache[cacheKey]
+	ds.countCacheMu.RUnlock()
+
+	// If not cached, run count query
+	if !found {
+		countQuery := "SELECT COUNT(*) FROM entries"
+		if where != "" {
+			countQuery += " WHERE " + where
+		}
+
+		err := ds.db.QueryRow(countQuery, args...).Scan(&total)
+		if err != nil {
+			return nil, 0, fmt.Errorf("count query failed: %w", err)
+		}
+
+		// Cache the count
+		ds.countCacheMu.Lock()
+		ds.countCache[cacheKey] = total
+		ds.countCacheMu.Unlock()
 	}
 
 	if total == 0 {
@@ -303,6 +334,13 @@ func (ds *DuckStore) QueryEntries(params QueryParams, page, pageSize int) ([]mod
 	}
 
 	return entries, total, rows.Err()
+}
+
+// ClearCountCache clears the count cache (call when data changes)
+func (ds *DuckStore) ClearCountCache() {
+	ds.countCacheMu.Lock()
+	ds.countCache = make(map[string]int)
+	ds.countCacheMu.Unlock()
 }
 
 // GetCategories returns all unique categories in the store
@@ -377,6 +415,10 @@ func (ds *DuckStore) buildWhereClause(params QueryParams) (string, []interface{}
 
 // GetEntries returns a range of entries (for pagination)
 func (ds *DuckStore) GetEntries(start, end int) ([]models.LogEntry, error) {
+	// Acquire semaphore to limit concurrent queries
+	ds.querySem <- struct{}{}
+	defer func() { <-ds.querySem }()
+
 	count := end - start
 	if count <= 0 {
 		return []models.LogEntry{}, nil
@@ -406,6 +448,10 @@ func (ds *DuckStore) GetEntries(start, end int) ([]models.LogEntry, error) {
 // GetChunk returns entries within a time range (startTs <= ts <= endTs)
 // Optional signals parameter filters results to specific signals (deviceId::signalName).
 func (ds *DuckStore) GetChunk(startTs, endTs time.Time, signals []string) ([]models.LogEntry, error) {
+	// Acquire semaphore to limit concurrent queries
+	ds.querySem <- struct{}{}
+	defer func() { <-ds.querySem }()
+
 	startMs := startTs.UnixMilli()
 	endMs := endTs.UnixMilli()
 
@@ -459,6 +505,10 @@ func (ds *DuckStore) GetChunk(startTs, endTs time.Time, signals []string) ([]mod
 
 // GetValuesAtTime returns the most recent value for all signals at or before the given timestamp.
 func (ds *DuckStore) GetValuesAtTime(ts time.Time, signals []string) ([]models.LogEntry, error) {
+	// Acquire semaphore to limit concurrent queries
+	ds.querySem <- struct{}{}
+	defer func() { <-ds.querySem }()
+
 	tsMs := ts.UnixMilli()
 
 	// Use window function to get the latest entry for each signal

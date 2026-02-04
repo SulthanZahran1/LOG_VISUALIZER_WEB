@@ -17,6 +17,15 @@ export const isStreaming = signal(false);
 // Polling control - to cancel ongoing polling when session changes
 let currentPollAbortController: AbortController | null = null;
 
+// Server-side caching to prevent jumps during scrolling
+interface PageCache {
+    page: number;
+    entries: LogEntry[];
+    timestamp: number;
+}
+const serverPageCache = new Map<number, PageCache>();
+const CACHE_MAX_SIZE = 10; // Keep last 10 pages in memory
+
 // Selected log entry time - used for bookmarking from Log Table view
 export const selectedLogTime = signal<number | null>(null);
 
@@ -204,13 +213,19 @@ effect(() => {
         sortDirection.value;
         signalTypeFilter.value;
 
+        // Clear cache when filters change
+        serverPageCache.clear();
+
         // Debounce fetch slightly
         const timer = setTimeout(() => {
-            fetchEntries(1, 100); // Back to page 1 on filter change
+            fetchEntries(1, SERVER_PAGE_SIZE); // Back to page 1 on filter change
         }, 100);
         return () => clearTimeout(timer);
     }
 });
+
+// Constants for pagination
+const SERVER_PAGE_SIZE = 200; // Match the LogTable constant
 
 export async function initLogStore() {
     try {
@@ -394,31 +409,54 @@ async function finalizeSessionLoad(session: ParseSession) {
 export async function fetchEntries(page: number, pageSize: number) {
     if (!currentSession.value || currentSession.value.status !== 'complete') return;
 
+    // Check cache first for server-side mode
+    if (useServerSide.value) {
+        const cached = serverPageCache.get(page);
+        if (cached && Date.now() - cached.timestamp < 30000) { // 30s cache
+            logEntries.value = cached.entries;
+            // Still update total from cache if available
+            return;
+        }
+    }
+
     try {
-        isLoadingLog.value = true;
+        // Don't show loading spinner for cached/prefetch scenarios in server-side mode
+        // This prevents visual flicker during scrolling
+        if (!useServerSide.value) {
+            isLoadingLog.value = true;
+        }
 
         // Prepare filters for server-side mode
         const filters = useServerSide.value ? {
             search: searchQuery.value,
-            category: Array.from(categoryFilter.value).join(','), // Assuming backend can handle CSV if needed, or we just take the first for now. 
-            // Actually my backend only handles ONE category for now. Let's send the first or empty.
+            category: Array.from(categoryFilter.value)[0] || undefined,
             sort: sortColumn.value || undefined,
             order: sortDirection.value,
             type: signalTypeFilter.value || undefined
         } : undefined;
 
-        // If category filter has multiple, we might need to adjust backend, 
-        // but for now let's just send the first one if present to match backend capability.
-        if (filters && categoryFilter.value.size > 0) {
-            filters.category = Array.from(categoryFilter.value)[0];
-        }
-
         const res = await getParseEntries(currentSession.value.id, page, pageSize, filters);
+
+        // In server-side mode, update cache
+        if (useServerSide.value) {
+            serverPageCache.set(page, {
+                page,
+                entries: res.entries as LogEntry[],
+                timestamp: Date.now()
+            });
+            
+            // Prune old cache entries
+            if (serverPageCache.size > CACHE_MAX_SIZE) {
+                const oldest = Array.from(serverPageCache.entries())
+                    .sort((a, b) => a[1].timestamp - b[1].timestamp)[0];
+                if (oldest) serverPageCache.delete(oldest[0]);
+            }
+        }
 
         logEntries.value = res.entries as LogEntry[];
         totalEntries.value = res.total;
 
-        // Update map store with latest values
+        // Update map store with latest values (debounced in mapStore)
         const mapStore = await import('./mapStore');
         mapStore.updateSignalValues(logEntries.value);
     } catch (err: any) {
