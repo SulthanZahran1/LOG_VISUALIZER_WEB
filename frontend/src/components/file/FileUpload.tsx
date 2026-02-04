@@ -1,6 +1,6 @@
 /* global ClipboardEvent, HTMLTextAreaElement */
 import { useSignal } from '@preact/signals';
-import { uploadFile, uploadFileOptimized } from '../../api/client';
+import { uploadFile, uploadFileWebSocket } from '../../api/client';
 import type { FileInfo } from '../../models/types';
 
 interface FileUploadProps {
@@ -34,10 +34,10 @@ export function FileUpload({
         error.value = null;
 
         try {
-            // Use chunked upload for files > 5MB (optimized threshold)
+            // Use WebSocket upload for files > 5MB (single connection, firewall-friendly)
             const CHUNK_THRESHOLD = 5 * 1024 * 1024;
             const info = file.size > CHUNK_THRESHOLD
-                ? await uploadFileOptimized(file, (p) => uploadProgress.value = p)
+                ? await uploadFileWebSocket(file, (p, _stage) => uploadProgress.value = p)
                 : await uploadFn(file);
 
             onUploadSuccess(info);
