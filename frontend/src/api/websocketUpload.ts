@@ -354,18 +354,27 @@ class WebSocketUploadClient {
         }
 
         // Track server-reported progress
-        let serverChunkProgress = 0;
         let processingProgress = 0;
         let processingStage = '';
+        let maxReportedProgress = 0; // Track highest progress to prevent backward jumps
+
+        // Helper to report progress that never goes backward
+        const reportProgressMonotonic = (progress: number, stage: string, detail?: string) => {
+            if (progress >= maxReportedProgress) {
+                maxReportedProgress = progress;
+                reportProgress(progress, stage, detail);
+            }
+        };
 
         // Set up progress handler to receive server confirmations
+        // Note: We use client-side progress for uploading (more accurate), 
+        // server progress is tracked for heartbeat detection only
         const progressHandler = this.on(MsgTypeProgress, (msg) => {
             const progress = msg.payload as WSProgressResponse;
             if (progress.uploadId === uploadId) {
-                serverChunkProgress = progress.progress;
-                // Map server progress (0-100 during upload) to client range (5-70%)
-                const clientProgress = Math.round(serverChunkProgress * 0.65) + 5;
-                reportProgress(clientProgress, 'uploading', progress.message);
+                // Server chunk progress is tracked but not shown to prevent backward jumps
+                // Client-side sending progress is more accurate for UI
+                void progress.progress; // Acknowledge we received it
             }
         });
 
@@ -377,7 +386,7 @@ class WebSocketUploadClient {
                 processingStage = progress.stage || 'processing';
                 // Map server processing (0-100) to client range (85-98%)
                 const clientProgress = Math.round(processingProgress * 0.13) + 85;
-                reportProgress(clientProgress, processingStage, progress.message);
+                reportProgressMonotonic(clientProgress, processingStage, progress.message);
             }
         });
 
@@ -387,7 +396,11 @@ class WebSocketUploadClient {
             if (elapsed > 5000 && currentStage !== 'complete') {
                 // No progress update for 5 seconds - show waiting message
                 const waitingStage = this.getWaitingMessage(currentStage, Math.round(elapsed / 1000));
-                onProgress?.(Math.min(98, processingProgress > 0 ? 85 + processingProgress * 0.13 : 75), waitingStage);
+                const heartbeatProgress = Math.min(98, processingProgress > 0 ? 85 + processingProgress * 0.13 : 75);
+                // Only show heartbeat if it wouldn't decrease progress
+                if (heartbeatProgress >= maxReportedProgress) {
+                    onProgress?.(heartbeatProgress, waitingStage);
+                }
             }
         }, 1000);
 
@@ -411,9 +424,9 @@ class WebSocketUploadClient {
                 });
 
                 // Update progress based on client sending for smooth UI (5-70% range)
-                // This gives immediate feedback, server progress will adjust it
+                // Use monotonic progress to prevent backward jumps from server lag
                 const clientProgress = Math.round((i + 1) / totalChunks * 65) + 5;
-                reportProgress(clientProgress, 'uploading', `Uploading chunk ${i + 1}/${totalChunks}...`);
+                reportProgressMonotonic(clientProgress, 'uploading', `Uploading chunk ${i + 1}/${totalChunks}...`);
 
                 // Small delay every few chunks to prevent overwhelming the connection
                 // but keep UI responsive
@@ -423,7 +436,7 @@ class WebSocketUploadClient {
             }
 
             // All chunks sent - waiting for server to verify
-            reportProgress(75, 'verifying', 'All chunks sent, waiting for server...');
+            reportProgressMonotonic(75, 'verifying', 'All chunks sent, waiting for server...');
 
             // 3. Complete upload
             const completePayload: UploadCompletePayload = {
@@ -442,7 +455,7 @@ class WebSocketUploadClient {
             });
 
             // Server is now processing - progress updates come via processingHandler
-            reportProgress(85, 'processing', 'Server is processing file...');
+            reportProgressMonotonic(85, 'processing', 'Server is processing file...');
 
             // Wait for completion or error
             const result = await Promise.race([
@@ -453,7 +466,7 @@ class WebSocketUploadClient {
                 }),
             ]);
 
-            reportProgress(100, 'complete', 'Upload complete!');
+            reportProgressMonotonic(100, 'complete', 'Upload complete!');
 
             const response = result.payload as WSCompleteResponse;
             return response.fileInfo!;
