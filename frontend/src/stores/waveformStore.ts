@@ -130,6 +130,12 @@ export function deselectAllSignalsForDevice(deviceId: string) {
 // UI State
 export const isDragging = signal(false);
 export const showSidebar = signal(true);
+export const isWaveformLoading = signal(false);
+export const waveformLoadingProgress = signal(0); // 0-100 for progressive loading
+
+// Hover state (using signals for reactive canvas rendering)
+export const hoverX = signal<number | null>(null);
+export const hoverRow = signal<number | null>(null);
 
 export function getViewportDuration(): number {
     return viewportWidth.value / zoomLevel.value;
@@ -266,6 +272,10 @@ export async function updateWaveformEntries() {
     // Increment request ID to invalidate previous pending requests
     const requestId = ++activeRequestId;
 
+    // Set loading state
+    isWaveformLoading.value = true;
+    waveformLoadingProgress.value = 0;
+
     try {
         const sessionId = session.id;
         const start = range.start;
@@ -306,6 +316,12 @@ export async function updateWaveformEntries() {
         } else {
             console.error('Failed to fetch waveform entries', err);
         }
+    } finally {
+        // Only clear loading if this is still the active request
+        if (requestId === activeRequestId) {
+            isWaveformLoading.value = false;
+            waveformLoadingProgress.value = 100;
+        }
     }
 }
 
@@ -324,10 +340,11 @@ effect(() => {
     // Reset fetch flag when signals change for small files
     hasFetchedForCurrentSignals = false;
 
-    // Use a small debounce to avoid flooding during rapid scrolls
+    // Debounce: 150ms for large files (scrolling/zooming), immediate for small files
+    // This prevents excessive API calls during rapid interactions
     const timer = setTimeout(() => {
         updateWaveformEntries();
-    }, isLarge ? 50 : 0);
+    }, isLarge ? 150 : 0);
 
     return () => clearTimeout(timer);
 });

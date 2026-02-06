@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import {
     viewRange,
     waveformEntries,
@@ -11,7 +12,10 @@ import {
     jumpToTime,
     selectionRange,
     focusedSignal,
-    deviceColors
+    deviceColors,
+    isWaveformLoading,
+    hoverX,
+    hoverRow
 } from '../../stores/waveformStore';
 import { sortedBookmarks, type Bookmark } from '../../stores/bookmarkStore';
 import type { LogEntry } from '../../models/types';
@@ -81,8 +85,6 @@ const COLORS = {
 export function WaveformCanvas() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const hoverXRef = useRef<number | null>(null);
-    const hoverRowRef = useRef<number | null>(null);
 
     // Panning state refs
     const isPanningRef = useRef(false);
@@ -125,6 +127,8 @@ export function WaveformCanvas() {
         };
     }, []);
 
+    // Use a reactive render approach instead of continuous requestAnimationFrame
+    // This only re-renders when the signals actually change
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -132,153 +136,139 @@ export function WaveformCanvas() {
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        let animationFrameId: number;
+        const dpr = window.devicePixelRatio || 1;
+        const width = viewportWidth.value;
+        const height = selectedSignals.value.length * ROW_HEIGHT + AXIS_HEIGHT;
 
-        const render = () => {
-            const dpr = window.devicePixelRatio || 1;
-            const width = viewportWidth.value;
-            const height = selectedSignals.value.length * ROW_HEIGHT + AXIS_HEIGHT;
+        // Set canvas size
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        ctx.scale(dpr, dpr);
 
-            canvas.width = width * dpr;
-            canvas.height = height * dpr;
-            ctx.scale(dpr, dpr);
+        // Clear with dark background
+        ctx.fillStyle = COLORS.canvasBg;
+        ctx.fillRect(0, 0, width, height);
 
-            // Clear with dark background
-            ctx.fillStyle = COLORS.canvasBg;
-            ctx.fillRect(0, 0, width, height);
+        const range = viewRange.value;
+        if (!range) return;
 
-            const range = viewRange.value;
-            if (!range) {
-                animationFrameId = requestAnimationFrame(render); // Keep looping even if not ready
-                return;
+        const pixelsPerMs = zoomLevel.value;
+
+        // Calculate visible row range for virtualization
+        const scrollTop = scrollTopRef.current;
+        const viewportHeight = containerHeightRef.current || height;
+        const firstVisibleRow = Math.max(0, Math.floor((scrollTop - AXIS_HEIGHT) / ROW_HEIGHT));
+        const lastVisibleRow = Math.min(
+            selectedSignals.value.length - 1,
+            Math.ceil((scrollTop + viewportHeight - AXIS_HEIGHT) / ROW_HEIGHT)
+        );
+
+        // Draw row backgrounds (only for visible rows + small buffer)
+        const rowBuffer = 2;
+        const drawStart = Math.max(0, firstVisibleRow - rowBuffer);
+        const drawEnd = Math.min(selectedSignals.value.length - 1, lastVisibleRow + rowBuffer);
+
+        for (let i = drawStart; i <= drawEnd; i++) {
+            const key = selectedSignals.value[i];
+            const y = AXIS_HEIGHT + (i * ROW_HEIGHT);
+            const isFocused = focusedSignal.value === key;
+
+            if (isFocused) {
+                ctx.fillStyle = 'rgba(77, 182, 226, 0.15)';
+            } else {
+                ctx.fillStyle = i % 2 === 0 ? COLORS.rowEven : COLORS.rowOdd;
+            }
+            ctx.fillRect(0, y, width, ROW_HEIGHT);
+
+            // Device accent bar on the left
+            const [device] = key.split('::');
+            const deviceColor = deviceColors.value.get(device);
+            if (deviceColor) {
+                ctx.fillStyle = deviceColor;
+                ctx.fillRect(0, y + 4, 4, ROW_HEIGHT - 8);
             }
 
-            const pixelsPerMs = zoomLevel.value;
+            // Row separator
+            ctx.strokeStyle = COLORS.gridMinor;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, y + ROW_HEIGHT);
+            ctx.lineTo(width, y + ROW_HEIGHT);
+            ctx.stroke();
+        }
 
-            // Calculate visible row range for virtualization
-            const scrollTop = scrollTopRef.current;
-            const viewportHeight = containerHeightRef.current || height;
-            const firstVisibleRow = Math.max(0, Math.floor((scrollTop - AXIS_HEIGHT) / ROW_HEIGHT));
-            const lastVisibleRow = Math.min(
-                selectedSignals.value.length - 1,
-                Math.ceil((scrollTop + viewportHeight - AXIS_HEIGHT) / ROW_HEIGHT)
-            );
+        // Draw Time Axis
+        drawTimeAxis(ctx, range.start, range.end, pixelsPerMs, width, height);
 
-            // Draw row backgrounds (only for visible rows + small buffer)
-            const rowBuffer = 2; // Draw a few extra rows for smooth scrolling
-            const drawStart = Math.max(0, firstVisibleRow - rowBuffer);
-            const drawEnd = Math.min(selectedSignals.value.length - 1, lastVisibleRow + rowBuffer);
+        // Draw Signals (only visible rows for performance)
+        for (let rowIndex = drawStart; rowIndex <= drawEnd; rowIndex++) {
+            const key = selectedSignals.value[rowIndex];
+            const allEntries = waveformEntries.value[key] || [];
+            const yBase = AXIS_HEIGHT + (rowIndex * ROW_HEIGHT);
+            const yPadding = 8;
+            const plotHeight = ROW_HEIGHT - (yPadding * 2);
 
-            for (let i = drawStart; i <= drawEnd; i++) {
-                const key = selectedSignals.value[i];
-                const y = AXIS_HEIGHT + (i * ROW_HEIGHT);
-                const isFocused = focusedSignal.value === key;
+            // Visible Window Slicing - use binary search for efficiency
+            const startIdx = Math.max(0, findFirstIndexAtTime(allEntries, range.start) - 1);
+            const endIdx = findFirstIndexAtTime(allEntries, range.end);
+            const visibleEntries = allEntries.slice(startIdx, endIdx + 1);
 
-                if (isFocused) {
-                    ctx.fillStyle = 'rgba(77, 182, 226, 0.15)';
+            ctx.save();
+            ctx.translate(0, yBase + yPadding);
+
+            if (visibleEntries.length > 0) {
+                const firstEntry = visibleEntries[0];
+                if (firstEntry.signalType === 'boolean' || typeof firstEntry.value === 'boolean') {
+                    drawBooleanSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, width);
                 } else {
-                    ctx.fillStyle = i % 2 === 0 ? COLORS.rowEven : COLORS.rowOdd;
-                }
-                ctx.fillRect(0, y, width, ROW_HEIGHT);
-
-                // Device accent bar on the left
-                const [device] = key.split('::');
-                const deviceColor = deviceColors.value.get(device);
-                if (deviceColor) {
-                    ctx.fillStyle = deviceColor;
-                    ctx.fillRect(0, y + 4, 4, ROW_HEIGHT - 8);
-                }
-
-                // Row separator
-                ctx.strokeStyle = COLORS.gridMinor;
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(0, y + ROW_HEIGHT);
-                ctx.lineTo(width, y + ROW_HEIGHT);
-                ctx.stroke();
-            }
-
-            // Draw Time Axis
-            drawTimeAxis(ctx, range.start, range.end, pixelsPerMs, width, height);
-
-            // Draw Signals (only visible rows for performance)
-            for (let rowIndex = drawStart; rowIndex <= drawEnd; rowIndex++) {
-                const key = selectedSignals.value[rowIndex];
-                const allEntries = waveformEntries.value[key] || [];
-                const yBase = AXIS_HEIGHT + (rowIndex * ROW_HEIGHT);
-                const yPadding = 8;
-                const plotHeight = ROW_HEIGHT - (yPadding * 2);
-
-                // --- Visible Window Slicing (Optimization) ---
-                // Use binary search to find the first entry at or after range.start
-                // Include a small buffer (1 before, all after) to ensure transitions are drawn
-                const startIdx = Math.max(0, findFirstIndexAtTime(allEntries, range.start) - 1);
-                const endIdx = findFirstIndexAtTime(allEntries, range.end);
-                const visibleEntries = allEntries.slice(startIdx, endIdx + 1);
-
-                ctx.save();
-                ctx.translate(0, yBase + yPadding);
-
-                if (visibleEntries.length > 0) {
-                    const firstEntry = visibleEntries[0];
-                    if (firstEntry.signalType === 'boolean' || typeof firstEntry.value === 'boolean') {
-                        drawBooleanSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, width);
-                    } else {
-                        drawStateSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, width, rowIndex);
-                    }
-                }
-
-                ctx.restore();
-            }
-
-            // Draw selection
-            const selection = selectionRange.value;
-            if (selection) {
-                drawSelection(ctx, selection, range.start, pixelsPerMs, height, width);
-            }
-
-            // Draw cursor line if hovering
-            const currentHoverX = hoverXRef.current;
-            if (currentHoverX !== null && currentHoverX >= 0 && currentHoverX <= width) {
-                ctx.strokeStyle = 'rgba(77, 182, 226, 0.8)';
-                ctx.lineWidth = 1;
-                ctx.setLineDash([4, 4]);
-                ctx.beginPath();
-                ctx.moveTo(currentHoverX, AXIS_HEIGHT);
-                ctx.lineTo(currentHoverX, height);
-                ctx.stroke();
-                ctx.setLineDash([]);
-            }
-
-            // Draw bookmark markers
-            drawBookmarks(ctx, sortedBookmarks.value, range.start, pixelsPerMs, height, width);
-
-            // Draw hover tooltip
-            const hoverRow = hoverRowRef.current;
-            if (currentHoverX !== null && hoverRow !== null && hoverRow >= 0 && hoverRow < selectedSignals.value.length) {
-                const signalKey = selectedSignals.value[hoverRow];
-                const entries = waveformEntries.value[signalKey] || [];
-                const hTime = hoverTime.value;
-                if (hTime !== null && entries.length > 0) {
-                    // Find the value at hoverTime
-                    let valueAtTime: any = entries[0].value;
-                    for (const e of entries) {
-                        if (getTimestampMs(e) <= hTime) valueAtTime = e.value;
-                        else break;
-                    }
-                    drawTooltip(ctx, currentHoverX, AXIS_HEIGHT + hoverRow * ROW_HEIGHT, signalKey, valueAtTime, width);
+                    drawStateSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, width, rowIndex);
                 }
             }
 
-            animationFrameId = requestAnimationFrame(render);
-        };
+            ctx.restore();
+        }
 
-        render();
+        // Draw selection
+        const selection = selectionRange.value;
+        if (selection) {
+            drawSelection(ctx, selection, range.start, pixelsPerMs, height, width);
+        }
 
-        return () => {
-            window.cancelAnimationFrame(animationFrameId);
-        };
-    }, []); // Empty dependency array: render loop runs continuously and pulls fresh signal values
+        // Draw cursor line if hovering
+        const currentHoverX = hoverX.value;
+        if (currentHoverX !== null && currentHoverX >= 0 && currentHoverX <= width) {
+            ctx.strokeStyle = 'rgba(77, 182, 226, 0.8)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(currentHoverX, AXIS_HEIGHT);
+            ctx.lineTo(currentHoverX, height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Draw bookmark markers
+        drawBookmarks(ctx, sortedBookmarks.value, range.start, pixelsPerMs, height, width);
+
+        // Draw hover tooltip
+        const hoverRow = hoverRow.value;
+        if (currentHoverX !== null && hoverRow !== null && hoverRow >= 0 && hoverRow < selectedSignals.value.length) {
+            const signalKey = selectedSignals.value[hoverRow];
+            const entries = waveformEntries.value[signalKey] || [];
+            const hTime = hoverTime.value;
+            if (hTime !== null && entries.length > 0) {
+                let valueAtTime: any = entries[0].value;
+                for (const e of entries) {
+                    if (getTimestampMs(e) <= hTime) valueAtTime = e.value;
+                    else break;
+                }
+                drawTooltip(ctx, currentHoverX, AXIS_HEIGHT + hoverRow * ROW_HEIGHT, signalKey, valueAtTime, width);
+            }
+        }
+    // Dependencies: all the signals that should trigger a re-render
+    }, [viewportWidth.value, selectedSignals.value.length, viewRange.value?.start, viewRange.value?.end, 
+        zoomLevel.value, waveformEntries.value, selectionRange.value, hoverX.value, hoverRow.value,
+        hoverTime.value, focusedSignal.value, deviceColors.value, sortedBookmarks.value]);
 
     const handleWheel = (e: WheelEvent) => {
         if (e.ctrlKey) {
@@ -368,7 +358,7 @@ export function WaveformCanvas() {
         // Calculate raw time and possibly snap to signal
         const range = viewRange.value;
         if (!range) {
-            hoverXRef.current = x;
+            hoverX.value = x;
             return;
         }
 
@@ -405,20 +395,20 @@ export function WaveformCanvas() {
             }
         }
 
-        hoverXRef.current = snappedX;
+        hoverX.value = snappedX;
         hoverTime.value = snappedTime;
 
         // Track row for tooltip
         if (y > AXIS_HEIGHT) {
-            hoverRowRef.current = Math.floor((y - AXIS_HEIGHT) / ROW_HEIGHT);
+            hoverRow.value = Math.floor((y - AXIS_HEIGHT) / ROW_HEIGHT);
         } else {
-            hoverRowRef.current = null;
+            hoverRow.value = null;
         }
     };
 
     const handleMouseLeave = () => {
-        hoverXRef.current = null;
-        hoverRowRef.current = null;
+        hoverX.value = null;
+        hoverRow.value = null;
         hoverTime.value = null;
         isPanningRef.current = false;
         if (containerRef.current) {
@@ -462,6 +452,9 @@ export function WaveformCanvas() {
         }
     };
 
+    const isLoading = isWaveformLoading.value;
+    const totalHeight = selectedSignals.value.length * ROW_HEIGHT + AXIS_HEIGHT;
+
     return (
         <div
             ref={containerRef}
@@ -469,21 +462,29 @@ export function WaveformCanvas() {
             tabIndex={0}
             onKeyDown={handleKeyDown}
         >
-            <canvas
-                ref={canvasRef}
-                class="waveform-canvas"
-                style={{
-                    width: '100%',
-                    height: 'auto',
-                    display: 'block'
-                }}
-                onWheel={handleWheel}
-                onMouseDown={handleMouseDown}
-                onMouseUp={handleMouseUp}
-                onMouseMove={handleMouseMove}
-                onMouseLeave={handleMouseLeave}
-                onClick={handleClick}
-            />
+            <div class="waveform-canvas-inner" style={{ height: `${totalHeight}px`, position: 'relative' }}>
+                <canvas
+                    ref={canvasRef}
+                    class="waveform-canvas"
+                    style={{
+                        width: '100%',
+                        height: `${totalHeight}px`,
+                        display: 'block'
+                    }}
+                    onWheel={handleWheel}
+                    onMouseDown={handleMouseDown}
+                    onMouseUp={handleMouseUp}
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeave}
+                    onClick={handleClick}
+                />
+                {isLoading && (
+                    <div class="waveform-loading-overlay">
+                        <div class="waveform-loading-spinner" />
+                        <span class="waveform-loading-text">Loading signal data...</span>
+                    </div>
+                )}
+            </div>
             <style>{`
                 .waveform-canvas-wrapper {
                     width: 100%;
@@ -493,6 +494,7 @@ export function WaveformCanvas() {
                     background: ${COLORS.canvasBg};
                     cursor: grab;
                     outline: none;
+                    position: relative;
                 }
                 .waveform-canvas-wrapper:focus {
                     box-shadow: inset 0 0 0 2px var(--primary-accent);
@@ -509,6 +511,39 @@ export function WaveformCanvas() {
                 }
                 .waveform-canvas-wrapper::-webkit-scrollbar-thumb:hover {
                     background: rgba(139, 148, 158, 0.6);
+                }
+                .waveform-canvas-inner {
+                    position: relative;
+                    min-height: 100%;
+                }
+                .waveform-loading-overlay {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    height: 4px;
+                    background: rgba(13, 17, 23, 0.8);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                    z-index: 10;
+                }
+                .waveform-loading-spinner {
+                    width: 16px;
+                    height: 16px;
+                    border: 2px solid rgba(77, 182, 226, 0.3);
+                    border-top-color: var(--primary-accent);
+                    border-radius: 50%;
+                    animation: spin 0.8s linear infinite;
+                }
+                .waveform-loading-text {
+                    font-size: 12px;
+                    color: var(--text-secondary);
+                }
+                @keyframes spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
                 }
             `}</style>
         </div>

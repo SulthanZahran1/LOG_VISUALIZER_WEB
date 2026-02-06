@@ -31,6 +31,15 @@
   - Added `sessionKeepAlive()` API client function
   - Cleanup log now shows time since last access for visibility
 
+- **Waveform Performance & UX Improvements**
+  - **Loading Indicator**: Added `isWaveformLoading` signal and loading overlay
+    - Shows "Loading signal data..." with spinner when fetching from backend
+  - **Reduced API Calls**: Increased debounce from 50ms to 150ms for large files
+  - **Optimized Rendering**: Removed continuous `requestAnimationFrame` loop
+    - Now only re-renders when signals actually change
+  - **Fixed Vertical Scrolling**: Proper scroll container with fixed canvas height
+  - **Reactive Hover State**: Converted hoverX/hoverRow from refs to signals
+
 ### Technical
 - New `sendProcessingProgress()` helper in backend WebSocket handler
 - New `streamDecompressGzipWithProgress()` for streaming decompression with progress
