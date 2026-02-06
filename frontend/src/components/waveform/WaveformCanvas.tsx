@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'preact/hooks';
-import { useSignal } from '@preact/signals';
 import {
     viewRange,
     waveformEntries,
@@ -251,9 +250,9 @@ export function WaveformCanvas() {
         drawBookmarks(ctx, sortedBookmarks.value, range.start, pixelsPerMs, height, width);
 
         // Draw hover tooltip
-        const hoverRow = hoverRow.value;
-        if (currentHoverX !== null && hoverRow !== null && hoverRow >= 0 && hoverRow < selectedSignals.value.length) {
-            const signalKey = selectedSignals.value[hoverRow];
+        const hoverRowValue = hoverRow.value;
+        if (currentHoverX !== null && hoverRowValue !== null && hoverRowValue >= 0 && hoverRowValue < selectedSignals.value.length) {
+            const signalKey = selectedSignals.value[hoverRowValue];
             const entries = waveformEntries.value[signalKey] || [];
             const hTime = hoverTime.value;
             if (hTime !== null && entries.length > 0) {
@@ -262,7 +261,7 @@ export function WaveformCanvas() {
                     if (getTimestampMs(e) <= hTime) valueAtTime = e.value;
                     else break;
                 }
-                drawTooltip(ctx, currentHoverX, AXIS_HEIGHT + hoverRow * ROW_HEIGHT, signalKey, valueAtTime, width);
+                drawTooltip(ctx, currentHoverX, AXIS_HEIGHT + hoverRowValue * ROW_HEIGHT, signalKey, valueAtTime, width);
             }
         }
     // Dependencies: all the signals that should trigger a re-render
