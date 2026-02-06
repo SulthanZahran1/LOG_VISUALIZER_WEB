@@ -1,21 +1,30 @@
-# AGENTS.md — AI Coding Agent Guide
+# CIM Visualizer — Developer Guide
 
-> Documentation for AI coding agents working on the PLC Log Visualizer Web project.
-> Last updated: 2026-02-02
+> Documentation for developers and AI coding agents working on the CIM Visualizer project.
+> Last updated: 2026-02-04
 
 ---
 
 ## Project Overview
 
-**PLC Log Visualizer (Web)** is a web-based application for analyzing industrial PLC (Programmable Logic Controller) log files. It is a web port of a PySide6 desktop application, designed for high-performance visualization of large log files (up to 1GB+).
+**CIM Visualizer** (Computer Integrated Manufacturing Visualizer) is a web-based application for analyzing industrial PLC (Programmable Logic Controller) log files. It's designed for engineers and technicians debugging semiconductor manufacturing equipment (AMHS - Automated Material Handling Systems).
+
+### What It Solves
+
+Industrial PLCs generate massive log files (often 1GB+) containing thousands of signals. CIM Visualizer transforms these raw logs into:
+
+- **Structured data** from multiple log formats
+- **Waveform visualizations** (like digital logic analyzers)
+- **Factory floor maps** with real-time equipment states
+- **Carrier tracking** for material movement analysis
 
 ### Key Features
 
-- **Multi-format Log Parsing**: Supports PLC debug logs, MCS/AMHS logs, CSV, and PLC tab-separated formats
-- **Log Table**: Virtual scrolling table with sorting, filtering, and multi-selection
-- **Waveform/Timing Diagram**: Canvas-based signal visualization with zoom, pan, and time selection
-- **Map Viewer**: SVG-based layout visualization with carrier tracking and playback
-- **Multi-file Merge**: Select and merge multiple log files with fuzzy deduplication
+- **Multi-format Log Parsing**: PLC debug logs, MCS/AMHS logs, CSV, tab-separated
+- **Log Table**: Virtual scrolling with sorting, filtering, multi-selection
+- **Waveform/Timing Diagram**: Canvas-based with zoom, pan, time selection
+- **Map Viewer**: SVG-based layout with carrier tracking and playback
+- **Multi-file Merge**: Select and merge with fuzzy deduplication
 - **Bookmarks**: Cross-view time bookmarks with keyboard shortcuts
 
 ### Technology Stack
@@ -26,10 +35,9 @@
 | Web Framework | Echo v4 | REST API framework |
 | Frontend | Preact 10.x | Lightweight React alternative |
 | State Management | @preact/signals | Reactive signals |
-| Build Tool | Vite | Dev server & bundler |
+| Build Tool | Vite | Dev server & bundling |
 | Styling | CSS Variables | Industrial dark theme |
-| Testing | Vitest | Unit testing |
-| E2E Testing | Playwright | Browser automation |
+| Testing | Vitest + Playwright | Unit & E2E tests |
 | Browser Target | Chrome only | Industrial environment |
 
 ---
@@ -451,18 +459,40 @@ Services:
 |----------|-------------------|
 | **[CONTEXT.md](./CONTEXT.md)** | Session startup, current project phase status, quick start commands, workflow instructions |
 | **[TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md)** | Manual testing procedures, phase-by-phase verification, performance benchmarks |
+| **[API.md](./API.md)** | Complete API reference, upload flows, compression strategy |
 | **.agent/TODO.md** | Current active tasks and what's being worked on right now |
 | **.agent/CHANGELOG.md** | History of completed changes and recent modifications |
 | **.agent/SCRATCHPAD.md** | Current blockers, questions, thinking process, temporary notes |
 | **.agent/architecture/** | System design docs, data flows, architecture decisions |
 
-### Quick Reference Guide
+### Deep-Dive Documentation
 
-**Starting a new session?** → Read [CONTEXT.md](./CONTEXT.md) first  
-**Need to verify functionality?** → Check [TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md)  
-**Want to know current status?** → Check `.agent/TODO.md`  
-**Seeing unexpected behavior?** → Check `.agent/CHANGELOG.md` for recent changes  
-**Stuck on something?** → Write in `.agent/SCRATCHPAD.md`
+**Frontend Development:**
+| Document | What It Covers |
+|----------|----------------|
+| **[frontend/FRONTEND.md](./frontend/FRONTEND.md)** | Component architecture, stores, API client, upload flow with debug panel |
+
+**Backend Development:**
+| Document | What It Covers |
+|----------|----------------|
+| **[backend/README.md](./backend/README.md)** | Backend architecture, packages, memory management, DuckDB integration |
+| **[backend/UPLOAD_HANDLING.md](./backend/UPLOAD_HANDLING.md)** | Chunked upload pipeline, compression, streaming decompression |
+| **[backend/STORAGE.md](./backend/STORAGE.md)** | File storage layer, FileInfo, thread safety |
+
+### Documentation Index
+
+```
+AGENTS.md              ← Start here (you are reading this)
+├── CONTEXT.md         ← Session context, quick start
+├── TESTING_CHECKLIST.md← Testing procedures
+├── API.md             ← API endpoints, upload flows
+├── frontend/
+│   └── FRONTEND.md   ← Frontend architecture
+└── backend/
+    ├── README.md      ← Backend overview
+    ├── UPLOAD_HANDLING.md ← Upload pipeline
+    └── STORAGE.md     ← Storage layer
+```
 
 ---
 

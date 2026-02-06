@@ -29,7 +29,7 @@ When starting a session:
 
 ## Project
 
-**PLC Log Visualizer (Web)** — Web port of PySide6 desktop application for industrial PLC log analysis.
+**CIM Visualizer** — Web-based industrial PLC log analysis for semiconductor manufacturing (AMHS).
 
 | Layer | Technology |
 |-------|------------|
@@ -76,14 +76,9 @@ When starting a session:
 
 ## Project Status
 
-**Phase 5 — Multi-File Merge** [DONE]
-- Ctrl+Click or checkboxes to select multiple files
-- Merge with 1s fuzzy deduplication
-- SourceID tracking for merged entries
+**Active Development** — Core features implemented: upload, parsing, log table, waveform visualization, map viewer, multi-file merge.
 
-Next: **Phase 6 — Signal Validation** (Planned)
-- Load validation rules from YAML
-- Sequence, timing, value range validators
+See [TODO.md](.agent/TODO.md) for current tasks and [CHANGELOG.md](.agent/CHANGELOG.md) for recent changes.
 
 ---
 
@@ -98,6 +93,16 @@ Detailed architecture diagrams are in [.agent/architecture/](.agent/architecture
 | [map-dual-log.md](.agent/architecture/map-dual-log.md) | Map Viewer dual log system (active) |
 | [parser-architecture.md](.agent/architecture/parser-architecture.md) | Log format detection and parsing |
 | [state-management.md](.agent/architecture/state-management.md) | Preact Signals store patterns |
+
+## Deep-Dive Documentation
+
+| Document | What It Covers |
+|----------|----------------|
+| **[API.md](./API.md)** | REST API endpoints, upload protocol, WebSocket, compression |
+| **[frontend/FRONTEND.md](./frontend/FRONTEND.md)** | Frontend components, stores, API client |
+| **[backend/README.md](./backend/README.md)** | Backend architecture, packages, DuckDB |
+| **[backend/UPLOAD_HANDLING.md](./backend/UPLOAD_HANDLING.md)** | Chunked upload pipeline, streaming decompression |
+| **[backend/STORAGE.md](./backend/STORAGE.md)** | File storage, chunk assembly, thread safety |
 
 ---
 

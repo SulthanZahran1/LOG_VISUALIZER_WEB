@@ -129,8 +129,9 @@ func (m *Manager) processJob(job *Job) {
 			fmt.Printf("[UploadJob %s] Warning: failed to decompress file %s: %v\n", job.ID[:8], info.ID, err)
 			// Continue with the file as-is
 		} else {
-			// Update size after decompression
+			// Update size after decompression and re-register with store
 			info.Size = job.OriginalSize
+			m.store.RegisterFile(info)
 			fmt.Printf("[UploadJob %s] Successfully decompressed file %s\n", job.ID[:8], info.ID)
 		}
 
@@ -208,10 +209,8 @@ func (m *Manager) decompressFileWithProgress(job *Job, fileID string) error {
 
 			// Update progress every 100ms
 			if time.Since(lastProgressUpdate) > 100*time.Millisecond {
-				// Estimate progress based on compressed bytes read vs total
-				// This is approximate since compression ratio varies
-				currentPos, _ := compressedFile.Seek(0, io.SeekCurrent)
-				progress := float64(currentPos) / float64(compressedSize) * 100
+				// Calculate progress based on decompressed bytes written
+				progress := float64(written) / float64(job.OriginalSize) * 100
 				if progress > 99 {
 					progress = 99
 				}
@@ -230,6 +229,12 @@ func (m *Manager) decompressFileWithProgress(job *Job, fileID string) error {
 	}
 
 	outFile.Close()
+
+	// Validate decompressed size matches expected original size
+	if written != job.OriginalSize {
+		os.Remove(tempPath)
+		return fmt.Errorf("decompressed size mismatch: got %d bytes, expected %d bytes", written, job.OriginalSize)
+	}
 
 	// Replace original with decompressed
 	if err := os.Rename(tempPath, path); err != nil {

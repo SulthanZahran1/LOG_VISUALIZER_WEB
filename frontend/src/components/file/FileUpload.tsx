@@ -10,6 +10,15 @@ interface FileUploadProps {
     maxSize?: number; // in bytes
 }
 
+interface UploadStats {
+    originalSize: number;
+    compressedSize: number;
+    compressionRatio: number;
+    uploadTime: number;
+    algorithm: string;
+    memoryPeak: number;
+}
+
 export function FileUpload({
     onUploadSuccess,
     uploadFn = uploadFile,
@@ -22,6 +31,8 @@ export function FileUpload({
     const error = useSignal<string | null>(null);
     const showPaste = useSignal(false);
     const pasteContent = useSignal('');
+    const showDebug = useSignal(false);
+    const uploadStats = useSignal<UploadStats | null>(null);
 
     const handleFile = async (file: File) => {
         if (file.size > maxSize) {
@@ -32,6 +43,10 @@ export function FileUpload({
         isUploading.value = true;
         uploadProgress.value = 0;
         error.value = null;
+        uploadStats.value = null;
+
+        const startTime = performance.now();
+        const memoryBefore = (performance as any).memory?.usedJSHeapSize || 0;
 
         try {
             // Use WebSocket upload for files > 5MB (single connection, firewall-friendly)
@@ -51,6 +66,27 @@ export function FileUpload({
             } else {
                 info = await uploadFn(file);
             }
+
+            const endTime = performance.now();
+            const uploadTime = endTime - startTime;
+            const memoryAfter = (performance as any).memory?.usedJSHeapSize || 0;
+            const memoryPeak = Math.max(memoryBefore, memoryAfter);
+
+            // Estimate compression based on file info (backend reports compressed size)
+            const originalSize = file.size;
+            const compressedSize = info.size || originalSize; // Backend sets size after decompression
+            const compressionRatio = originalSize > 0 
+                ? ((1 - compressedSize / originalSize) * 100) 
+                : 0;
+
+            uploadStats.value = {
+                originalSize,
+                compressedSize,
+                compressionRatio,
+                uploadTime,
+                algorithm: 'gzip',
+                memoryPeak
+            };
 
             onUploadSuccess(info);
             // Reset state
@@ -213,6 +249,12 @@ export function FileUpload({
                             error.value = null;
                         }}>
                             or paste text content
+                        </div>
+                        <div class="paste-option" style={{ marginTop: '8px', opacity: 0.6 }} onClick={(e) => {
+                            e.stopPropagation();
+                            showDebug.value = !showDebug.value;
+                        }}>
+                            {uploadStats.value ? '📊 Show/Hide Debug Stats' : '📊 Debug Stats (after upload)'}
                         </div>
                     </>
                 )}
@@ -414,7 +456,153 @@ export function FileUpload({
                     from { transform: rotate(0deg); }
                     to { transform: rotate(360deg); }
                 }
+
+                /* Debug Panel Styles */
+                .debug-panel {
+                    width: 100%;
+                    max-width: 480px;
+                    margin-top: var(--spacing-md);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--card-radius);
+                    overflow: hidden;
+                }
+
+                .debug-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: var(--spacing-sm) var(--spacing-md);
+                    background: var(--bg-tertiary);
+                    cursor: pointer;
+                    user-select: none;
+                }
+
+                .debug-header:hover {
+                    background: var(--bg-primary);
+                }
+
+                .debug-title {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                    font-size: 12px;
+                    font-weight: 500;
+                    color: var(--text-secondary);
+                }
+
+                .debug-toggle {
+                    font-size: 10px;
+                    color: var(--text-muted);
+                }
+
+                .debug-content {
+                    padding: var(--spacing-md);
+                    background: var(--bg-secondary);
+                    font-size: 11px;
+                    font-family: monospace;
+                    line-height: 1.6;
+                }
+
+                .debug-row {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 2px 0;
+                }
+
+                .debug-label {
+                    color: var(--text-muted);
+                }
+
+                .debug-value {
+                    color: var(--text-primary);
+                    font-weight: 500;
+                }
+
+                .debug-value.good {
+                    color: var(--accent-success, #10b981);
+                }
+
+                .debug-value.warning {
+                    color: var(--accent-warning, #f59e0b);
+                }
+
+                .debug-separator {
+                    height: 1px;
+                    background: var(--border-color);
+                    margin: var(--spacing-sm) 0;
+                }
+
+                .debug-copy-btn {
+                    width: 100%;
+                    margin-top: var(--spacing-sm);
+                    padding: var(--spacing-xs);
+                    background: var(--bg-primary);
+                    border: 1px solid var(--border-color);
+                    border-radius: 4px;
+                    color: var(--text-secondary);
+                    font-size: 10px;
+                    cursor: pointer;
+                }
+
+                .debug-copy-btn:hover {
+                    background: var(--bg-tertiary);
+                }
             `}</style>
+
+            {uploadStats.value && (
+                <div class="debug-panel">
+                    <div class="debug-header" onClick={() => showDebug.value = !showDebug.value}>
+                        <span class="debug-title">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M12 20V10M18 20V4M6 20v-4"/>
+                            </svg>
+                            Debug Stats
+                        </span>
+                        <span class="debug-toggle">{showDebug.value ? '▼' : '▶'}</span>
+                    </div>
+                    {showDebug.value && (
+                        <div class="debug-content">
+                            <div class="debug-row">
+                                <span class="debug-label">Original Size:</span>
+                                <span class="debug-value">{(uploadStats.value.originalSize / 1024 / 1024).toFixed(2)} MB</span>
+                            </div>
+                            <div class="debug-row">
+                                <span class="debug-label">Compressed Size:</span>
+                                <span class="debug-value">{(uploadStats.value.compressedSize / 1024 / 1024).toFixed(2)} MB</span>
+                            </div>
+                            <div class="debug-row">
+                                <span class="debug-label">Compression Ratio:</span>
+                                <span class={`debug-value ${uploadStats.value.compressionRatio >= 80 ? 'good' : uploadStats.value.compressionRatio >= 60 ? '' : 'warning'}`}>
+                                    {uploadStats.value.compressionRatio.toFixed(1)}%
+                                </span>
+                            </div>
+                            <div class="debug-separator"></div>
+                            <div class="debug-row">
+                                <span class="debug-label">Upload Time:</span>
+                                <span class="debug-value">{uploadStats.value.uploadTime.toFixed(0)} ms</span>
+                            </div>
+                            <div class="debug-row">
+                                <span class="debug-label">Algorithm:</span>
+                                <span class="debug-value">{uploadStats.value.algorithm}</span>
+                            </div>
+                            <div class="debug-row">
+                                <span class="debug-label">Memory Peak:</span>
+                                <span class="debug-value">{(uploadStats.value.memoryPeak / 1024 / 1024).toFixed(0)} MB</span>
+                            </div>
+                            <button 
+                                class="debug-copy-btn"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const text = `Original: ${(uploadStats.value!.originalSize / 1024 / 1024).toFixed(2)} MB → Compressed: ${(uploadStats.value!.compressedSize / 1024 / 1024).toFixed(2)} MB (${uploadStats.value!.compressionRatio.toFixed(1)}% reduction) | ${uploadStats.value!.algorithm} | ${uploadStats.value!.uploadTime.toFixed(0)}ms`;
+                                    navigator.clipboard.writeText(text);
+                                }}
+                            >
+                                📋 Copy Stats
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
