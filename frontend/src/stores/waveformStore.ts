@@ -1,5 +1,5 @@
 import { signal, computed, effect } from '@preact/signals';
-import { getParseChunk, getParseSignals } from '../api/client';
+import { getParseChunk, getParseSignals, getChunkBoundaries, type ChunkBoundaries } from '../api/client';
 import { currentSession, logEntries, clearSession, useServerSide } from './logStore';
 import { selectedSignals, focusedSignal, isSignalSelected, toggleSignal } from './selectionStore';
 import type { LogEntry, TimeRange, SignalType } from '../models/types';
@@ -16,6 +16,9 @@ export const selectionRange = signal<{ start: number, end: number } | null>(null
 
 // Signal Selection - State moved to selectionStore.ts to fix circular dependency
 export const waveformEntries = signal<Record<string, LogEntry[]>>({});
+
+// Boundary values for proper waveform rendering (last value before view, first value after)
+export const waveformBoundaries = signal<ChunkBoundaries>({ before: {}, after: {} });
 
 // Full signal list from backend
 export const allSignals = signal<string[]>([]);
@@ -280,9 +283,18 @@ export async function updateWaveformEntries() {
         const sessionId = session.id;
         const start = range.start;
         const end = range.end;
+        const signals = selectedSignals.value;
 
-        // Fetch entries for the specific range and SPECIFIC signals
-        const entries = await getParseChunk(sessionId, start, end, selectedSignals.value);
+        // Fetch entries and boundaries in parallel for server-side mode
+        const fetchPromises: [Promise<any>, Promise<ChunkBoundaries> | null] = [
+            getParseChunk(sessionId, start, end, signals),
+            isLarge ? getChunkBoundaries(sessionId, start, end, signals) : null
+        ];
+
+        const [entries, boundaries] = await Promise.all([
+            fetchPromises[0],
+            fetchPromises[1] ?? Promise.resolve({ before: {}, after: {} })
+        ]);
 
         // Race Condition Check: If a newer request started, ignore this result
         if (requestId !== activeRequestId) {
@@ -295,7 +307,7 @@ export async function updateWaveformEntries() {
             const key = `${e.deviceId}::${e.signalName}`;
             // If in large mode, we only want entries for SELECTED signals
             // (The backend chunk API returns everything in that window, so we filter locally as well for safety)
-            const isSelected = selectedSignals.value.includes(key);
+            const isSelected = signals.includes(key);
             if (!isSelected) return;
 
             if (!grouped[key]) grouped[key] = [];
@@ -305,6 +317,14 @@ export async function updateWaveformEntries() {
         // In large mode, we replace waveformEntries entirely for the viewport
         // In small mode, we still set it once
         waveformEntries.value = grouped;
+
+        // Update boundaries (used for proper edge rendering in server-side mode)
+        if (isLarge) {
+            waveformBoundaries.value = boundaries;
+        } else {
+            // For small files, we have all data so no boundary tracking needed
+            waveformBoundaries.value = { before: {}, after: {} };
+        }
 
         if (!isLarge) {
             hasFetchedForCurrentSignals = true;

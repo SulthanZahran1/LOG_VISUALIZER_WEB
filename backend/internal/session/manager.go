@@ -153,7 +153,7 @@ func (m *Manager) runParse(sessionID, filePath string) {
 			gcPause := memStats.PauseNs[(memStats.NumGC+255)%256] / 1e6 // Last GC pause in ms
 			fmt.Printf("[Parse %s] Progress: %.1f%% (%d lines) - Memory: %.1f MB (alloc) / %.1f MB (sys), Intern: %d, GC Pause: %dms\n",
 				sessionID[:8], progress, lines, allocMB, sysMB, parser.GetGlobalIntern().Len(), gcPause)
-			
+
 			// Force GC if memory usage is high (>2GB) to prevent OOM
 			if allocMB > 2048 {
 				fmt.Printf("[Parse %s] High memory detected, forcing GC...\n", sessionID[:8])
@@ -542,6 +542,32 @@ func (m *Manager) GetValuesAtTime(id string, ts time.Time, signals []string) ([]
 	}
 
 	return []models.LogEntry{}, true
+}
+
+// GetBoundaryValues returns the last value before startTs and first value after endTs for each signal.
+// This is used by waveform rendering to properly draw signal state continuation.
+func (m *Manager) GetBoundaryValues(id string, startTs, endTs time.Time, signals []string) (*parser.BoundaryValues, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	state, ok := m.sessions[id]
+	if !ok {
+		return nil, false
+	}
+
+	if state.DuckStore != nil {
+		boundaries, err := state.DuckStore.GetBoundaryValues(startTs, endTs, signals)
+		if err != nil {
+			return nil, false
+		}
+		return boundaries, true
+	}
+
+	// Return empty boundaries for legacy in-memory mode
+	return &parser.BoundaryValues{
+		Before: make(map[string]models.LogEntry),
+		After:  make(map[string]models.LogEntry),
+	}, true
 }
 
 // GetSignals returns the full list of signal keys for a session.

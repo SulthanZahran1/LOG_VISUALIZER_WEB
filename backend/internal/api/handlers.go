@@ -390,6 +390,50 @@ func (h *Handler) HandleParseChunk(c echo.Context) error {
 	return c.JSON(http.StatusOK, entries)
 }
 
+// HandleParseChunkBoundaries returns the boundary values (last value before start, first value after end)
+// for waveform rendering to properly show signal state continuation.
+func (h *Handler) HandleParseChunkBoundaries(c echo.Context) error {
+	id := c.Param("sessionId")
+
+	// Parse request body
+	var req struct {
+		Signals []string `json:"signals"`
+		Start   float64  `json:"start"`
+		End     float64  `json:"end"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	startMs := int64(req.Start)
+	endMs := int64(req.End)
+
+	if len(req.Signals) == 0 {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"before": map[string]interface{}{},
+			"after":  map[string]interface{}{},
+		})
+	}
+
+	startTime := time.Now()
+
+	boundaries, ok := h.session.GetBoundaryValues(id, time.UnixMilli(startMs), time.UnixMilli(endMs), req.Signals)
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
+	}
+
+	// Touch session to prevent cleanup
+	h.session.TouchSession(id)
+
+	fmt.Printf("[API] HandleParseChunkBoundaries: session=%s done in %v, before=%d after=%d\n",
+		id[:8], time.Since(startTime), len(boundaries.Before), len(boundaries.After))
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"before": boundaries.Before,
+		"after":  boundaries.After,
+	})
+}
+
 // HandleGetSignals returns the list of all unique signals for a session.
 func (h *Handler) HandleGetSignals(c echo.Context) error {
 	id := c.Param("sessionId")

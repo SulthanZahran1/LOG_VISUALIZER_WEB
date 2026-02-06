@@ -236,6 +236,48 @@ export async function getValuesAtTime(
 }
 
 /**
+ * Boundary values response - contains last entry before viewport start
+ * and first entry after viewport end for proper waveform continuity.
+ */
+export interface ChunkBoundaries {
+    before: Record<string, LogEntry>;
+    after: Record<string, LogEntry>;
+}
+
+/**
+ * Get boundary values for waveform rendering.
+ * Returns the last entry before start and first entry after end for each signal,
+ * allowing waveforms to properly render signal state continuation.
+ */
+export async function getChunkBoundaries(
+    sessionId: string,
+    start: number,
+    end: number,
+    signals: string[]
+): Promise<ChunkBoundaries> {
+    const res = await request<{ before: Record<string, RawLogEntry>, after: Record<string, RawLogEntry> }>(
+        `/parse/${sessionId}/chunk-boundaries`,
+        {
+            method: 'POST',
+            body: JSON.stringify({ signals, start, end }),
+        }
+    );
+
+    // Transform entries
+    const before: Record<string, LogEntry> = {};
+    const after: Record<string, LogEntry> = {};
+
+    for (const [key, entry] of Object.entries(res.before)) {
+        before[key] = transformEntry(entry);
+    }
+    for (const [key, entry] of Object.entries(res.after)) {
+        after[key] = transformEntry(entry);
+    }
+
+    return { before, after };
+}
+
+/**
  * Send a keepalive ping to prevent session cleanup during long viewing sessions.
  * Call this periodically (e.g., every 2 minutes) when user is actively viewing
  * but not making data requests (e.g., paused on waveform view).

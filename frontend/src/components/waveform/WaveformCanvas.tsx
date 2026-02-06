@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import {
     viewRange,
     waveformEntries,
+    waveformBoundaries,
     selectedSignals,
     viewportWidth,
     zoomAt,
@@ -13,6 +14,7 @@ import {
     focusedSignal,
     deviceColors,
     isWaveformLoading,
+    waveformLoadingProgress,
     hoverX,
     hoverRow
 } from '../../stores/waveformStore';
@@ -199,6 +201,9 @@ export function WaveformCanvas() {
         // Draw Time Axis
         drawTimeAxis(ctx, range.start, range.end, pixelsPerMs, width, height);
 
+        // Get boundary values for edge rendering
+        const boundaries = waveformBoundaries.value;
+
         // Draw Signals (only visible rows for performance)
         for (let rowIndex = drawStart; rowIndex <= drawEnd; rowIndex++) {
             const key = selectedSignals.value[rowIndex];
@@ -212,15 +217,26 @@ export function WaveformCanvas() {
             const endIdx = findFirstIndexAtTime(allEntries, range.end);
             const visibleEntries = allEntries.slice(startIdx, endIdx + 1);
 
+            // Get boundary values for this signal (if available)
+            const beforeBoundary = boundaries.before[key];
+
             ctx.save();
             ctx.translate(0, yBase + yPadding);
 
             if (visibleEntries.length > 0) {
                 const firstEntry = visibleEntries[0];
                 if (firstEntry.signalType === 'boolean' || typeof firstEntry.value === 'boolean') {
-                    drawBooleanSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, width);
+                    drawBooleanSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, width, beforeBoundary);
                 } else {
-                    drawStateSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, width, rowIndex);
+                    drawStateSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, width, rowIndex, beforeBoundary);
+                }
+            } else if (beforeBoundary) {
+                // No visible entries but we have a boundary - draw the continuous state
+                const firstEntry = beforeBoundary;
+                if (firstEntry.signalType === 'boolean' || typeof firstEntry.value === 'boolean') {
+                    drawBooleanSignal(ctx, [beforeBoundary], range.start, pixelsPerMs, plotHeight, width, beforeBoundary);
+                } else {
+                    drawStateSignal(ctx, [beforeBoundary], range.start, pixelsPerMs, plotHeight, width, rowIndex, beforeBoundary);
                 }
             }
 
@@ -264,10 +280,10 @@ export function WaveformCanvas() {
                 drawTooltip(ctx, currentHoverX, AXIS_HEIGHT + hoverRowValue * ROW_HEIGHT, signalKey, valueAtTime, width);
             }
         }
-    // Dependencies: all the signals that should trigger a re-render
-    }, [viewportWidth.value, selectedSignals.value.length, viewRange.value?.start, viewRange.value?.end, 
-        zoomLevel.value, waveformEntries.value, selectionRange.value, hoverX.value, hoverRow.value,
-        hoverTime.value, focusedSignal.value, deviceColors.value, sortedBookmarks.value]);
+        // Dependencies: all the signals that should trigger a re-render
+    }, [viewportWidth.value, selectedSignals.value.length, viewRange.value?.start, viewRange.value?.end,
+    zoomLevel.value, waveformEntries.value, selectionRange.value, hoverX.value, hoverRow.value,
+    hoverTime.value, focusedSignal.value, deviceColors.value, sortedBookmarks.value]);
 
     const handleWheel = (e: WheelEvent) => {
         if (e.ctrlKey) {
@@ -481,6 +497,12 @@ export function WaveformCanvas() {
                     <div class="waveform-loading-overlay">
                         <div class="waveform-loading-spinner" />
                         <span class="waveform-loading-text">Loading signal data...</span>
+                        <div class="waveform-loading-progress">
+                            <div
+                                class="waveform-loading-progress-bar"
+                                style={{ width: `${waveformLoadingProgress.value}%` }}
+                            />
+                        </div>
                     </div>
                 )}
             </div>
@@ -520,25 +542,40 @@ export function WaveformCanvas() {
                     top: 0;
                     left: 0;
                     right: 0;
-                    height: 4px;
-                    background: rgba(13, 17, 23, 0.8);
+                    bottom: 0;
+                    background: rgba(13, 17, 23, 0.75);
                     display: flex;
+                    flex-direction: column;
                     align-items: center;
                     justify-content: center;
-                    gap: 8px;
+                    gap: 12px;
                     z-index: 10;
+                    backdrop-filter: blur(2px);
                 }
                 .waveform-loading-spinner {
-                    width: 16px;
-                    height: 16px;
-                    border: 2px solid rgba(77, 182, 226, 0.3);
+                    width: 32px;
+                    height: 32px;
+                    border: 3px solid rgba(77, 182, 226, 0.2);
                     border-top-color: var(--primary-accent);
                     border-radius: 50%;
                     animation: spin 0.8s linear infinite;
                 }
                 .waveform-loading-text {
-                    font-size: 12px;
-                    color: var(--text-secondary);
+                    font-size: 14px;
+                    font-weight: 500;
+                    color: var(--text-primary);
+                }
+                .waveform-loading-progress {
+                    width: 160px;
+                    height: 4px;
+                    background: rgba(255, 255, 255, 0.1);
+                    border-radius: 2px;
+                    overflow: hidden;
+                }
+                .waveform-loading-progress-bar {
+                    height: 100%;
+                    background: var(--primary-accent);
+                    transition: width 0.2s ease;
                 }
                 @keyframes spin {
                     from { transform: rotate(0deg); }
@@ -593,18 +630,37 @@ function drawTimeAxis(ctx: CanvasRenderingContext2D, start: number, end: number,
     ctx.stroke();
 }
 
-function drawBooleanSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], startTime: number, pixelsPerMs: number, height: number, width: number) {
+function drawBooleanSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], startTime: number, pixelsPerMs: number, height: number, width: number, beforeBoundary?: LogEntry) {
     const PADDING = 8;
     const highY = PADDING;
     const lowY = height - PADDING;
 
+    // Prepend boundary entry if it exists and first visible entry is after viewport start
+    const effectiveEntries = [...entries];
+    if (beforeBoundary && entries.length > 0) {
+        const firstX = (getTimestampMs(entries[0]) - startTime) * pixelsPerMs;
+        if (firstX > 0) {
+            // Create a synthetic entry at viewport start with boundary value
+            effectiveEntries.unshift({
+                ...beforeBoundary,
+                timestamp: startTime // Set to viewport start (milliseconds)
+            });
+        }
+    } else if (beforeBoundary && entries.length === 0) {
+        // Only boundary, draw it across the viewport
+        effectiveEntries.push({
+            ...beforeBoundary,
+            timestamp: startTime // milliseconds
+        });
+    }
+
     // Draw high state fill (green glow effect)
     ctx.fillStyle = COLORS.booleanFill;
-    entries.forEach((entry, i) => {
+    effectiveEntries.forEach((entry, i) => {
         const val = entry.value === true || entry.value === "true" || entry.value === 1 || entry.value === "1";
         if (val) {
-            const x_start = (getTimestampMs(entry) - startTime) * pixelsPerMs;
-            const nextEntry = entries[i + 1];
+            const x_start = Math.max(0, (getTimestampMs(entry) - startTime) * pixelsPerMs);
+            const nextEntry = effectiveEntries[i + 1];
             const x_end = nextEntry ? (getTimestampMs(nextEntry) - startTime) * pixelsPerMs : width + 100;
 
             if (x_end > 0 && x_start < width) {
@@ -623,13 +679,14 @@ function drawBooleanSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], s
     let started = false;
     let lastY = lowY;
 
-    entries.forEach((entry) => {
+    effectiveEntries.forEach((entry) => {
         const x = (getTimestampMs(entry) - startTime) * pixelsPerMs;
         const val = entry.value === true || entry.value === "true" || entry.value === 1 || entry.value === "1";
         const y = val ? highY : lowY;
 
         if (!started) {
-            ctx.moveTo(x, y);
+            // Start from x=0 if we have boundary data that starts before viewport
+            ctx.moveTo(Math.max(0, x), y);
             started = true;
         } else {
             ctx.lineTo(x, lastY);
@@ -638,12 +695,12 @@ function drawBooleanSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], s
         lastY = y;
     });
 
-    if (entries.length > 0) {
+    if (effectiveEntries.length > 0) {
         ctx.lineTo(width + 100, lastY);
     }
     ctx.stroke();
 
-    // Draw transition markers (orange dots)
+    // Draw transition markers (orange dots) - only for original entries
     entries.forEach((entry, i) => {
         if (i === 0) return;
         const val = entry.value === true || entry.value === "true" || entry.value === 1 || entry.value === "1";
@@ -662,8 +719,27 @@ function drawBooleanSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], s
     });
 }
 
-function drawStateSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], startTime: number, pixelsPerMs: number, height: number, width: number, _rowIndex: number) {
+function drawStateSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], startTime: number, pixelsPerMs: number, height: number, width: number, _rowIndex: number, beforeBoundary?: LogEntry) {
     ctx.lineWidth = 1;
+
+    // Prepend boundary entry if it exists and first visible entry is after viewport start
+    const effectiveEntries = [...entries];
+    if (beforeBoundary && entries.length > 0) {
+        const firstX = (getTimestampMs(entries[0]) - startTime) * pixelsPerMs;
+        if (firstX > 0) {
+            // Create a synthetic entry at viewport start with boundary value
+            effectiveEntries.unshift({
+                ...beforeBoundary,
+                timestamp: startTime // Set to viewport start
+            });
+        }
+    } else if (beforeBoundary && entries.length === 0) {
+        // Only boundary, draw it across the viewport
+        effectiveEntries.push({
+            ...beforeBoundary,
+            timestamp: startTime
+        });
+    }
 
     // Simple hash function for consistent value->color mapping
     const hashString = (str: string): number => {
@@ -676,10 +752,10 @@ function drawStateSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], sta
         return Math.abs(hash);
     };
 
-    entries.forEach((entry, i) => {
+    effectiveEntries.forEach((entry, i) => {
         const x = (getTimestampMs(entry) - startTime) * pixelsPerMs;
-        const nextX = (i < entries.length - 1)
-            ? (getTimestampMs(entries[i + 1]) - startTime) * pixelsPerMs
+        const nextX = (i < effectiveEntries.length - 1)
+            ? (getTimestampMs(effectiveEntries[i + 1]) - startTime) * pixelsPerMs
             : width + 100;
 
         if (nextX < 0 || x > width) return;

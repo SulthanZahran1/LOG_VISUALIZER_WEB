@@ -28,11 +28,11 @@ type DuckStore struct {
 	minTs      int64
 	maxTs      int64
 	lastError  error // stores the last flush error
-	
+
 	// Cache for total counts by filter to avoid repeated COUNT queries
-	countCache     map[string]int
-	countCacheMu   sync.RWMutex
-	
+	countCache   map[string]int
+	countCacheMu sync.RWMutex
+
 	// Semaphore to limit concurrent queries (prevents memory spikes during rapid scrolling)
 	querySem chan struct{}
 }
@@ -239,6 +239,11 @@ func (ds *DuckStore) Finalize() error {
 		_, err = ds.db.Exec("CREATE INDEX idx_signal ON entries(signal)")
 		if err != nil {
 			fmt.Printf("[DuckStore] Warning: idx_signal creation failed: %v\n", err)
+		}
+		// Composite index for efficient boundary queries (last value before / first value after)
+		_, err = ds.db.Exec("CREATE INDEX idx_signal_ts ON entries(device_id, signal, timestamp)")
+		if err != nil {
+			fmt.Printf("[DuckStore] Warning: idx_signal_ts creation failed: %v\n", err)
 		}
 	}
 
@@ -726,6 +731,112 @@ func (ds *DuckStore) GetValuesAtTime(ts time.Time, signals []string) ([]models.L
 	}
 
 	return entries, rows.Err()
+}
+
+// BoundaryValues holds the last value before and first value after a time window for each signal
+type BoundaryValues struct {
+	Before map[string]models.LogEntry // signal key -> last entry before startTs
+	After  map[string]models.LogEntry // signal key -> first entry after endTs
+}
+
+// GetBoundaryValues returns the last value before startTs and first value after endTs for each signal.
+// This is used by waveform rendering to properly draw signal state continuation.
+func (ds *DuckStore) GetBoundaryValues(startTs, endTs time.Time, signals []string) (*BoundaryValues, error) {
+	// Acquire semaphore to limit concurrent queries
+	ds.querySem <- struct{}{}
+	defer func() { <-ds.querySem }()
+
+	startMs := startTs.UnixMilli()
+	endMs := endTs.UnixMilli()
+
+	result := &BoundaryValues{
+		Before: make(map[string]models.LogEntry),
+		After:  make(map[string]models.LogEntry),
+	}
+
+	if len(signals) == 0 {
+		return result, nil
+	}
+
+	// Build signal filter clause
+	var signalClauses []string
+	var args []interface{}
+	for _, s := range signals {
+		parts := strings.Split(s, "::")
+		if len(parts) == 2 {
+			signalClauses = append(signalClauses, "(device_id = ? AND signal = ?)")
+			args = append(args, parts[0], parts[1])
+		}
+	}
+
+	if len(signalClauses) == 0 {
+		return result, nil
+	}
+
+	signalFilter := "(" + strings.Join(signalClauses, " OR ") + ")"
+
+	// Query for "before" values - last entry before startTs for each signal
+	beforeQuery := `
+		WITH ranked AS (
+			SELECT 
+				timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str,
+				ROW_NUMBER() OVER(PARTITION BY device_id, signal ORDER BY timestamp DESC) as rn
+			FROM entries
+			WHERE timestamp < ? AND ` + signalFilter + `
+		)
+		SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
+		FROM ranked WHERE rn = 1
+	`
+	beforeArgs := append([]interface{}{startMs}, args...)
+
+	rows, err := ds.db.Query(beforeQuery, beforeArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("before query failed: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		entry, err := scanEntryRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		key := entry.DeviceID + "::" + entry.SignalName
+		result.Before[key] = entry
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Query for "after" values - first entry after endTs for each signal
+	afterQuery := `
+		WITH ranked AS (
+			SELECT 
+				timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str,
+				ROW_NUMBER() OVER(PARTITION BY device_id, signal ORDER BY timestamp ASC) as rn
+			FROM entries
+			WHERE timestamp > ? AND ` + signalFilter + `
+		)
+		SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
+		FROM ranked WHERE rn = 1
+	`
+	afterArgs := append([]interface{}{endMs}, args...)
+
+	rows2, err := ds.db.Query(afterQuery, afterArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("after query failed: %w", err)
+	}
+	defer rows2.Close()
+
+	for rows2.Next() {
+		entry, err := scanEntryRows(rows2)
+		if err != nil {
+			return nil, err
+		}
+		key := entry.DeviceID + "::" + entry.SignalName
+		result.After[key] = entry
+	}
+
+	return result, rows2.Err()
 }
 
 // GetSignals returns all unique signal keys

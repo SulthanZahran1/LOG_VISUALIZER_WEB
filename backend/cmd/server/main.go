@@ -24,7 +24,7 @@ func main() {
 
 	// Initialize session manager (uses DUCKDB_TEMP_DIR env var for temp storage)
 	sessionMgr := session.NewManager()
-	
+
 	// Start background session cleanup (every 5 minutes)
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
@@ -62,14 +62,14 @@ func main() {
 				path == "/api/health"
 		},
 	}))
-	
+
 	// Recovery with custom error handling
 	e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
 		StackSize:         1024 * 4, // 4KB
 		DisablePrintStack: false,
 		LogLevel:          0, // ERROR level
 	}))
-	
+
 	// Timeout middleware - prevents long-running queries from crashing the server
 	// SSE streams and uploads are excluded from timeout
 	// Note: /entries endpoint is also excluded for large file queries
@@ -85,7 +85,7 @@ func main() {
 		},
 		ErrorMessage: "Request timeout - query took too long",
 	}))
-	
+
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5, // Balanced compression/speed
 		Skipper: func(c echo.Context) bool {
@@ -130,6 +130,7 @@ func main() {
 	apiGroup.GET("/parse/:sessionId/entries/msgpack", h.HandleParseEntriesMsgpack)
 	apiGroup.GET("/parse/:sessionId/stream", h.HandleParseStream)
 	apiGroup.POST("/parse/:sessionId/chunk", h.HandleParseChunk)
+	apiGroup.POST("/parse/:sessionId/chunk-boundaries", h.HandleParseChunkBoundaries)
 	apiGroup.GET("/parse/:sessionId/signals", h.HandleGetSignals)
 	apiGroup.GET("/parse/:sessionId/categories", h.HandleGetCategories)
 	apiGroup.GET("/parse/:sessionId/at-time", h.HandleGetValuesAtTime)
@@ -163,7 +164,7 @@ func main() {
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
-	
+
 	fmt.Println("Server starting on :8089")
 	e.Logger.Fatal(e.StartServer(s))
 }
