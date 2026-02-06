@@ -703,7 +703,8 @@ effect(() => {
     const time = playbackTime.value;
     if (time === null) return;
     if (!syncFromMapFn || !isSyncEnabledFn) return;
-    if (!isSyncEnabledFn()) return;
+    const syncEnabled = isSyncEnabledFn ? isSyncEnabledFn() : false;
+    if (!syncEnabled) return;
     if (time === lastSyncedTime) return; // Avoid echo
 
     lastSyncedTime = time;

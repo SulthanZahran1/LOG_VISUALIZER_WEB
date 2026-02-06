@@ -290,7 +290,33 @@ export function jumpToPrevBookmark(): void {
 
 /** Toggle sync mode */
 export function toggleSync(): void {
-    isSyncEnabled.value = !isSyncEnabled.value;
+    const newValue = !isSyncEnabled.value;
+    isSyncEnabled.value = newValue;
+    
+    // Perform initial sync when enabling
+    if (newValue) {
+        // Sync from current view to other views
+        const currentView = activeTab.value;
+        const currentTime = getCurrentTime();
+        
+        if (currentView === 'waveform' || currentView === 'map-viewer') {
+            // Set sync source to prevent loops during initial sync
+            syncSource = currentView === 'waveform' ? 'waveform' : 'map';
+            
+            // Sync to both views
+            if (playbackStartTime.value !== null && playbackEndTime.value !== null) {
+                playbackTime.value = Math.max(
+                    playbackStartTime.value,
+                    Math.min(currentTime, playbackEndTime.value)
+                );
+            }
+            waveformJumpToTime(currentTime);
+            syncTime.value = currentTime;
+            
+            // Clear sync source after a short delay
+            setTimeout(() => { syncSource = null; }, 50);
+        }
+    }
 }
 
 /** Sync waveform time to map */
