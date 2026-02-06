@@ -217,11 +217,6 @@ export function SignalSidebar() {
                     >.*</button>
                 </div>
                 <div class="filter-actions-bar">
-                    <button class="action-btn" onClick={() => {
-                        const all: string[] = [];
-                        devices.forEach(([d, sigs]) => sigs.forEach(s => all.push(`${d}::${s}`)));
-                        selectedSignals.value = all;
-                    }} title="Select All Signals">All</button>
                     <button class="action-btn" onClick={() => selectedSignals.value = []} title="Deselect All Signals">None</button>
                     <select
                         class="type-select"
