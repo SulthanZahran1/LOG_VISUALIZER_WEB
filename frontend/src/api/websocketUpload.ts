@@ -290,6 +290,12 @@ class WebSocketUploadClient {
 
     /**
      * Upload a file with chunking over WebSocket
+     * Progress stages:
+     * - 0-5%:   Preparing (compression)
+     * - 5-75%:  Uploading chunks
+     * - 75-85%: Verifying upload (waiting for server confirmation)
+     * - 85-95%: Server processing (assembling, decompressing, saving)
+     * - 95-100%: Finalizing
      */
     async uploadFile(
         file: File,
@@ -297,7 +303,20 @@ class WebSocketUploadClient {
     ): Promise<FileInfo> {
         await this.connect();
 
-        onProgress?.(0, 'Preparing...');
+        const startTime = Date.now();
+        let lastProgressTime = startTime;
+        let currentStage = 'preparing';
+        
+        // Helper to report progress with elapsed time
+        const reportProgress = (progress: number, stage: string, detail?: string) => {
+            currentStage = stage;
+            lastProgressTime = Date.now();
+            const elapsed = Math.round((lastProgressTime - startTime) / 1000);
+            const stageLabel = this.getStageLabel(stage, detail, elapsed);
+            onProgress?.(progress, stageLabel);
+        };
+
+        reportProgress(0, 'preparing', 'Compressing file...');
 
         // Compress file if beneficial
         const compressedBlob = await this.compressFile(file);
@@ -324,7 +343,7 @@ class WebSocketUploadClient {
         const ackMsg = await this.waitForMessage(MsgTypeAck, 10000);
         const uploadId = ackMsg.id!;
 
-        onProgress?.(5, 'Uploading chunks...');
+        reportProgress(5, 'uploading', 'Starting upload...');
 
         // 2. Upload chunks with progress tracking
         const chunks: Blob[] = [];
@@ -334,13 +353,19 @@ class WebSocketUploadClient {
             chunks.push(compressedBlob.slice(start, end));
         }
 
+        // Track server-reported progress
+        let serverChunkProgress = 0;
+        let processingProgress = 0;
+        let processingStage = '';
+
         // Set up progress handler to receive server confirmations
         const progressHandler = this.on(MsgTypeProgress, (msg) => {
             const progress = msg.payload as WSProgressResponse;
             if (progress.uploadId === uploadId) {
-                // Map server progress (0-100 during upload) to our range (5-85%)
-                const clientProgress = Math.round(progress.progress * 0.8) + 5;
-                onProgress?.(clientProgress, progress.message || 'Uploading...');
+                serverChunkProgress = progress.progress;
+                // Map server progress (0-100 during upload) to client range (5-70%)
+                const clientProgress = Math.round(serverChunkProgress * 0.65) + 5;
+                reportProgress(clientProgress, 'uploading', progress.message);
             }
         });
 
@@ -348,14 +373,26 @@ class WebSocketUploadClient {
         const processingHandler = this.on(MsgTypeProcessing, (msg) => {
             const progress = msg.payload as WSProgressResponse;
             if (progress.uploadId === uploadId) {
-                // Processing is 85-95% range
-                const clientProgress = Math.round(progress.progress * 0.1) + 85;
-                onProgress?.(clientProgress, progress.message || 'Processing...');
+                processingProgress = progress.progress;
+                processingStage = progress.stage || 'processing';
+                // Map server processing (0-100) to client range (85-98%)
+                const clientProgress = Math.round(processingProgress * 0.13) + 85;
+                reportProgress(clientProgress, processingStage, progress.message);
             }
         });
 
+        // Heartbeat to detect stuck state
+        const heartbeatInterval = window.setInterval(() => {
+            const elapsed = Date.now() - lastProgressTime;
+            if (elapsed > 5000 && currentStage !== 'complete') {
+                // No progress update for 5 seconds - show waiting message
+                const waitingStage = this.getWaitingMessage(currentStage, Math.round(elapsed / 1000));
+                onProgress?.(Math.min(98, processingProgress > 0 ? 85 + processingProgress * 0.13 : 75), waitingStage);
+            }
+        }, 1000);
+
         try {
-            // Upload chunks with pacing - wait for server acknowledgment periodically
+            // Upload chunks with pacing - send all chunks but throttle slightly
             for (let i = 0; i < totalChunks; i++) {
                 const chunk = chunks[i];
                 const base64Data = await blobToBase64(chunk);
@@ -373,18 +410,20 @@ class WebSocketUploadClient {
                     timestamp: Date.now(),
                 });
 
-                // Update progress based on client sending (not server ack) for smooth UI
-                const clientProgress = Math.round((i + 1) / totalChunks * 80) + 5;
-                onProgress?.(clientProgress, `Uploading chunk ${i + 1}/${totalChunks}...`);
+                // Update progress based on client sending for smooth UI (5-70% range)
+                // This gives immediate feedback, server progress will adjust it
+                const clientProgress = Math.round((i + 1) / totalChunks * 65) + 5;
+                reportProgress(clientProgress, 'uploading', `Uploading chunk ${i + 1}/${totalChunks}...`);
 
-                // Every 5 chunks, give the server time to process and send progress updates
-                // This prevents overwhelming the connection and keeps progress updates flowing
-                if ((i + 1) % 5 === 0 && i < totalChunks - 1) {
-                    await sleep(100); // 100ms delay to let server catch up
+                // Small delay every few chunks to prevent overwhelming the connection
+                // but keep UI responsive
+                if ((i + 1) % 10 === 0 && i < totalChunks - 1) {
+                    await sleep(10); // Minimal delay, 10ms
                 }
             }
 
-            onProgress?.(90, 'Processing...');
+            // All chunks sent - waiting for server to verify
+            reportProgress(75, 'verifying', 'All chunks sent, waiting for server...');
 
             // 3. Complete upload
             const completePayload: UploadCompletePayload = {
@@ -402,23 +441,80 @@ class WebSocketUploadClient {
                 timestamp: Date.now(),
             });
 
+            // Server is now processing - progress updates come via processingHandler
+            reportProgress(85, 'processing', 'Server is processing file...');
+
             // Wait for completion or error
             const result = await Promise.race([
-                this.waitForMessage(MsgTypeComplete, 180000), // 3 min for large file processing
-                this.waitForMessage(MsgTypeError, 180000).then(msg => {
+                this.waitForMessage(MsgTypeComplete, 300000), // 5 min for large file processing
+                this.waitForMessage(MsgTypeError, 300000).then(msg => {
                     const error = msg.payload as WSErrorResponse;
                     throw new Error(error.message);
                 }),
             ]);
 
-            onProgress?.(100, 'Complete!');
+            reportProgress(100, 'complete', 'Upload complete!');
 
             const response = result.payload as WSCompleteResponse;
             return response.fileInfo!;
         } finally {
-            // Clean up handlers
+            clearInterval(heartbeatInterval);
             progressHandler();
             processingHandler();
+        }
+    }
+
+    /**
+     * Get human-readable stage label with elapsed time
+     */
+    private getStageLabel(stage: string, detail?: string, elapsed?: number): string {
+        const timeStr = elapsed && elapsed > 0 ? ` (${elapsed}s)` : '';
+        
+        switch (stage) {
+            case 'preparing':
+                return `Preparing${timeStr}`;
+            case 'uploading':
+                return detail || `Uploading${timeStr}`;
+            case 'verifying':
+                return detail || `Verifying upload${timeStr}`;
+            case 'assembling':
+                return detail || `Assembling chunks${timeStr}`;
+            case 'decompressing':
+                return detail || `Decompressing${timeStr}`;
+            case 'saving':
+                return detail || `Saving to storage${timeStr}`;
+            case 'processing':
+                return detail || `Processing${timeStr}`;
+            case 'complete':
+                return 'Complete!';
+            default:
+                return detail || `${stage}${timeStr}`;
+        }
+    }
+
+    /**
+     * Get waiting message when progress is stalled
+     */
+    private getWaitingMessage(stage: string, elapsedSeconds: number): string {
+        const minutes = Math.floor(elapsedSeconds / 60);
+        const seconds = elapsedSeconds % 60;
+        const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+        
+        switch (stage) {
+            case 'uploading':
+                return `Waiting for server acknowledgment... (${timeStr})`;
+            case 'verifying':
+                return `Verifying upload integrity... (${timeStr})`;
+            case 'assembling':
+                return `Assembling file chunks on server... (${timeStr})`;
+            case 'decompressing':
+                return `Decompressing on server... (${timeStr})`;
+            case 'saving':
+                return `Saving to storage... (${timeStr})`;
+            case 'processing':
+                return `Server is working... (${timeStr})`;
+            default:
+                return `Processing... (${timeStr})`;
         }
     }
 

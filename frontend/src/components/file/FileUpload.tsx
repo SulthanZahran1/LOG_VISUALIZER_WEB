@@ -61,7 +61,15 @@ export function FileUpload({
                     info = await uploadFileWebSocket(file, (p, stage) => {
                         console.log('[Upload] Progress:', p, 'Stage:', stage);
                         uploadProgress.value = p;
-                        if (stage) uploadStage.value = stage;
+                        if (stage) {
+                            // Extract time from stage if present (format: "Stage (Xs)")
+                            const match = stage.match(/^(.*)\s*\((\d+[ms\s]+)\)$/);
+                            if (match) {
+                                uploadStage.value = match[1].trim();
+                            } else {
+                                uploadStage.value = stage;
+                            }
+                        }
                     });
                 } catch (wsErr) {
                     // Fall back to HTTP if WebSocket fails
@@ -219,11 +227,9 @@ export function FileUpload({
             <div class="drop-zone-content">
                 {isUploading.value ? (
                     <>
-                        <div class={`upload-spinner ${uploadProgress.value >= 85 ? 'processing' : ''}`}></div>
+                        <div class={`upload-spinner ${uploadProgress.value >= 75 ? 'processing' : ''}`}></div>
                         <p class="drop-text">
-                            {uploadProgress.value >= 85
-                                ? (uploadStage.value || 'Processing on server...')
-                                : (uploadStage.value || 'Uploading...')}
+                            {uploadStage.value || 'Uploading...'}
                         </p>
                         <p class="drop-hint" style={{ marginTop: '8px', fontSize: '16px', fontWeight: 500 }}>
                             {uploadProgress.value > 0 ? `${uploadProgress.value}%` : 'Starting...'}
@@ -231,14 +237,19 @@ export function FileUpload({
                         {uploadProgress.value > 0 && (
                             <div class="progress-bar-container">
                                 <div
-                                    class={`progress-bar ${uploadProgress.value >= 85 ? 'processing' : ''}`}
+                                    class={`progress-bar ${uploadProgress.value >= 75 ? 'processing' : ''}`}
                                     style={{ width: `${Math.min(uploadProgress.value, 100)}%` }}
                                 ></div>
                             </div>
                         )}
-                        {uploadProgress.value >= 85 && (
+                        {/* Show detailed stage description */}
+                        {uploadProgress.value >= 75 && uploadProgress.value < 100 && (
                             <p class="processing-hint">
-                                Server is processing your file...
+                                {uploadProgress.value >= 85 && uploadProgress.value < 95
+                                    ? 'Server is assembling and processing your file...'
+                                    : uploadProgress.value >= 95
+                                    ? 'Finalizing...'
+                                    : 'Waiting for server acknowledgment...'}
                             </p>
                         )}
                     </>
@@ -411,13 +422,20 @@ export function FileUpload({
                 }
 
                 .progress-bar.processing {
-                    background: #f0ad4e;
-                    animation: pulse-bar 1s ease-in-out infinite;
+                    background: linear-gradient(90deg, #f0ad4e 0%, #ffc107 50%, #f0ad4e 100%);
+                    background-size: 200% 100%;
+                    animation: pulse-bar 1s ease-in-out infinite, shimmer 2s linear infinite;
+                }
+
+                @keyframes shimmer {
+                    0% { background-position: 200% 0; }
+                    100% { background-position: -200% 0; }
                 }
 
                 .upload-spinner.processing {
                     border-color: rgba(240, 173, 78, 0.3);
                     border-top-color: #f0ad4e;
+                    border-right-color: rgba(240, 173, 78, 0.6);
                     animation: spin 0.8s linear infinite;
                 }
 
@@ -427,6 +445,8 @@ export function FileUpload({
                     margin-top: var(--spacing-md);
                     font-weight: 500;
                     animation: fade-pulse 2s ease-in-out infinite;
+                    text-align: center;
+                    max-width: 90%;
                 }
 
                 @keyframes pulse-bar {

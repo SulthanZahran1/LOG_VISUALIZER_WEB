@@ -12,6 +12,20 @@
 - WaveformCanvas scroll behavior: `overflow-y: auto` with custom scrollbar styling
 - Row background and signal rendering now calculate visible range from scroll position
 
+### Fixed
+- **WebSocket Upload Progress Clarity**: Revamped progress reporting for large file uploads
+  - Backend: Granular progress updates during chunk assembly (every 10% or 50 chunks)
+  - Backend: Progress updates during gzip decompression
+  - Frontend: Clearer progress stages with elapsed time (Preparing → Uploading → Verifying → Processing → Complete)
+  - Frontend: Heartbeat detection shows "Waiting for server..." with elapsed time when stalled
+  - Frontend: Better visual distinction between upload phase (blue) and processing phase (orange/animated)
+  - Extended timeout from 3 to 5 minutes for very large files
+
+### Technical
+- New `sendProcessingProgress()` helper in backend WebSocket handler
+- New `streamDecompressGzipWithProgress()` for streaming decompression with progress
+- Frontend progress mapping: Uploading (5-75%), Verifying (75-85%), Processing (85-98%), Finalizing (98-100%)
+
 ## [0.7.0] - 2026-02-03
 
 ### Added

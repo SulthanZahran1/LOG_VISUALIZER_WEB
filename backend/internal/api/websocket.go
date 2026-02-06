@@ -290,6 +290,7 @@ func (wsh *WebSocketHandler) handleUploadChunk(ws *websocket.Conn, msg WSMessage
 
 // handleUploadComplete assembles chunks from disk and processes the file
 // Uses streaming to minimize memory usage for large files
+// Sends granular progress updates during assembly, decompression, and saving
 func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMessage) {
 	var payload UploadCompletePayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
@@ -313,19 +314,8 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 		return
 	}
 
-	// Send processing status
-	wsh.sendMessage(ws, WSMessage{
-		Type:      MsgTypeProcessing,
-		ID:        payload.UploadID,
-		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustJSON(WSProgressResponse{
-			Type:     MsgTypeProcessing,
-			UploadID: payload.UploadID,
-			Progress: 50,
-			Stage:    "assembling",
-			Message:  "Assembling file chunks...",
-		}),
-	})
+	// Send initial processing status
+	wsh.sendProcessingProgress(ws, payload.UploadID, 0, "assembling", "Starting assembly...")
 
 	// Create assembled file path
 	assembledPath := filepath.Join(session.TempDir, "assembled")
@@ -335,6 +325,15 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 	if err != nil {
 		wsh.sendError(ws, "Failed to create assembled file: "+err.Error(), "WRITE_ERROR")
 		return
+	}
+	
+	// Progress reporting interval (report every ~10% or every 50 chunks, whichever is smaller)
+	reportInterval := session.TotalChunks / 10
+	if reportInterval < 1 {
+		reportInterval = 1
+	}
+	if reportInterval > 50 {
+		reportInterval = 50
 	}
 	
 	for i := 0; i < session.TotalChunks; i++ {
@@ -350,6 +349,13 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 			wsh.sendError(ws, fmt.Sprintf("Failed to write chunk %d: %v", i, err), "WRITE_ERROR")
 			return
 		}
+		
+		// Send progress update at intervals
+		if (i+1)%reportInterval == 0 || i == session.TotalChunks-1 {
+			progress := float64(i+1) / float64(session.TotalChunks) * 100
+			wsh.sendProcessingProgress(ws, payload.UploadID, progress, "assembling", 
+				fmt.Sprintf("Assembling chunk %d/%d...", i+1, session.TotalChunks))
+		}
 	}
 	assembledFile.Close()
 
@@ -357,21 +363,10 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 
 	// Decompress if needed (streaming)
 	if payload.Encoding == "gzip" || session.Encoding == "gzip" {
-		wsh.sendMessage(ws, WSMessage{
-			Type:      MsgTypeProcessing,
-			ID:        payload.UploadID,
-			Timestamp: time.Now().UnixMilli(),
-			Payload:   mustJSON(WSProgressResponse{
-				Type:     MsgTypeProcessing,
-				UploadID: payload.UploadID,
-				Progress: 75,
-				Stage:    "decompressing",
-				Message:  "Decompressing file...",
-			}),
-		})
+		wsh.sendProcessingProgress(ws, payload.UploadID, 0, "decompressing", "Starting decompression...")
 
 		decompressedPath := filepath.Join(session.TempDir, "decompressed")
-		if err := wsh.streamDecompressGzip(assembledPath, decompressedPath); err != nil {
+		if err := wsh.streamDecompressGzipWithProgress(ws, payload.UploadID, assembledPath, decompressedPath); err != nil {
 			fmt.Printf("[WebSocket] Decompression failed, using as-is: %v\n", err)
 			finalPath = assembledPath
 		} else {
@@ -380,6 +375,9 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 	} else {
 		finalPath = assembledPath
 	}
+
+	// Send saving progress
+	wsh.sendProcessingProgress(ws, payload.UploadID, 0, "saving", "Saving to storage...")
 
 	// Save file using storage manager (streaming copy)
 	info, err := wsh.saveFileToStorage(payload.FileName, finalPath)
@@ -409,6 +407,22 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 	})
 
 	fmt.Printf("[WebSocket] Upload complete: %s (%d bytes)\n", info.ID, info.Size)
+}
+
+// sendProcessingProgress sends a processing progress update to the client
+func (wsh *WebSocketHandler) sendProcessingProgress(ws *websocket.Conn, uploadID string, progress float64, stage, message string) {
+	wsh.sendMessage(ws, WSMessage{
+		Type:      MsgTypeProcessing,
+		ID:        uploadID,
+		Timestamp: time.Now().UnixMilli(),
+		Payload:   mustJSON(WSProgressResponse{
+			Type:     MsgTypeProcessing,
+			UploadID: uploadID,
+			Progress: progress,
+			Stage:    stage,
+			Message:  message,
+		}),
+	})
 }
 
 // handleMapUpload handles single-message map XML upload
@@ -687,6 +701,72 @@ func (wsh *WebSocketHandler) streamDecompressGzip(srcPath, dstPath string) error
 	buf := make([]byte, 256*1024) // 256KB buffer for efficient streaming
 	_, err = io.CopyBuffer(dstFile, reader, buf)
 	return err
+}
+
+// streamDecompressGzipWithProgress decompresses with WebSocket progress updates
+func (wsh *WebSocketHandler) streamDecompressGzipWithProgress(ws *websocket.Conn, uploadID, srcPath, dstPath string) error {
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	// Get source size for progress calculation
+	srcInfo, err := srcFile.Stat()
+	if err != nil {
+		return err
+	}
+	srcSize := srcInfo.Size()
+
+	reader, err := gzip.NewReader(srcFile)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	dstFile, err := os.Create(dstPath)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	buf := make([]byte, 256*1024) // 256KB buffer
+	var written int64
+	var lastProgress float64 = -1
+	
+	for {
+		n, err := reader.Read(buf)
+		if n > 0 {
+			if _, werr := dstFile.Write(buf[:n]); werr != nil {
+				return werr
+			}
+			written += int64(n)
+			
+			// Report progress based on compressed bytes read (approximation)
+			// Since gzip compression ratio varies, we use a smoothed progress
+			progress := float64(written) / float64(srcSize*3) * 100 // Assume ~3:1 ratio
+			if progress > 99 {
+				progress = 99
+			}
+			
+			// Send progress update every 5% change
+			if progress - lastProgress >= 5 {
+				wsh.sendProcessingProgress(ws, uploadID, progress, "decompressing", 
+					fmt.Sprintf("Decompressing... %d MB processed", written/1024/1024))
+				lastProgress = progress
+			}
+		}
+		if err != nil {
+			if err.Error() == "EOF" {
+				break
+			}
+			return err
+		}
+	}
+	
+	// Send final progress
+	wsh.sendProcessingProgress(ws, uploadID, 100, "decompressing", "Decompression complete")
+	return nil
 }
 
 // saveFileToStorage saves a file from disk to the storage manager
