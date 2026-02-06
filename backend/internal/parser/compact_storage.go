@@ -11,12 +11,17 @@ import (
 type CompactLogStore struct {
 	intern *StringIntern
 	
-	entryCount  int
-	timestamps  []int64
-	deviceIDs   []string // Interned string references (8 bytes each, pointing to shared pool)
-	signalNames []string // Interned string references
-	categories  []string // Interned string references (empty string for none)
-	values      []Value  // Unified value storage
+	entryCount   int
+	timestamps   []int64
+	deviceIDs    []string // Interned string references (8 bytes each, pointing to shared pool)
+	signalNames  []string // Interned string references
+	categories   []string // Interned string references (empty string for none)
+	values       []Value  // Unified value storage
+	
+	// Signal type resolution: maps "device::signal" to resolved type
+	// This is populated by ResolveSignalTypes() to upgrade boolean signals
+	// that have non-0/1 values to integer type
+	signalTypes map[string]models.SignalType
 }
 
 // Value stores typed values efficiently using existing ValueType constants
@@ -103,6 +108,37 @@ func (cs *CompactLogStore) GetEntry(i int) models.LogEntry {
 		Category:   cs.categories[i],
 	}
 	
+	// Check if we have a resolved signal type (after ResolveSignalTypes() is called)
+	signalKey := cs.deviceIDs[i] + "::" + cs.signalNames[i]
+	if resolvedType, ok := cs.signalTypes[signalKey]; ok {
+		// Use resolved type - convert bool values to 0/1 for integer signals
+		switch resolvedType {
+		case models.SignalTypeBoolean:
+			if val.Type == ValueTypeBool {
+				entry.Value = val.Bool
+			} else if val.Type == ValueTypeInt {
+				entry.Value = val.Int != 0
+			}
+			entry.SignalType = models.SignalTypeBoolean
+		case models.SignalTypeInteger:
+			if val.Type == ValueTypeBool {
+				// Convert bool to 0/1 for integer signals
+				if val.Bool {
+					entry.Value = 1
+				} else {
+					entry.Value = 0
+				}
+			} else if val.Type == ValueTypeInt {
+				entry.Value = int(val.Int)
+			}
+			entry.SignalType = models.SignalTypeInteger
+		default:
+			// Fall through to value-based type
+		}
+		return entry
+	}
+	
+	// Default: use value-based type detection
 	switch val.Type {
 	case ValueTypeBool:
 		entry.Value = val.Bool
@@ -119,6 +155,45 @@ func (cs *CompactLogStore) GetEntry(i int) models.LogEntry {
 	}
 	
 	return entry
+}
+
+// ResolveSignalTypes scans all values and determines per-signal types.
+// If a signal has any non-0/1 integer values, it's upgraded to integer type.
+// This should be called after all entries are added.
+func (cs *CompactLogStore) ResolveSignalTypes() {
+	cs.signalTypes = make(map[string]models.SignalType, len(cs.deviceIDs))
+	
+	// First pass: determine if each signal needs integer type
+	for i := 0; i < cs.entryCount; i++ {
+		signalKey := cs.deviceIDs[i] + "::" + cs.signalNames[i]
+		val := cs.values[i]
+		
+		// If we already determined this signal is integer, skip
+		if cs.signalTypes[signalKey] == models.SignalTypeInteger {
+			continue
+		}
+		
+		switch val.Type {
+		case ValueTypeInt:
+			// Non-0/1 integers force integer type
+			if val.Int != 0 && val.Int != 1 {
+				cs.signalTypes[signalKey] = models.SignalTypeInteger
+			} else {
+				// 0/1 could be boolean or integer - mark as tentative boolean
+				if cs.signalTypes[signalKey] == "" {
+					cs.signalTypes[signalKey] = models.SignalTypeBoolean
+				}
+			}
+		case ValueTypeBool:
+			// Boolean values - only set if not already set to integer
+			if cs.signalTypes[signalKey] == "" {
+				cs.signalTypes[signalKey] = models.SignalTypeBoolean
+			}
+		default:
+			// Strings and floats stay as string type
+			cs.signalTypes[signalKey] = models.SignalTypeString
+		}
+	}
 }
 
 // Len returns the number of entries

@@ -130,6 +130,9 @@ func (p *PLCDebugParser) ParseWithProgress(filePath string, onProgress ProgressC
 		onProgress(lineNum, bytesRead, totalBytes)
 	}
 
+	// Resolve signal types: upgrade boolean signals to integer if they have non-0/1 values
+	store.ResolveSignalTypes()
+
 	// Convert compact storage to ParsedLog for API compatibility
 	parsed := store.ToParsedLog()
 
