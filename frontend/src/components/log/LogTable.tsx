@@ -31,7 +31,7 @@ import './LogTable.css';
 
 const ROW_HEIGHT = 28;
 const BUFFER = 15; // Increased buffer for smoother scrolling
-const SCROLL_THROTTLE_MS = 16; // ~60fps
+const SCROLL_DEBOUNCE_MS = 500; // Debounce scroll re-renders for performance
 const SERVER_PAGE_SIZE = 200; // Larger pages = fewer requests
 
 /**
@@ -188,7 +188,6 @@ export function LogTable() {
 
     // Use a ref for scroll position to avoid signal update overhead during scroll
     const scrollTopRef = useRef(0);
-    const lastScrollTime = useRef(0);
     const scrollTimeoutRef = useRef<number | null>(null);
     const isScrollingRef = useRef(false);
     
@@ -219,24 +218,16 @@ export function LogTable() {
 
     // Separate ref for fetch debouncing
     const fetchTimeoutRef = useRef<number | null>(null);
+    const scrollDebounceRef = useRef<number | null>(null);
     
-    // Optimized scroll handler with throttling and RAF
+    // Optimized scroll handler with debouncing
     const onScroll = useCallback((e: Event) => {
         const scrollTop = (e.target as HTMLDivElement).scrollTop;
         scrollTopRef.current = scrollTop;
         
-        const now = performance.now();
-        const elapsed = now - lastScrollTime.current;
-        
-        // Throttle scroll signal updates to ~60fps
-        if (elapsed >= SCROLL_THROTTLE_MS) {
-            lastScrollTime.current = now;
-            scrollSignal.value = scrollTop;
-        }
-        
         // Clear existing timeouts
-        if (scrollTimeoutRef.current) {
-            window.clearTimeout(scrollTimeoutRef.current);
+        if (scrollDebounceRef.current) {
+            window.clearTimeout(scrollDebounceRef.current);
         }
         if (fetchTimeoutRef.current) {
             window.clearTimeout(fetchTimeoutRef.current);
@@ -245,11 +236,11 @@ export function LogTable() {
         // Mark as actively scrolling
         isScrollingRef.current = true;
         
-        // Set scroll end detection
-        scrollTimeoutRef.current = window.setTimeout(() => {
+        // Debounce scroll signal updates (500ms)
+        scrollDebounceRef.current = window.setTimeout(() => {
             isScrollingRef.current = false;
-            scrollSignal.value = scrollTopRef.current; // Final update
-        }, 150);
+            scrollSignal.value = scrollTopRef.current;
+        }, SCROLL_DEBOUNCE_MS)
 
         // Server-side: Debounced page fetching
         if (useServerSide.value) {
@@ -287,6 +278,9 @@ export function LogTable() {
             }
             if (fetchTimeoutRef.current) {
                 window.clearTimeout(fetchTimeoutRef.current);
+            }
+            if (scrollDebounceRef.current) {
+                window.clearTimeout(scrollDebounceRef.current);
             }
         };
     }, []);
