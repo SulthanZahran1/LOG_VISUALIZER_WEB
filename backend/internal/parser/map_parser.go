@@ -36,6 +36,14 @@ type ObjectXMLRoot struct {
 	Objects []ObjectElement `xml:"Object"`
 }
 
+// LayoutDesignerRoot supports LayoutDesignerControl as root (.NET WinForms layout files)
+type LayoutDesignerRoot struct {
+	XMLName xml.Name        `xml:"Object"`
+	Type    string          `xml:"type,attr"`
+	Name    string          `xml:"name,attr"`
+	Objects []ObjectElement `xml:"Object"`
+}
+
 type ObjectElement struct {
 	Name          string `xml:"name,attr"`
 	NameUpper     string `xml:"Name,attr"`
@@ -266,8 +274,15 @@ func ParseMapXML(filePath string) (*models.MapLayout, error) {
 				if errObj := xml.Unmarshal(data, &rootObj); errObj == nil && len(rootObj.Objects) > 0 {
 					raw.Version = rootObj.Version
 					raw.Objects = rootObj.Objects
-				} else if err != nil {
-					return nil, err
+				} else {
+					// Try LayoutDesignerControl root (common in .NET WinForms layouts)
+					var layoutRoot LayoutDesignerRoot
+					if errLayout := xml.Unmarshal(data, &layoutRoot); errLayout == nil && len(layoutRoot.Objects) > 0 {
+						raw.Version = "1.0"
+						raw.Objects = layoutRoot.Objects
+					} else if err != nil {
+						return nil, err
+					}
 				}
 			}
 		}
