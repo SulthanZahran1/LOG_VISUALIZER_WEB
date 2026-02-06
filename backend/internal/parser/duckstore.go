@@ -53,8 +53,8 @@ func NewDuckStoreAtPath(dbPath string) (*DuckStore, error) {
 	connector, err := duckdb.NewConnector(dbPath, func(execer driver.ExecerContext) error {
 		// Set memory limit and other pragmas
 		pragmas := []string{
-			"PRAGMA memory_limit='512MB'",
-			"PRAGMA threads=2",
+			"PRAGMA memory_limit='1GB'",
+			"PRAGMA threads=4",
 			"PRAGMA enable_progress_bar=false",
 		}
 		for _, pragma := range pragmas {
@@ -125,8 +125,8 @@ func OpenDuckStoreReadOnly(dbPath string) (*DuckStore, error) {
 	connector, err := duckdb.NewConnector(dbPath, func(execer driver.ExecerContext) error {
 		// Set pragmas optimized for read-only queries
 		pragmas := []string{
-			"PRAGMA memory_limit='512MB'",
-			"PRAGMA threads=2",
+			"PRAGMA memory_limit='1GB'",
+			"PRAGMA threads=4",
 			"PRAGMA enable_progress_bar=false",
 		}
 		for _, pragma := range pragmas {
