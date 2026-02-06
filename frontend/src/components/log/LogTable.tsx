@@ -11,7 +11,6 @@ import {
     searchRegex,
     searchCaseSensitive,
     showChangedOnly,
-    signalTypeFilter,
     totalEntries,
     fetchEntries,
     useServerSide,
@@ -31,7 +30,6 @@ import './LogTable.css';
 
 const ROW_HEIGHT = 28;
 const BUFFER = 15; // Increased buffer for smoother scrolling
-const SCROLL_DEBOUNCE_MS = 500; // Debounce scroll re-renders for performance
 const SERVER_PAGE_SIZE = 200; // Larger pages = fewer requests
 
 /**
@@ -40,6 +38,14 @@ const SERVER_PAGE_SIZE = 200; // Larger pages = fewer requests
 function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
     // Access signals reactively - re-renders when they change
     const categories = availableCategories.value;
+    const [searchQuery, setSearchQuery] = useState('');
+
+    // Filter categories based on search query
+    const filteredCategories = searchQuery.trim() === ''
+        ? categories
+        : categories.filter(cat => 
+            (cat || '(Uncategorized)').toLowerCase().includes(searchQuery.toLowerCase())
+        );
 
     const handleToggle = (cat: string) => {
         const currentFilter = categoryFilter.value;
@@ -86,11 +92,22 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
                     <button className="popover-btn" onClick={handleClearAll}>Clear</button>
                 </div>
             </div>
+            <div className="popover-search">
+                <span className="popover-search-icon"><SearchIcon size={12} /></span>
+                <input
+                    type="text"
+                    placeholder="Search categories..."
+                    value={searchQuery}
+                    onInput={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
+                />
+            </div>
             <div className="popover-list">
                 {categories.length === 0 ? (
                     <div className="popover-empty">No categories available</div>
+                ) : filteredCategories.length === 0 ? (
+                    <div className="popover-empty">No matching categories</div>
                 ) : (
-                    categories.map(cat => (
+                    filteredCategories.map(cat => (
                         <label key={cat || '__uncategorized__'} className="filter-item">
                             <input
                                 type="checkbox"
@@ -160,7 +177,7 @@ export function LogTable() {
     useEffect(() => {
         const handler = setTimeout(() => {
             searchQuery.value = localQuery;
-        }, 300);
+        }, 100);
         return () => clearTimeout(handler);
     }, [localQuery]);
 
@@ -236,11 +253,8 @@ export function LogTable() {
         // Mark as actively scrolling
         isScrollingRef.current = true;
         
-        // Debounce scroll signal updates (500ms)
-        scrollDebounceRef.current = window.setTimeout(() => {
-            isScrollingRef.current = false;
-            scrollSignal.value = scrollTopRef.current;
-        }, SCROLL_DEBOUNCE_MS)
+        // Update scroll signal immediately for rigid scrolling
+        scrollSignal.value = scrollTop;
 
         // Server-side: Debounced page fetching
         if (useServerSide.value) {
@@ -614,40 +628,30 @@ export function LogTable() {
                         />
                     </div>
                     <div className="filter-options">
-                        <label className="filter-toggle" title="Regex Mode">
+                        <label className={`filter-toggle ${searchRegex.value ? 'active' : ''}`} title="Use Regular Expression for search">
                             <input
                                 type="checkbox"
                                 checked={searchRegex.value}
-                                onClick={(e) => searchRegex.value = (e.currentTarget as HTMLInputElement).checked}
+                                onChange={(e) => searchRegex.value = (e.currentTarget as HTMLInputElement).checked}
                             />
-                            Regex
+                            <span className="toggle-label">Regex</span>
                         </label>
-                        <label className="filter-toggle" title="Case Sensitive">
+                        <label className={`filter-toggle ${searchCaseSensitive.value ? 'active' : ''}`} title="Case Sensitive Search">
                             <input
                                 type="checkbox"
                                 checked={searchCaseSensitive.value}
-                                onClick={(e) => searchCaseSensitive.value = (e.currentTarget as HTMLInputElement).checked}
+                                onChange={(e) => searchCaseSensitive.value = (e.currentTarget as HTMLInputElement).checked}
                             />
-                            Aa
+                            <span className="toggle-label">Aa</span>
                         </label>
-                        <label className="filter-toggle" title="Show Changed Only">
+                        <label className={`filter-toggle ${showChangedOnly.value ? 'active' : ''}`} title="Show only entries where signal values changed">
                             <input
                                 type="checkbox"
                                 checked={showChangedOnly.value}
-                                onClick={(e) => showChangedOnly.value = (e.currentTarget as HTMLInputElement).checked}
+                                onChange={(e) => showChangedOnly.value = (e.currentTarget as HTMLInputElement).checked}
                             />
-                            Changes Only
+                            <span className="toggle-label">Changes Only</span>
                         </label>
-                        <select
-                            className="type-filter"
-                            value={signalTypeFilter.value || ''}
-                            onChange={(e) => signalTypeFilter.value = (e.currentTarget as HTMLSelectElement).value || null}
-                        >
-                            <option value="">All Types</option>
-                            <option value="boolean">Boolean</option>
-                            <option value="integer">Integer</option>
-                            <option value="string">String</option>
-                        </select>
                     </div>
                 </div>
                 <div className="toolbar-actions">

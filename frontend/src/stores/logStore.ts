@@ -38,8 +38,10 @@ export const searchCaseSensitive = signal(false);
 export const showChangedOnly = signal(false);
 
 // Category filter - Set of selected categories (empty = show all)
+// NOTE: Initialized with all categories, will be cleared after categories are loaded
+// to achieve "start with none checked" behavior while showing all entries initially
 export const categoryFilter = signal<Set<string>>(new Set());
-export const serverSideCategories = signal<string[]>([]);
+export const allCategories = signal<string[]>([]);
 
 // Layout - View types matching desktop reference
 export type ViewType = 'home' | 'log-table' | 'waveform' | 'map-viewer' | 'transitions';
@@ -87,22 +89,11 @@ export const isParsing = computed(() =>
     currentSession.value?.status === 'parsing' || currentSession.value?.status === 'pending'
 );
 
-// Available categories - extracted from current log entries
+// Available categories - fetched from backend for all modes
+// This ensures all categories from the file are available for filtering,
+// not just categories from currently loaded entries
 export const availableCategories = computed(() => {
-    if (useServerSide.value) {
-        return serverSideCategories.value;
-    }
-    const categories = new Set<string>();
-    for (const entry of logEntries.value) {
-        // Include empty string for uncategorized entries
-        categories.add(entry.category || '');
-    }
-    return Array.from(categories).sort((a, b) => {
-        // Sort empty string (uncategorized) to the end
-        if (a === '') return 1;
-        if (b === '') return -1;
-        return a.localeCompare(b);
-    });
+    return allCategories.value;
 });
 
 // 2.05 Filter by Selected Signals (Waveform Selection)
@@ -126,7 +117,9 @@ export const filteredEntries = computed(() => {
         entries = entries.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
     }
 
-    // 2. Filter by Category (if any categories selected)
+    // 2. Filter by Category
+    // When categories are selected, show only matching entries
+    // When no categories are selected (empty Set), show all entries (no filter)
     const catFilter = categoryFilter.value;
     if (catFilter.size > 0) {
         entries = entries.filter(e => catFilter.has(e.category || ''));
@@ -338,44 +331,46 @@ async function pollStatus(sessionId: string, abortSignal: AbortSignal) {
 async function handleSessionComplete(session: ParseSession) {
     isLoadingLog.value = false;
 
+    // Fetch all categories from backend for both modes
+    // This ensures all categories are available for filtering, not just from loaded entries
+    getParseCategories(session.id)
+        .then(cats => {
+            allCategories.value = cats;
+            // Categories are now available but filter starts empty (none checked)
+            // This gives "start with none checked" while showing all entries (empty filter = no filtering)
+        })
+        .catch(err => console.error('Failed to fetch categories:', err));
+
     // 1. Initial Data Load
     if (useServerSide.value) {
-        // Large file: Fetch first page and global categories
+        // Large file: Fetch first page (server-side pagination mode)
         await fetchEntries(1, 100);
-        getParseCategories(session.id)
-            .then(cats => serverSideCategories.value = cats)
-            .catch(err => console.error('Failed to fetch categories:', err));
     } else {
-        // SMALL/MEDIUM FILE optimization:
-        const STREAM_THRESHOLD = 10000;
-        if ((session.entryCount ?? 0) > STREAM_THRESHOLD) {
-            isStreaming.value = true;
-            streamProgress.value = 0;
-            logEntries.value = [];
+        // Client-side mode: Use streaming to load ALL entries
+        // Streaming has no 1000 entry limit, unlike the paginated API
+        isStreaming.value = true;
+        streamProgress.value = 0;
+        logEntries.value = [];
 
-            streamParseEntries(
-                session.id,
-                (batch, progress, total) => {
-                    logEntries.value = [...logEntries.value, ...batch];
-                    streamProgress.value = progress;
-                    totalEntries.value = total;
-                },
-                async (total) => {
-                    isStreaming.value = false;
-                    streamProgress.value = 100;
-                    totalEntries.value = total;
-                    finalizeSessionLoad(session);
-                },
-                (error) => {
-                    isStreaming.value = false;
-                    logError.value = error;
-                }
-            );
-            return; // finalizeSessionLoad will be called by streaming completion
-        } else {
-            // Very small file: Load everything in one go
-            await fetchEntries(1, 100000);
-        }
+        streamParseEntries(
+            session.id,
+            (batch, progress, total) => {
+                logEntries.value = [...logEntries.value, ...batch];
+                streamProgress.value = progress;
+                totalEntries.value = total;
+            },
+            async (total) => {
+                isStreaming.value = false;
+                streamProgress.value = 100;
+                totalEntries.value = total;
+                finalizeSessionLoad(session);
+            },
+            (error) => {
+                isStreaming.value = false;
+                logError.value = error;
+            }
+        );
+        return; // finalizeSessionLoad will be called by streaming completion
     }
 
     finalizeSessionLoad(session);

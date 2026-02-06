@@ -100,11 +100,19 @@
     border-radius: var(--border-radius);
     transition: all var(--transition-fast);
     font-family: var(--font-sans);
+    border: 1px solid transparent;
 }
 
 .filter-toggle:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
+}
+
+/* Active state - when checkbox is checked */
+.filter-toggle.active {
+    background: rgba(77, 182, 226, 0.15);
+    border-color: var(--primary-accent);
+    color: var(--primary-accent);
 }
 
 .filter-toggle input {
@@ -113,28 +121,6 @@
     width: 14px;
     height: 14px;
     accent-color: var(--primary-accent);
-}
-
-.type-filter {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-    font-size: 12px;
-    padding: 6px 12px;
-    border-radius: var(--border-radius);
-    outline: none;
-    cursor: pointer;
-    font-family: var(--font-sans);
-    transition: all var(--transition-fast);
-}
-
-.type-filter:hover {
-    border-color: var(--border-light);
-    color: var(--text-primary);
-}
-
-.type-filter:focus {
-    border-color: var(--primary-accent);
 }
 
 .toolbar-actions {
@@ -233,8 +219,10 @@
     /* Performance optimizations for smooth scrolling */
     will-change: scroll-position;
     contain: layout style;
-    /* Enable momentum scrolling on iOS */
-    -webkit-overflow-scrolling: touch;
+    /* Disable momentum/inertial scrolling for rigid feel */
+    -webkit-overflow-scrolling: auto;
+    scroll-behavior: auto;
+    overscroll-behavior: none;
 }
 
 /* Custom Scrollbar */
@@ -621,6 +609,35 @@
     background: var(--primary-accent);
     border-color: var(--primary-accent);
     color: white;
+}
+
+.popover-search {
+    display: flex;
+    align-items: center;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 8px 12px;
+    gap: 8px;
+}
+
+.popover-search-icon {
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+}
+
+.popover-search input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 12px;
+    outline: none;
+    font-family: var(--font-sans);
+}
+
+.popover-search input::placeholder {
+    color: var(--text-muted);
 }
 
 .popover-list {
