@@ -124,9 +124,8 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
         const totalCount = currentSession.value.entryCount;
 
         // Link with available entries for immediate feedback
-        // For large files (server-side mode), we don't fetch ALL entries
-        // Instead, we rely on getValuesAtTime API for time-based queries
-        linkSignalLogSession(
+        // For large files (server-side mode), this also fetches initial signal state
+        await linkSignalLogSession(
             sessionId,
             sessionName,
             logEntries.value,
@@ -144,7 +143,7 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
                 const allEntries = await fetchAllEntries(sessionId);
 
                 // Re-link with full data (this will update history and entry count)
-                linkSignalLogSession(
+                await linkSignalLogSession(
                     sessionId,
                     sessionName,
                     allEntries,

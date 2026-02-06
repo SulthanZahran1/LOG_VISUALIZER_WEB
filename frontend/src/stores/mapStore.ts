@@ -553,20 +553,22 @@ export async function toggleCarrierTracking(): Promise<void> {
  * Link a log table session's entries to the map viewer for signal-based coloring.
  * This populates latestSignalValues, signalHistory, and sets the playback range.
  * 
+ * For large files (server-side mode), also fetches initial signal state at start time.
+ * 
  * @param sessionId - The session ID
  * @param sessionName - Display name for the session
  * @param entries - Log entries to populate signal values
  * @param startTime - Optional: Session start time from backend (Unix ms)
  * @param endTime - Optional: Session end time from backend (Unix ms)
  */
-export function linkSignalLogSession(
+export async function linkSignalLogSession(
     sessionId: string,
     sessionName: string,
     entries: { deviceId: string; signalName: string; value: any; timestamp?: string | number }[],
     startTime?: number,
     endTime?: number,
     totalCount?: number
-): void {
+): Promise<void> {
     // Update linkage state
     signalLogSessionId.value = sessionId;
     signalLogFileName.value = sessionName;
@@ -578,14 +580,12 @@ export function linkSignalLogSession(
     // Push data to signal stores
     updateSignalValues(entries);
 
-    // Use provided time range from session metadata (preferred)
-    if (startTime !== undefined && endTime !== undefined && startTime > 0 && endTime > 0) {
-        setPlaybackRange(startTime, endTime);
-        return;
-    }
+    // Determine time range
+    let effectiveStartTime = startTime;
+    let effectiveEndTime = endTime;
 
-    // Fallback: compute time range from entries (for backwards compatibility)
-    if (entries.length > 0) {
+    // Fallback: compute time range from entries if not provided
+    if ((effectiveStartTime === undefined || effectiveEndTime === undefined) && entries.length > 0) {
         const timestamps = entries
             .map(e => {
                 if (e.timestamp === undefined || e.timestamp === null) return null;
@@ -595,9 +595,30 @@ export function linkSignalLogSession(
             })
             .filter((t): t is number => t !== null);
         if (timestamps.length > 0) {
-            const computedStart = Math.min(...timestamps);
-            const computedEnd = Math.max(...timestamps);
-            setPlaybackRange(computedStart, computedEnd);
+            effectiveStartTime = Math.min(...timestamps);
+            effectiveEndTime = Math.max(...timestamps);
+        }
+    }
+
+    // Set playback range
+    if (effectiveStartTime !== undefined && effectiveEndTime !== undefined) {
+        setPlaybackRange(effectiveStartTime, effectiveEndTime);
+    }
+
+    // For large files (server-side mode), fetch initial signal state at start time
+    // This ensures the map has current data even before playback starts
+    if (useServerSide.value && effectiveStartTime !== undefined) {
+        try {
+            const initialEntries = await getValuesAtTime(sessionId, effectiveStartTime);
+            const signalEntries = initialEntries.map(e => ({
+                deviceId: e.deviceId,
+                signalName: e.signalName,
+                value: e.value,
+                timestamp: e.timestamp
+            }));
+            updateSignalValues(signalEntries);
+        } catch (err) {
+            console.error('Failed to fetch initial signal state for Map Viewer:', err);
         }
     }
 }
@@ -728,13 +749,16 @@ effect(() => {
 /**
  * LARGE FILE OPTIMIZATION: 
  * If in server-side mode, fetch signal state on-demand for the current playback time.
+ * Also re-fetches when signalLogSessionId changes (new session linked).
  */
 effect(() => {
     const time = playbackTime.value;
     const session = currentSession.value;
     const large = useServerSide.value;
+    const linkedSessionId = signalLogSessionId.value; // Track linked session changes
 
     if (!large || !time || !session || session.status !== 'complete') return;
+    if (!linkedSessionId) return; // Don't fetch if no session is linked
 
     // Debounce slightly to avoid slamming backend during playback
     const timer = setTimeout(async () => {
