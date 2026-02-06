@@ -94,6 +94,10 @@ export function WaveformCanvas() {
     const selectionStartXRef = useRef(0);
     const selectionStartTimeRef = useRef(0);
 
+    // Scroll position for virtualization
+    const scrollTopRef = useRef(0);
+    const containerHeightRef = useRef(0);
+
     // Resize Observer to update viewportWidth
     useEffect(() => {
         const container = containerRef.current;
@@ -103,11 +107,22 @@ export function WaveformCanvas() {
             const entry = entries[0];
             if (entry) {
                 viewportWidth.value = entry.contentRect.width;
+                containerHeightRef.current = entry.contentRect.height;
             }
         });
 
         observer.observe(container);
-        return () => observer.disconnect();
+
+        // Track scroll position
+        const handleScroll = () => {
+            scrollTopRef.current = container.scrollTop;
+        };
+        container.addEventListener('scroll', handleScroll, { passive: true });
+
+        return () => {
+            observer.disconnect();
+            container.removeEventListener('scroll', handleScroll);
+        };
     }, []);
 
     useEffect(() => {
@@ -140,8 +155,22 @@ export function WaveformCanvas() {
 
             const pixelsPerMs = zoomLevel.value;
 
-            // Draw row backgrounds
-            selectedSignals.value.forEach((key, i) => {
+            // Calculate visible row range for virtualization
+            const scrollTop = scrollTopRef.current;
+            const viewportHeight = containerHeightRef.current || height;
+            const firstVisibleRow = Math.max(0, Math.floor((scrollTop - AXIS_HEIGHT) / ROW_HEIGHT));
+            const lastVisibleRow = Math.min(
+                selectedSignals.value.length - 1,
+                Math.ceil((scrollTop + viewportHeight - AXIS_HEIGHT) / ROW_HEIGHT)
+            );
+
+            // Draw row backgrounds (only for visible rows + small buffer)
+            const rowBuffer = 2; // Draw a few extra rows for smooth scrolling
+            const drawStart = Math.max(0, firstVisibleRow - rowBuffer);
+            const drawEnd = Math.min(selectedSignals.value.length - 1, lastVisibleRow + rowBuffer);
+
+            for (let i = drawStart; i <= drawEnd; i++) {
+                const key = selectedSignals.value[i];
                 const y = AXIS_HEIGHT + (i * ROW_HEIGHT);
                 const isFocused = focusedSignal.value === key;
 
@@ -167,13 +196,14 @@ export function WaveformCanvas() {
                 ctx.moveTo(0, y + ROW_HEIGHT);
                 ctx.lineTo(width, y + ROW_HEIGHT);
                 ctx.stroke();
-            });
+            }
 
             // Draw Time Axis
             drawTimeAxis(ctx, range.start, range.end, pixelsPerMs, width, height);
 
-            // Draw Signals
-            selectedSignals.value.forEach((key, rowIndex) => {
+            // Draw Signals (only visible rows for performance)
+            for (let rowIndex = drawStart; rowIndex <= drawEnd; rowIndex++) {
+                const key = selectedSignals.value[rowIndex];
                 const allEntries = waveformEntries.value[key] || [];
                 const yBase = AXIS_HEIGHT + (rowIndex * ROW_HEIGHT);
                 const yPadding = 8;
@@ -199,7 +229,7 @@ export function WaveformCanvas() {
                 }
 
                 ctx.restore();
-            });
+            }
 
             // Draw selection
             const selection = selectionRange.value;
@@ -458,13 +488,27 @@ export function WaveformCanvas() {
                 .waveform-canvas-wrapper {
                     width: 100%;
                     height: 100%;
-                    overflow: hidden;
+                    overflow-x: hidden;
+                    overflow-y: auto;
                     background: ${COLORS.canvasBg};
                     cursor: grab;
                     outline: none;
                 }
                 .waveform-canvas-wrapper:focus {
                     box-shadow: inset 0 0 0 2px var(--primary-accent);
+                }
+                .waveform-canvas-wrapper::-webkit-scrollbar {
+                    width: 8px;
+                }
+                .waveform-canvas-wrapper::-webkit-scrollbar-track {
+                    background: ${COLORS.canvasBg};
+                }
+                .waveform-canvas-wrapper::-webkit-scrollbar-thumb {
+                    background: rgba(139, 148, 158, 0.4);
+                    border-radius: 4px;
+                }
+                .waveform-canvas-wrapper::-webkit-scrollbar-thumb:hover {
+                    background: rgba(139, 148, 158, 0.6);
                 }
             `}</style>
         </div>

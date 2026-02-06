@@ -72,7 +72,7 @@
 - [x] 1GB file uploads successfully (chunked)
 - [ ] Parse 1GB file completes (with progress)
 - [ ] 100k+ entries in Log Table → smooth scroll
-- [ ] 100+ signals in Waveform → smooth pan/zoom
+- [x] 100+ signals in Waveform → smooth pan/zoom
 - [x] No browser memory crashes during upload
 
 ---

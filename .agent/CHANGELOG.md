@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased] - 2026-02-06
+
+### Added
+- **Waveform Virtualization**: Canvas now uses viewport-based rendering for 100+ signals
+  - Only visible signal rows are drawn (+ 2-row buffer for smooth scrolling)
+  - Scroll-based virtualization instead of rendering all signals
+  - Maintains smooth pan/zoom performance regardless of signal count
+
+### Changed
+- WaveformCanvas scroll behavior: `overflow-y: auto` with custom scrollbar styling
+- Row background and signal rendering now calculate visible range from scroll position
+
 ## [0.7.0] - 2026-02-03
 
 ### Added
