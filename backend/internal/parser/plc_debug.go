@@ -38,8 +38,19 @@ func (p *PLCDebugParser) CanParse(filePath string) (bool, error) {
 	scanner := bufio.NewScanner(file)
 	checked := 0
 	matched := 0
+	isFirstLine := true
 	for scanner.Scan() && checked < 10 {
-		line := strings.TrimSpace(scanner.Text())
+		line := scanner.Text()
+
+		// Strip UTF-8 BOM from first line if present
+		if isFirstLine {
+			if len(line) >= 3 && line[0] == 0xEF && line[1] == 0xBB && line[2] == 0xBF {
+				line = line[3:]
+			}
+			isFirstLine = false
+		}
+
+		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
@@ -188,6 +199,12 @@ func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onP
 
 		line := scanner.Text()
 		bytesRead += int64(len(line)) + 1
+
+		// Strip UTF-8 BOM from first line if present
+		if lineNum == 1 && len(line) >= 3 && line[0] == 0xEF && line[1] == 0xBB && line[2] == 0xBF {
+			line = line[3:]
+			fmt.Printf("[Parse] Stripped UTF-8 BOM from first line\n")
+		}
 
 		if lineNum <= 5 {
 			linePreview := line

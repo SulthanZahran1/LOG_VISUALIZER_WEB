@@ -272,9 +272,11 @@ func parseIntN(s string, n int) int {
 
 // ExtractDeviceID extracts the device ID from a path without using regex.
 // Matches pattern: "path/DEVICE-123" or "path/DEVICE-123@D19" -> "DEVICE-123"
+// Also handles dot-separated paths like "Area.Zone.DEVICE-123@D19"
 func ExtractDeviceID(path string) string {
 	// Find the last path separator to get the final segment
-	lastSep := strings.LastIndexAny(path, "/\\]")
+	// Include '.' for dot-separated paths (e.g., "B1FCNV11301_PRE_AGING.Belts.B1FCNV11301-601@B70")
+	lastSep := strings.LastIndexAny(path, "/\\].")
 	var segment string
 	if lastSep >= 0 {
 		segment = path[lastSep+1:]
