@@ -40,6 +40,12 @@ type DuckStore struct {
 // NewDuckStore creates a new DuckDB-backed store in the given temp directory.
 func NewDuckStore(tempDir string, sessionID string) (*DuckStore, error) {
 	dbPath := filepath.Join(tempDir, fmt.Sprintf("session_%s.duckdb", sessionID))
+	return NewDuckStoreAtPath(dbPath)
+}
+
+// NewDuckStoreAtPath creates a new DuckDB-backed store at a specific path.
+// Used for persistent storage of parsed files.
+func NewDuckStoreAtPath(dbPath string) (*DuckStore, error) {
 	fmt.Printf("[DuckStore] Creating database at: %s\n", dbPath)
 
 	// Open with optimized settings for large datasets
@@ -107,6 +113,83 @@ func NewDuckStore(tempDir string, sessionID string) (*DuckStore, error) {
 		maxTs:      0,
 		countCache: make(map[string]int),
 		querySem:   make(chan struct{}, 3), // Max 3 concurrent queries
+	}, nil
+}
+
+// OpenDuckStoreReadOnly opens an existing DuckDB file in read-only mode.
+// Used for loading previously parsed files from persistent storage.
+func OpenDuckStoreReadOnly(dbPath string) (*DuckStore, error) {
+	fmt.Printf("[DuckStore] Opening existing database (read-only) at: %s\n", dbPath)
+
+	// Open with read-only mode and optimized settings for querying
+	connector, err := duckdb.NewConnector(dbPath, func(execer driver.ExecerContext) error {
+		// Set pragmas optimized for read-only queries
+		pragmas := []string{
+			"PRAGMA memory_limit='512MB'",
+			"PRAGMA threads=2",
+			"PRAGMA enable_progress_bar=false",
+		}
+		for _, pragma := range pragmas {
+			if _, err := execer.ExecContext(context.Background(), pragma, nil); err != nil {
+				fmt.Printf("[DuckStore] Pragma warning: %v\n", err)
+				// Non-fatal - continue even if pragma fails
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to open DuckDB connector: %w", err)
+	}
+
+	db := sql.OpenDB(connector)
+
+	// Get entry count
+	var entryCount int
+	err = db.QueryRow("SELECT COUNT(*) FROM entries").Scan(&entryCount)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to get entry count: %w", err)
+	}
+
+	// Get time range
+	var minTs, maxTs int64
+	err = db.QueryRow("SELECT MIN(timestamp), MAX(timestamp) FROM entries").Scan(&minTs, &maxTs)
+	if err != nil {
+		// Non-fatal - may be empty table
+		minTs, maxTs = 0, 0
+	}
+
+	// Get all unique signals and devices
+	signals := make(map[string]struct{})
+	devices := make(map[string]struct{})
+
+	rows, err := db.Query("SELECT DISTINCT device_id, signal FROM entries")
+	if err == nil {
+		for rows.Next() {
+			var deviceID, signal string
+			if err := rows.Scan(&deviceID, &signal); err == nil {
+				signals[deviceID+"::"+signal] = struct{}{}
+				devices[deviceID] = struct{}{}
+			}
+		}
+		rows.Close()
+	}
+
+	fmt.Printf("[DuckStore] Opened existing DB: %d entries, %d signals, %d devices\n",
+		entryCount, len(signals), len(devices))
+
+	return &DuckStore{
+		db:         db,
+		dbPath:     dbPath,
+		entryCount: entryCount,
+		batchSize:  50000,
+		batch:      make([]*models.LogEntry, 0),
+		signals:    signals,
+		devices:    devices,
+		minTs:      minTs,
+		maxTs:      maxTs,
+		countCache: make(map[string]int),
+		querySem:   make(chan struct{}, 3),
 	}, nil
 }
 

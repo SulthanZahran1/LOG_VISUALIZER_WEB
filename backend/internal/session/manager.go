@@ -24,10 +24,11 @@ const SessionKeepAliveWindow = 5 * time.Minute
 
 // Manager handles active log parsing sessions.
 type Manager struct {
-	sessions map[string]*SessionState
-	mu       sync.RWMutex
-	registry *parser.Registry
-	tempDir  string
+	sessions    map[string]*SessionState
+	mu          sync.RWMutex
+	registry    *parser.Registry
+	tempDir     string
+	parsedStore *PersistentParsedStore
 }
 
 // SessionState holds the session metadata and the DuckDB-backed storage.
@@ -53,13 +54,15 @@ func NewManager() *Manager {
 // NewManagerWithTempDir creates a session manager with a specific temp directory.
 func NewManagerWithTempDir(tempDir string) *Manager {
 	return &Manager{
-		sessions: make(map[string]*SessionState),
-		registry: parser.GetGlobalRegistry(),
-		tempDir:  tempDir,
+		sessions:    make(map[string]*SessionState),
+		registry:    parser.GetGlobalRegistry(),
+		tempDir:     tempDir,
+		parsedStore: NewPersistentParsedStore(),
 	}
 }
 
 // StartSession begins the parsing process for a file.
+// If the file has already been parsed and stored persistently, it will be loaded instantly.
 func (m *Manager) StartSession(fileID, filePath string) (*models.ParseSession, error) {
 	// Clean up old sessions if at limit
 	m.cleanupOldSessionsIfNeeded()
@@ -78,13 +81,67 @@ func (m *Manager) StartSession(fileID, filePath string) (*models.ParseSession, e
 	m.sessions[sessionID] = state
 	m.mu.Unlock()
 
-	// Run parsing in a background goroutine
-	go m.runParse(sessionID, filePath)
+	// Check if this file has already been parsed and stored persistently
+	if m.parsedStore.IsParsed(fileID) {
+		fmt.Printf("[Session %s] File %s already parsed! Loading from persistent storage...\n",
+			shortID(sessionID), shortID(fileID))
+		go m.loadFromPersistentStore(sessionID, fileID)
+	} else {
+		// Run parsing in a background goroutine
+		go m.runParse(sessionID, filePath, fileID)
+	}
 
 	return session, nil
 }
 
-func (m *Manager) runParse(sessionID, filePath string) {
+// loadFromPersistentStore loads an already-parsed file from persistent storage.
+func (m *Manager) loadFromPersistentStore(sessionID, fileID string) {
+	start := time.Now()
+
+	// Open the persistent store
+	store, err := m.parsedStore.Open(fileID)
+	if err != nil {
+		fmt.Printf("[Session %s] ERROR loading from persistent store: %v\n", sessionID[:8], err)
+		m.updateSessionError(sessionID, fmt.Sprintf("failed to load parsed data: %v", err))
+		return
+	}
+
+	if store == nil {
+		// Should not happen if IsParsed returned true, but handle gracefully
+		fmt.Printf("[Session %s] Persistent store returned nil, falling back to re-parse\n", sessionID[:8])
+		m.updateSessionError(sessionID, "parsed data not found")
+		return
+	}
+
+	elapsed := time.Since(start).Milliseconds()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	state, ok := m.sessions[sessionID]
+	if !ok {
+		store.Close()
+		return
+	}
+
+	state.DuckStore = store
+	state.Session.Status = models.SessionStatusComplete
+	state.Session.Progress = 100
+	state.Session.EntryCount = store.Len()
+	state.Session.SignalCount = len(store.GetSignals())
+	state.Session.ProcessingTimeMs = elapsed
+	state.Session.ParserName = "plc_debug_cached"
+
+	if tr := store.GetTimeRange(); tr != nil {
+		state.Session.StartTime = tr.Start.UnixMilli()
+		state.Session.EndTime = tr.End.UnixMilli()
+	}
+
+	fmt.Printf("[Session %s] Loaded from persistent store in %d ms: %d entries, %d signals\n",
+		sessionID[:8], elapsed, store.Len(), len(store.GetSignals()))
+}
+
+func (m *Manager) runParse(sessionID, filePath, fileID string) {
 	// Recover from panics to prevent backend crash
 	defer func() {
 		if r := recover(); r != nil {
@@ -164,7 +221,7 @@ func (m *Manager) runParse(sessionID, filePath string) {
 
 	// Try DuckDB-backed parsing for memory efficiency
 	if plcParser, ok := p.(*parser.PLCDebugParser); ok {
-		m.runParseToDuckStore(sessionID, filePath, plcParser, progressCb, start)
+		m.runParseToDuckStore(sessionID, filePath, fileID, plcParser, progressCb, start)
 		return
 	}
 
@@ -211,7 +268,7 @@ func (m *Manager) runParse(sessionID, filePath string) {
 }
 
 // runParseToDuckStore handles DuckDB-backed parsing for memory efficiency
-func (m *Manager) runParseToDuckStore(sessionID, filePath string, p *parser.PLCDebugParser, progressCb parser.ProgressCallback, start time.Time) {
+func (m *Manager) runParseToDuckStore(sessionID, filePath, fileID string, p *parser.PLCDebugParser, progressCb parser.ProgressCallback, start time.Time) {
 	// Recover from panics to prevent backend crash
 	defer func() {
 		if r := recover(); r != nil {
@@ -220,9 +277,9 @@ func (m *Manager) runParseToDuckStore(sessionID, filePath string, p *parser.PLCD
 		}
 	}()
 
-	// Create DuckStore for this session
-	fmt.Printf("[Parse %s] Creating DuckDB store in %s...\n", sessionID[:8], m.tempDir)
-	store, err := parser.NewDuckStore(m.tempDir, sessionID)
+	// Create persistent DuckStore for this file
+	fmt.Printf("[Parse %s] Creating persistent DuckDB store for file %s...\n", shortID(sessionID), shortID(fileID))
+	store, err := m.parsedStore.CreateForFile(fileID)
 	if err != nil {
 		fmt.Printf("[Parse %s] ERROR: failed to create DuckStore: %v\n", sessionID[:8], err)
 		m.updateSessionError(sessionID, fmt.Sprintf("failed to create storage: %v", err))
@@ -234,12 +291,16 @@ func (m *Manager) runParseToDuckStore(sessionID, filePath string, p *parser.PLCD
 	parseErrors, err := p.ParseToDuckStore(filePath, store, progressCb)
 	if err != nil {
 		store.Close()
+		m.parsedStore.Delete(fileID) // Clean up on failure
 		fmt.Printf("[Parse %s] ERROR: parse failed: %v\n", sessionID[:8], err)
 		m.updateSessionError(sessionID, fmt.Sprintf("parse failed: %v", err))
 		return
 	}
 
 	fmt.Printf("[Parse %s] Parse complete: %d entries (DuckDB), %d errors\n", sessionID[:8], store.Len(), len(parseErrors))
+
+	// Mark as successfully parsed for future reuse
+	m.parsedStore.MarkComplete(fileID)
 
 	elapsed := time.Since(start).Milliseconds()
 
@@ -699,4 +760,19 @@ func (m *Manager) runMultiParse(sessionID string, fileIDs, filePaths []string) {
 		state.Session.StartTime = merged.TimeRange.Start.UnixMilli()
 		state.Session.EndTime = merged.TimeRange.End.UnixMilli()
 	}
+}
+
+// DeleteParsedFile removes the parsed DuckDB for a file (call when original file is deleted).
+func (m *Manager) DeleteParsedFile(fileID string) error {
+	return m.parsedStore.Delete(fileID)
+}
+
+// GetParsedStoreStats returns statistics about the persistent parsed store.
+func (m *Manager) GetParsedStoreStats() map[string]interface{} {
+	return m.parsedStore.Stats()
+}
+
+// CleanupOrphanedParsed removes parsed DBs that don't have corresponding raw files.
+func (m *Manager) CleanupOrphanedParsed(rawFileIDs []string) int {
+	return m.parsedStore.CleanupOrphaned(rawFileIDs)
 }

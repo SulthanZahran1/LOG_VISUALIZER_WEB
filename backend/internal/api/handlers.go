@@ -137,12 +137,16 @@ func (h *Handler) HandleGetFile(c echo.Context) error {
 	return c.JSON(http.StatusOK, info)
 }
 
-// HandleDeleteFile removes a file from storage.
+// HandleDeleteFile removes a file from storage and its associated parsed data.
 func (h *Handler) HandleDeleteFile(c echo.Context) error {
 	id := c.Param("id")
 	err := h.store.Delete(id)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "file not found or could not be deleted"})
+	}
+	// Also delete the parsed DuckDB if it exists
+	if h.session != nil {
+		h.session.DeleteParsedFile(id)
 	}
 	return c.NoContent(http.StatusNoContent)
 }
