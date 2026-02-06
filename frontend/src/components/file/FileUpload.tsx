@@ -28,6 +28,7 @@ export function FileUpload({
     const isDragging = useSignal(false);
     const isUploading = useSignal(false);
     const uploadProgress = useSignal(0);
+    const uploadStage = useSignal<string>('');
     const error = useSignal<string | null>(null);
     const showPaste = useSignal(false);
     const pasteContent = useSignal('');
@@ -42,6 +43,7 @@ export function FileUpload({
 
         isUploading.value = true;
         uploadProgress.value = 0;
+        uploadStage.value = 'Preparing...';
         error.value = null;
         uploadStats.value = null;
 
@@ -56,14 +58,22 @@ export function FileUpload({
             if (file.size > CHUNK_THRESHOLD) {
                 try {
                     // Try WebSocket first
-                    info = await uploadFileWebSocket(file, (p, _stage) => uploadProgress.value = p);
+                    info = await uploadFileWebSocket(file, (p, stage) => {
+                        uploadProgress.value = p;
+                        if (stage) uploadStage.value = stage;
+                    });
                 } catch (wsErr) {
                     // Fall back to HTTP if WebSocket fails
                     console.warn('WebSocket failed, falling back to HTTP:', wsErr);
                     uploadProgress.value = 0;
-                    info = await uploadFileOptimized(file, (p) => uploadProgress.value = p);
+                    uploadStage.value = 'Retrying with HTTP...';
+                    info = await uploadFileOptimized(file, (p, stage) => {
+                        uploadProgress.value = p;
+                        if (stage) uploadStage.value = stage;
+                    });
                 }
             } else {
+                uploadStage.value = 'Uploading...';
                 info = await uploadFn(file);
             }
 
@@ -207,12 +217,25 @@ export function FileUpload({
             <div class="drop-zone-content">
                 {isUploading.value ? (
                     <>
-                        <div class="upload-spinner"></div>
-                        <p class="drop-text">Uploading... {uploadProgress.value > 0 ? `${uploadProgress.value}%` : ''}</p>
+                        <div class={`upload-spinner ${uploadProgress.value >= 85 ? 'processing' : ''}`}></div>
+                        <p class="drop-text">
+                            {uploadStage.value || 'Uploading...'}
+                        </p>
+                        <p class="drop-hint" style={{ marginTop: '4px', fontSize: '14px' }}>
+                            {uploadProgress.value > 0 ? `${uploadProgress.value}%` : ''}
+                        </p>
                         {uploadProgress.value > 0 && (
                             <div class="progress-bar-container">
-                                <div class="progress-bar" style={{ width: `${uploadProgress.value}%` }}></div>
+                                <div
+                                    class={`progress-bar ${uploadProgress.value >= 85 ? 'processing' : ''}`}
+                                    style={{ width: `${uploadProgress.value}%` }}
+                                ></div>
                             </div>
+                        )}
+                        {uploadProgress.value >= 85 && (
+                            <p class="processing-hint">
+                                Server is processing your file. This may take a moment for large files...
+                            </p>
                         )}
                     </>
                 ) : showPaste.value ? (
@@ -381,6 +404,35 @@ export function FileUpload({
                     height: 100%;
                     background: var(--primary-accent);
                     transition: width 0.3s ease;
+                }
+
+                .progress-bar.processing {
+                    background: linear-gradient(
+                        90deg,
+                        var(--primary-accent) 0%,
+                        var(--accent-warning, #f0ad4e) 50%,
+                        var(--primary-accent) 100%
+                    );
+                    background-size: 200% 100%;
+                    animation: shimmer 1.5s ease-in-out infinite;
+                }
+
+                .upload-spinner.processing {
+                    border-top-color: var(--accent-warning, #f0ad4e);
+                    animation: spin 1.2s linear infinite;
+                }
+
+                .processing-hint {
+                    font-size: 11px;
+                    color: var(--text-muted);
+                    margin-top: var(--spacing-sm);
+                    font-style: italic;
+                    opacity: 0.8;
+                }
+
+                @keyframes shimmer {
+                    0% { background-position: 200% 0; }
+                    100% { background-position: -200% 0; }
                 }
 
                 .paste-option {
