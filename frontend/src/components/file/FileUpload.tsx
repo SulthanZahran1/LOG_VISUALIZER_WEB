@@ -59,6 +59,7 @@ export function FileUpload({
                 try {
                     // Try WebSocket first
                     info = await uploadFileWebSocket(file, (p, stage) => {
+                        console.log('[Upload] Progress:', p, 'Stage:', stage);
                         uploadProgress.value = p;
                         if (stage) uploadStage.value = stage;
                     });
@@ -68,6 +69,7 @@ export function FileUpload({
                     uploadProgress.value = 0;
                     uploadStage.value = 'Retrying with HTTP...';
                     info = await uploadFileOptimized(file, (p, stage) => {
+                        console.log('[Upload HTTP] Progress:', p, 'Stage:', stage);
                         uploadProgress.value = p;
                         if (stage) uploadStage.value = stage;
                     });
@@ -219,22 +221,24 @@ export function FileUpload({
                     <>
                         <div class={`upload-spinner ${uploadProgress.value >= 85 ? 'processing' : ''}`}></div>
                         <p class="drop-text">
-                            {uploadStage.value || 'Uploading...'}
+                            {uploadProgress.value >= 85
+                                ? (uploadStage.value || 'Processing on server...')
+                                : (uploadStage.value || 'Uploading...')}
                         </p>
-                        <p class="drop-hint" style={{ marginTop: '4px', fontSize: '14px' }}>
-                            {uploadProgress.value > 0 ? `${uploadProgress.value}%` : ''}
+                        <p class="drop-hint" style={{ marginTop: '8px', fontSize: '16px', fontWeight: 500 }}>
+                            {uploadProgress.value > 0 ? `${uploadProgress.value}%` : 'Starting...'}
                         </p>
                         {uploadProgress.value > 0 && (
                             <div class="progress-bar-container">
                                 <div
                                     class={`progress-bar ${uploadProgress.value >= 85 ? 'processing' : ''}`}
-                                    style={{ width: `${uploadProgress.value}%` }}
+                                    style={{ width: `${Math.min(uploadProgress.value, 100)}%` }}
                                 ></div>
                             </div>
                         )}
                         {uploadProgress.value >= 85 && (
                             <p class="processing-hint">
-                                Server is processing your file. This may take a moment for large files...
+                                Server is processing your file...
                             </p>
                         )}
                     </>
@@ -407,32 +411,32 @@ export function FileUpload({
                 }
 
                 .progress-bar.processing {
-                    background: linear-gradient(
-                        90deg,
-                        var(--primary-accent) 0%,
-                        var(--accent-warning, #f0ad4e) 50%,
-                        var(--primary-accent) 100%
-                    );
-                    background-size: 200% 100%;
-                    animation: shimmer 1.5s ease-in-out infinite;
+                    background: #f0ad4e;
+                    animation: pulse-bar 1s ease-in-out infinite;
                 }
 
                 .upload-spinner.processing {
-                    border-top-color: var(--accent-warning, #f0ad4e);
-                    animation: spin 1.2s linear infinite;
+                    border-color: rgba(240, 173, 78, 0.3);
+                    border-top-color: #f0ad4e;
+                    animation: spin 0.8s linear infinite;
                 }
 
                 .processing-hint {
-                    font-size: 11px;
-                    color: var(--text-muted);
-                    margin-top: var(--spacing-sm);
-                    font-style: italic;
-                    opacity: 0.8;
+                    font-size: 12px;
+                    color: #f0ad4e;
+                    margin-top: var(--spacing-md);
+                    font-weight: 500;
+                    animation: fade-pulse 2s ease-in-out infinite;
                 }
 
-                @keyframes shimmer {
-                    0% { background-position: 200% 0; }
-                    100% { background-position: -200% 0; }
+                @keyframes pulse-bar {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.6; }
+                }
+
+                @keyframes fade-pulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.5; }
                 }
 
                 .paste-option {
