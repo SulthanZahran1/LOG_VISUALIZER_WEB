@@ -83,6 +83,9 @@ func (p *CSVSignalParser) ParseWithProgress(filePath string, onProgress Progress
 	errors := make([]*models.ParseError, 0, 100)
 	signals := make(map[string]struct{}, 1000)
 	devices := make(map[string]struct{}, 1000)
+	
+	// Track per-signal type requirements for type resolution
+	signalTypeReqs := make(map[string]models.SignalType, 1000)
 
 	// String interning for device IDs and signal names
 	intern := GetGlobalIntern()
@@ -152,8 +155,26 @@ func (p *CSVSignalParser) ParseWithProgress(filePath string, onProgress Progress
 					SignalType: stype,
 				}
 				entries = append(entries, entry)
-				signals[entry.DeviceID+"::"+entry.SignalName] = struct{}{}
+				signalKey := entry.DeviceID + "::" + entry.SignalName
+				signals[signalKey] = struct{}{}
 				devices[entry.DeviceID] = struct{}{}
+				
+				// Track signal type requirements
+				if entry.SignalType == models.SignalTypeInteger {
+					if val, ok := entry.Value.(int); ok {
+						if val != 0 && val != 1 {
+							signalTypeReqs[signalKey] = models.SignalTypeInteger
+						} else if signalTypeReqs[signalKey] == "" {
+							signalTypeReqs[signalKey] = models.SignalTypeBoolean
+						}
+					}
+				} else if entry.SignalType == models.SignalTypeBoolean {
+					if signalTypeReqs[signalKey] == "" {
+						signalTypeReqs[signalKey] = models.SignalTypeBoolean
+					}
+				} else {
+					signalTypeReqs[signalKey] = models.SignalTypeString
+				}
 				continue
 			}
 
@@ -196,8 +217,26 @@ func (p *CSVSignalParser) ParseWithProgress(filePath string, onProgress Progress
 			SignalType: stype,
 		}
 		entries = append(entries, entry)
-		signals[entry.DeviceID+"::"+entry.SignalName] = struct{}{}
+		signalKey := entry.DeviceID + "::" + entry.SignalName
+		signals[signalKey] = struct{}{}
 		devices[entry.DeviceID] = struct{}{}
+		
+		// Track signal type requirements
+		if entry.SignalType == models.SignalTypeInteger {
+			if val, ok := entry.Value.(int); ok {
+				if val != 0 && val != 1 {
+					signalTypeReqs[signalKey] = models.SignalTypeInteger
+				} else if signalTypeReqs[signalKey] == "" {
+					signalTypeReqs[signalKey] = models.SignalTypeBoolean
+				}
+			}
+		} else if entry.SignalType == models.SignalTypeBoolean {
+			if signalTypeReqs[signalKey] == "" {
+				signalTypeReqs[signalKey] = models.SignalTypeBoolean
+			}
+		} else {
+			signalTypeReqs[signalKey] = models.SignalTypeString
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -207,6 +246,21 @@ func (p *CSVSignalParser) ParseWithProgress(filePath string, onProgress Progress
 	// Final progress update
 	if onProgress != nil {
 		onProgress(lineNum, bytesRead, totalBytes)
+	}
+	
+	// Resolve signal types: upgrade boolean signals to integer if needed
+	for i := range entries {
+		signalKey := entries[i].DeviceID + "::" + entries[i].SignalName
+		if requiredType, ok := signalTypeReqs[signalKey]; ok {
+			if requiredType == models.SignalTypeInteger && entries[i].SignalType == models.SignalTypeBoolean {
+				entries[i].SignalType = models.SignalTypeInteger
+				if entries[i].Value == true {
+					entries[i].Value = 1
+				} else {
+					entries[i].Value = 0
+				}
+			}
+		}
 	}
 
 	var timeRange *models.TimeRange

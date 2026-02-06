@@ -87,6 +87,10 @@ func (p *PLCTabParser) ParseWithProgress(filePath string, onProgress ProgressCal
 	errors := make([]*models.ParseError, 0, 100)
 	signals := make(map[string]struct{}, 1000)
 	devices := make(map[string]struct{}, 1000)
+	
+	// Track per-signal type requirements for type resolution
+	// Maps "device::signal" to the required type (boolean signals may be upgraded to integer)
+	signalTypeReqs := make(map[string]models.SignalType, 1000)
 
 	// String interning for device IDs and signal names
 	intern := GetGlobalIntern()
@@ -121,8 +125,31 @@ func (p *PLCTabParser) ParseWithProgress(filePath string, onProgress ProgressCal
 		}
 
 		entries = append(entries, *entry)
-		signals[entry.DeviceID+"::"+entry.SignalName] = struct{}{}
+		signalKey := entry.DeviceID + "::" + entry.SignalName
+		signals[signalKey] = struct{}{}
 		devices[entry.DeviceID] = struct{}{}
+		
+		// Track signal type requirements
+		// If a signal has any non-0/1 integer values, it should be integer type
+		if entry.SignalType == models.SignalTypeInteger {
+			// Check if value is 0 or 1 (could be boolean) or other integer
+			if val, ok := entry.Value.(int); ok {
+				if val != 0 && val != 1 {
+					// Non-0/1 value forces integer type
+					signalTypeReqs[signalKey] = models.SignalTypeInteger
+				} else if signalTypeReqs[signalKey] == "" {
+					// 0/1 tentatively boolean unless already marked integer
+					signalTypeReqs[signalKey] = models.SignalTypeBoolean
+				}
+			}
+		} else if entry.SignalType == models.SignalTypeBoolean {
+			if signalTypeReqs[signalKey] == "" {
+				signalTypeReqs[signalKey] = models.SignalTypeBoolean
+			}
+		} else {
+			// String type always stays string
+			signalTypeReqs[signalKey] = models.SignalTypeString
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -132,6 +159,23 @@ func (p *PLCTabParser) ParseWithProgress(filePath string, onProgress ProgressCal
 	// Final progress update
 	if onProgress != nil {
 		onProgress(lineNum, bytesRead, totalBytes)
+	}
+	
+	// Resolve signal types: upgrade boolean signals to integer if needed
+	// Convert bool values to 0/1 for signals that were upgraded
+	for i := range entries {
+		signalKey := entries[i].DeviceID + "::" + entries[i].SignalName
+		if requiredType, ok := signalTypeReqs[signalKey]; ok {
+			if requiredType == models.SignalTypeInteger && entries[i].SignalType == models.SignalTypeBoolean {
+				// Upgrade: convert boolean to 0/1
+				entries[i].SignalType = models.SignalTypeInteger
+				if entries[i].Value == true {
+					entries[i].Value = 1
+				} else {
+					entries[i].Value = 0
+				}
+			}
+		}
 	}
 
 	var timeRange *models.TimeRange
