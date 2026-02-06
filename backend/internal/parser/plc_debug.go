@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/plc-visualizer/backend/internal/models"
 )
@@ -136,51 +138,136 @@ func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onP
 	// Get file size for progress calculation
 	fileInfo, err := file.Stat()
 	if err != nil {
+		fmt.Printf("[Parse] ERROR getting file info: %v\n", err)
 		return nil, err
 	}
 	totalBytes := fileInfo.Size()
 	fmt.Printf("[Parse] File size: %d bytes (%.1f MB)\n", totalBytes, float64(totalBytes)/1024/1024)
 
 	errors := make([]*models.ParseError, 0, 100)
+	fmt.Printf("[Parse] Getting global string intern...\n")
 	intern := GetGlobalIntern()
+	fmt.Printf("[Parse] String intern ready\n")
 
 	scanner := bufio.NewScanner(file)
 	const maxScannerBuffer = 4 * 1024 * 1024 // 4MB - increased just in case
 	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
-	fmt.Printf("[Parse] Scanner initialized, starting loop...\n")
+
+	// Print memory stats before starting
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+	fmt.Printf("[Parse] Scanner initialized with %d byte buffer\n", maxScannerBuffer)
+	fmt.Printf("[Parse] Memory before loop: Alloc=%.1fMB, Sys=%.1fMB, HeapInuse=%.1fMB\n",
+		float64(memStats.Alloc)/1024/1024,
+		float64(memStats.Sys)/1024/1024,
+		float64(memStats.HeapInuse)/1024/1024)
+	os.Stdout.Sync() // Force flush
+
 	lineNum := 0
 	var bytesRead int64
 	lastProgressUpdate := int64(0)
 	successCount := 0
+	parseErrorCount := 0
+	emptyLineCount := 0
+	lastLogLines := 0
+	loopStartTime := time.Now()
+
+	// Log first scan attempt
+	fmt.Printf("[Parse] Attempting first scanner.Scan()...\n")
+	os.Stdout.Sync() // Force flush before potentially slow operation
 
 	for scanner.Scan() {
 		lineNum++
+
+		// Verbose logging for first few lines
+		if lineNum <= 5 {
+			elapsed := time.Since(loopStartTime)
+			fmt.Printf("[Parse] Line %d: scanner.Scan() returned after %v, reading text...\n", lineNum, elapsed)
+			os.Stdout.Sync()
+		}
+
 		line := scanner.Text()
 		bytesRead += int64(len(line)) + 1
 
+		if lineNum <= 5 {
+			linePreview := line
+			if len(linePreview) > 100 {
+				linePreview = linePreview[:100] + "..."
+			}
+			fmt.Printf("[Parse] Line %d: len=%d, preview=%q\n", lineNum, len(line), linePreview)
+			os.Stdout.Sync()
+		}
+
 		if len(line) == 0 {
+			emptyLineCount++
 			continue
 		}
 
+		if lineNum <= 5 {
+			fmt.Printf("[Parse] Line %d: calling parseLine...\n", lineNum)
+			os.Stdout.Sync()
+		}
+
 		entry, parseErr := p.parseLine(line, lineNum, intern)
+
+		if lineNum <= 5 {
+			fmt.Printf("[Parse] Line %d: parseLine returned, parseErr=%v\n", lineNum, parseErr != nil)
+			os.Stdout.Sync()
+		}
+
 		if parseErr != nil {
+			parseErrorCount++
 			errors = append(errors, parseErr)
+			// Log first 5 parse errors with details
+			if parseErrorCount <= 5 {
+				linePreview := line
+				if len(linePreview) > 200 {
+					linePreview = linePreview[:200] + "..."
+				}
+				fmt.Printf("[Parse] Parse error #%d at line %d: %s (line: %q)\n", parseErrorCount, lineNum, parseErr.Reason, linePreview)
+				os.Stdout.Sync()
+			}
 			continue
+		}
+
+		if lineNum <= 5 {
+			fmt.Printf("[Parse] Line %d: calling store.AddEntry...\n", lineNum)
+			os.Stdout.Sync()
 		}
 
 		store.AddEntry(entry)
 		successCount++
 
+		if lineNum <= 5 {
+			fmt.Printf("[Parse] Line %d: AddEntry complete\n", lineNum)
+			os.Stdout.Sync()
+		}
+
 		// Log first 10 successful entries
 		if successCount <= 10 {
-			fmt.Printf("[Parse] Entry %d: %s::%s = %v\n", successCount, entry.DeviceID, entry.SignalName, entry.Value)
+			fmt.Printf("[Parse] Entry %d (line %d): %s::%s = %v\n", successCount, lineNum, entry.DeviceID, entry.SignalName, entry.Value)
+			os.Stdout.Sync()
 		}
 
 		// Check for DuckStore errors periodically
 		if successCount%10000 == 0 {
 			if err := store.LastError(); err != nil {
+				fmt.Printf("[Parse] DuckDB write error at line %d: %v\n", lineNum, err)
 				return nil, fmt.Errorf("DuckDB write error at line %d: %w", lineNum, err)
 			}
+		}
+
+		// Log progress every 100K lines (in addition to progress callback)
+		if lineNum-lastLogLines >= 100000 {
+			lastLogLines = lineNum
+			elapsed := time.Since(loopStartTime)
+			pct := float64(bytesRead) / float64(totalBytes) * 100
+
+			// Get memory stats
+			runtime.ReadMemStats(&memStats)
+			fmt.Printf("[Parse] Progress: %d lines (%.1f%%), %d entries, %d errors, %d empty, elapsed=%v, mem=%.1fMB\n",
+				lineNum, pct, successCount, parseErrorCount, emptyLineCount, elapsed, float64(memStats.Alloc)/1024/1024)
+			os.Stdout.Sync()
 		}
 
 		// Report progress every ~1% of file
@@ -190,11 +277,21 @@ func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onP
 		}
 	}
 
+	totalElapsed := time.Since(loopStartTime)
+	fmt.Printf("[Parse] Scanner loop finished after %v. Checking for scanner error...\n", totalElapsed)
+	os.Stdout.Sync()
+
 	if err := scanner.Err(); err != nil {
+		fmt.Printf("[Parse] Scanner error: %v\n", err)
 		return nil, err
 	}
 
-	fmt.Printf("[Parse] Parsed %d entries total, %d errors\n", successCount, len(errors))
+	// Final memory stats
+	runtime.ReadMemStats(&memStats)
+	linesPerSec := float64(lineNum) / totalElapsed.Seconds()
+	fmt.Printf("[Parse] Complete: %d lines, %d entries, %d errors, %d empty\n", lineNum, successCount, parseErrorCount, emptyLineCount)
+	fmt.Printf("[Parse] Performance: %.0f lines/sec, final mem=%.1fMB\n", linesPerSec, float64(memStats.Alloc)/1024/1024)
+	os.Stdout.Sync()
 
 	// Finalize: flush remaining batch and create indexes
 	if err := store.Finalize(); err != nil {

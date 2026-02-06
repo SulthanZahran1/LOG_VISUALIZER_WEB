@@ -40,8 +40,10 @@ type DuckStore struct {
 // NewDuckStore creates a new DuckDB-backed store in the given temp directory.
 func NewDuckStore(tempDir string, sessionID string) (*DuckStore, error) {
 	dbPath := filepath.Join(tempDir, fmt.Sprintf("session_%s.duckdb", sessionID))
+	fmt.Printf("[DuckStore] Creating database at: %s\n", dbPath)
 
 	// Open with optimized settings for large datasets
+	fmt.Printf("[DuckStore] Creating DuckDB connector...\n")
 	connector, err := duckdb.NewConnector(dbPath, func(execer driver.ExecerContext) error {
 		// Set memory limit and other pragmas
 		pragmas := []string{
@@ -50,17 +52,22 @@ func NewDuckStore(tempDir string, sessionID string) (*DuckStore, error) {
 			"PRAGMA enable_progress_bar=false",
 		}
 		for _, pragma := range pragmas {
+			fmt.Printf("[DuckStore] Executing: %s\n", pragma)
 			if _, err := execer.ExecContext(context.Background(), pragma, nil); err != nil {
+				fmt.Printf("[DuckStore] Pragma error: %v\n", err)
 				return err
 			}
 		}
 		return nil
 	})
 	if err != nil {
+		fmt.Printf("[DuckStore] ERROR creating connector: %v\n", err)
 		return nil, fmt.Errorf("failed to create DuckDB connector: %w", err)
 	}
+	fmt.Printf("[DuckStore] Connector created successfully\n")
 
 	db := sql.OpenDB(connector)
+	fmt.Printf("[DuckStore] Database opened, creating table...\n")
 
 	// Create the entries table with optimized schema
 	_, err = db.Exec(`
@@ -78,14 +85,17 @@ func NewDuckStore(tempDir string, sessionID string) (*DuckStore, error) {
 		)
 	`)
 	if err != nil {
+		fmt.Printf("[DuckStore] ERROR creating table: %v\n", err)
 		db.Close()
 		os.Remove(dbPath)
 		return nil, fmt.Errorf("failed to create table: %w", err)
 	}
+	fmt.Printf("[DuckStore] Table created successfully\n")
 
 	// NOTE: Indexes are created in Finalize() after all inserts for better performance.
 	// Creating indexes during inserts significantly slows down the parsing phase.
 
+	fmt.Printf("[DuckStore] Initialization complete, ready for inserts\n")
 	return &DuckStore{
 		db:         db,
 		dbPath:     dbPath,
