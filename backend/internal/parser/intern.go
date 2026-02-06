@@ -22,15 +22,25 @@ func NewStringIntern() *StringIntern {
 	}
 }
 
+// MaxInternPoolSize limits the intern pool to prevent unbounded memory growth.
+// For very large files with many unique strings, we stop interning after this limit.
+const MaxInternPoolSize = 500000
+
 // Intern returns the canonical version of the string.
 // If the string already exists in the pool, returns the pooled version.
 // Otherwise, stores and returns the provided string.
+// If the pool has reached MaxInternPoolSize, returns the string without storing.
 func (si *StringIntern) Intern(s string) string {
 	// Fast path: read lock
 	si.mu.RLock()
 	if pooled, ok := si.pool[s]; ok {
 		si.mu.RUnlock()
 		return pooled
+	}
+	// Check size limit under read lock first (fast path)
+	if len(si.pool) >= MaxInternPoolSize {
+		si.mu.RUnlock()
+		return s
 	}
 	si.mu.RUnlock()
 
@@ -40,6 +50,11 @@ func (si *StringIntern) Intern(s string) string {
 	if pooled, ok := si.pool[s]; ok {
 		si.mu.Unlock()
 		return pooled
+	}
+	// Check size limit again under write lock
+	if len(si.pool) >= MaxInternPoolSize {
+		si.mu.Unlock()
+		return s
 	}
 	// Store the string as the canonical version
 	si.pool[s] = s

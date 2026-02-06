@@ -86,6 +86,8 @@ func (m *Manager) runParse(sessionID, filePath string) {
 			fmt.Printf("[Parse %s] PANIC recovered: %v\n", sessionID[:8], r)
 			m.updateSessionError(sessionID, fmt.Sprintf("parse panicked: %v", r))
 		}
+		// Clear global intern pool after parse to free memory
+		parser.ResetGlobalIntern()
 	}()
 
 	start := time.Now()
@@ -143,8 +145,15 @@ func (m *Manager) runParse(sessionID, filePath string) {
 			runtime.ReadMemStats(&memStats)
 			allocMB := float64(memStats.Alloc) / 1024 / 1024
 			sysMB := float64(memStats.Sys) / 1024 / 1024
-			fmt.Printf("[Parse %s] Progress: %.1f%% (%d lines) - Memory: %.1f MB (alloc) / %.1f MB (sys)\n",
-				sessionID[:8], progress, lines, allocMB, sysMB)
+			gcPause := memStats.PauseNs[(memStats.NumGC+255)%256] / 1e6 // Last GC pause in ms
+			fmt.Printf("[Parse %s] Progress: %.1f%% (%d lines) - Memory: %.1f MB (alloc) / %.1f MB (sys), Intern: %d, GC Pause: %dms\n",
+				sessionID[:8], progress, lines, allocMB, sysMB, parser.GetGlobalIntern().Len(), gcPause)
+			
+			// Force GC if memory usage is high (>2GB) to prevent OOM
+			if allocMB > 2048 {
+				fmt.Printf("[Parse %s] High memory detected, forcing GC...\n", sessionID[:8])
+				runtime.GC()
+			}
 		}
 	}
 
@@ -198,6 +207,14 @@ func (m *Manager) runParse(sessionID, filePath string) {
 
 // runParseToDuckStore handles DuckDB-backed parsing for memory efficiency
 func (m *Manager) runParseToDuckStore(sessionID, filePath string, p *parser.PLCDebugParser, progressCb parser.ProgressCallback, start time.Time) {
+	// Recover from panics to prevent backend crash
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("[Parse %s] PANIC recovered in DuckStore parse: %v\n", sessionID[:8], r)
+			m.updateSessionError(sessionID, fmt.Sprintf("parse panicked: %v", r))
+		}
+	}()
+
 	// Create DuckStore for this session
 	fmt.Printf("[Parse %s] Creating DuckDB store in %s...\n", sessionID[:8], m.tempDir)
 	store, err := parser.NewDuckStore(m.tempDir, sessionID)

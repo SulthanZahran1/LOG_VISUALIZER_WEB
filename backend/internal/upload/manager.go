@@ -158,13 +158,6 @@ func (m *Manager) decompressFileWithProgress(job *Job, fileID string) error {
 	}
 	defer compressedFile.Close()
 
-	// Get compressed file size for progress calculation
-	compressedInfo, err := compressedFile.Stat()
-	if err != nil {
-		return err
-	}
-	compressedSize := compressedInfo.Size()
-
 	// Check gzip magic
 	magic := make([]byte, 2)
 	if _, err := compressedFile.Read(magic); err != nil {
