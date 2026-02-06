@@ -342,8 +342,15 @@ func (h *Handler) HandleParseEntries(c echo.Context) error {
 // Accepts start/end via query params and signals via JSON body to avoid 414 URI Too Long errors.
 func (h *Handler) HandleParseChunk(c echo.Context) error {
 	id := c.Param("sessionId")
-	startMs, _ := strconv.ParseInt(c.QueryParam("start"), 10, 64)
-	endMs, _ := strconv.ParseInt(c.QueryParam("end"), 10, 64)
+
+	// Parse timestamps as floats first (JavaScript sends float64), then convert to int64
+	var startMs, endMs int64
+	if startFloat, err := strconv.ParseFloat(c.QueryParam("start"), 64); err == nil {
+		startMs = int64(startFloat)
+	}
+	if endFloat, err := strconv.ParseFloat(c.QueryParam("end"), 64); err == nil {
+		endMs = int64(endFloat)
+	}
 
 	fmt.Printf("[API] HandleParseChunk: session=%s range=[%d, %d] (%d ms)\n", id[:8], startMs, endMs, endMs-startMs)
 
