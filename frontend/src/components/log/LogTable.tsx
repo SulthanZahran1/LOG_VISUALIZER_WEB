@@ -579,13 +579,13 @@ export function LogTable() {
     };
 
 
-    // Viewport calculations - use ref for scroll position to avoid signal dependency
+    // Viewport calculations - ALWAYS use scrollSignal to ensure re-renders on scroll
     const viewportHeight = tableRef.current?.clientHeight || 600;
     const totalCount = useServerSide.value ? totalEntries.value : filteredEntries.value.length;
     const totalHeight = totalCount * ROW_HEIGHT;
 
-    // Use scrollTopRef for calculations during active scrolling for smoother performance
-    const currentScroll = isScrollingRef.current ? scrollTopRef.current : scrollSignal.value;
+    // Use scrollSignal to ensure component re-renders when scroll position changes
+    const currentScroll = scrollSignal.value;
 
     const startIdx = useServerSide.value
         ? 0
