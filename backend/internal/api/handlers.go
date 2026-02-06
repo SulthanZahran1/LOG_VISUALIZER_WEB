@@ -377,7 +377,7 @@ func (h *Handler) HandleParseChunk(c echo.Context) error {
 
 	startTime := time.Now()
 
-	entries, ok := h.session.GetChunk(id, time.UnixMilli(startMs), time.UnixMilli(endMs), signals)
+	entries, ok := h.session.GetChunk(c.Request().Context(), id, time.UnixMilli(startMs), time.UnixMilli(endMs), signals)
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
 	}
@@ -417,7 +417,7 @@ func (h *Handler) HandleParseChunkBoundaries(c echo.Context) error {
 
 	startTime := time.Now()
 
-	boundaries, ok := h.session.GetBoundaryValues(id, time.UnixMilli(startMs), time.UnixMilli(endMs), req.Signals)
+	boundaries, ok := h.session.GetBoundaryValues(c.Request().Context(), id, time.UnixMilli(startMs), time.UnixMilli(endMs), req.Signals)
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
 	}
@@ -449,7 +449,7 @@ func (h *Handler) HandleGetSignals(c echo.Context) error {
 // HandleGetCategories returns the list of all unique categories for a session.
 func (h *Handler) HandleGetCategories(c echo.Context) error {
 	id := c.Param("sessionId")
-	cats, ok := h.session.GetCategories(id)
+	cats, ok := h.session.GetCategories(c.Request().Context(), id)
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
 	}
@@ -472,7 +472,7 @@ func (h *Handler) HandleGetValuesAtTime(c echo.Context) error {
 		signals = strings.Split(signalsParam, ",")
 	}
 
-	entries, ok := h.session.GetValuesAtTime(id, time.UnixMilli(tsMs), signals)
+	entries, ok := h.session.GetValuesAtTime(c.Request().Context(), id, time.UnixMilli(tsMs), signals)
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found"})
 	}
@@ -776,7 +776,7 @@ func (h *Handler) HandleGetCarrierEntries(c echo.Context) error {
 	}
 
 	// Get all entries (carrier logs are typically smaller)
-	entries, total, ok := h.session.GetEntries(h.carrierSessionID, 1, 100000)
+	entries, total, ok := h.session.GetEntries(c.Request().Context(), h.carrierSessionID, 1, 100000)
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "carrier session not found or not complete"})
 	}
@@ -1123,7 +1123,7 @@ func (h *Handler) HandleParseEntriesMsgpack(c echo.Context) error {
 		pageSize = 100
 	}
 
-	entries, total, ok := h.session.GetEntries(id, page, pageSize)
+	entries, total, ok := h.session.GetEntries(c.Request().Context(), id, page, pageSize)
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
 	}
@@ -1188,7 +1188,7 @@ func (h *Handler) HandleParseStream(c echo.Context) error {
 
 	for sent < totalEntries {
 		page := (sent / batchSize) + 1
-		entries, _, ok := h.session.GetEntries(id, page, batchSize)
+		entries, _, ok := h.session.GetEntries(c.Request().Context(), id, page, batchSize)
 		if !ok || len(entries) == 0 {
 			break
 		}

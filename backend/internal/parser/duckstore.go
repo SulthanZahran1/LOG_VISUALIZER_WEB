@@ -514,8 +514,8 @@ func (ds *DuckStore) ClearCountCache() {
 }
 
 // GetCategories returns all unique categories in the store
-func (ds *DuckStore) GetCategories() ([]string, error) {
-	rows, err := ds.db.Query("SELECT DISTINCT category FROM entries WHERE category IS NOT NULL AND category != '' ORDER BY category")
+func (ds *DuckStore) GetCategories(ctx context.Context) ([]string, error) {
+	rows, err := ds.db.QueryContext(ctx, "SELECT DISTINCT category FROM entries WHERE category IS NOT NULL AND category != '' ORDER BY category")
 	if err != nil {
 		return nil, err
 	}
@@ -584,17 +584,21 @@ func (ds *DuckStore) buildWhereClause(params QueryParams) (string, []interface{}
 }
 
 // GetEntries returns a range of entries (for pagination)
-func (ds *DuckStore) GetEntries(start, end int) ([]models.LogEntry, error) {
+func (ds *DuckStore) GetEntries(ctx context.Context, start, end int) ([]models.LogEntry, error) {
 	// Acquire semaphore to limit concurrent queries
-	ds.querySem <- struct{}{}
-	defer func() { <-ds.querySem }()
+	select {
+	case ds.querySem <- struct{}{}:
+		defer func() { <-ds.querySem }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 
 	count := end - start
 	if count <= 0 {
 		return []models.LogEntry{}, nil
 	}
 
-	rows, err := ds.db.Query(`
+	rows, err := ds.db.QueryContext(ctx, `
 		SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
 		FROM entries WHERE id >= ? AND id < ? ORDER BY id
 	`, start, end)
@@ -617,10 +621,14 @@ func (ds *DuckStore) GetEntries(start, end int) ([]models.LogEntry, error) {
 
 // GetChunk returns entries within a time range (startTs <= ts <= endTs)
 // Optional signals parameter filters results to specific signals (deviceId::signalName).
-func (ds *DuckStore) GetChunk(startTs, endTs time.Time, signals []string) ([]models.LogEntry, error) {
+func (ds *DuckStore) GetChunk(ctx context.Context, startTs, endTs time.Time, signals []string) ([]models.LogEntry, error) {
 	// Acquire semaphore to limit concurrent queries
-	ds.querySem <- struct{}{}
-	defer func() { <-ds.querySem }()
+	select {
+	case ds.querySem <- struct{}{}:
+		defer func() { <-ds.querySem }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 
 	startMs := startTs.UnixMilli()
 	endMs := endTs.UnixMilli()
@@ -674,10 +682,14 @@ func (ds *DuckStore) GetChunk(startTs, endTs time.Time, signals []string) ([]mod
 }
 
 // GetValuesAtTime returns the most recent value for all signals at or before the given timestamp.
-func (ds *DuckStore) GetValuesAtTime(ts time.Time, signals []string) ([]models.LogEntry, error) {
+func (ds *DuckStore) GetValuesAtTime(ctx context.Context, ts time.Time, signals []string) ([]models.LogEntry, error) {
 	// Acquire semaphore to limit concurrent queries
-	ds.querySem <- struct{}{}
-	defer func() { <-ds.querySem }()
+	select {
+	case ds.querySem <- struct{}{}:
+		defer func() { <-ds.querySem }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 
 	tsMs := ts.UnixMilli()
 
@@ -741,10 +753,14 @@ type BoundaryValues struct {
 
 // GetBoundaryValues returns the last value before startTs and first value after endTs for each signal.
 // This is used by waveform rendering to properly draw signal state continuation.
-func (ds *DuckStore) GetBoundaryValues(startTs, endTs time.Time, signals []string) (*BoundaryValues, error) {
+func (ds *DuckStore) GetBoundaryValues(ctx context.Context, startTs, endTs time.Time, signals []string) (*BoundaryValues, error) {
 	// Acquire semaphore to limit concurrent queries
-	ds.querySem <- struct{}{}
-	defer func() { <-ds.querySem }()
+	select {
+	case ds.querySem <- struct{}{}:
+		defer func() { <-ds.querySem }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 
 	startMs := startTs.UnixMilli()
 	endMs := endTs.UnixMilli()
@@ -789,7 +805,7 @@ func (ds *DuckStore) GetBoundaryValues(startTs, endTs time.Time, signals []strin
 	`
 	beforeArgs := append([]interface{}{startMs}, args...)
 
-	rows, err := ds.db.Query(beforeQuery, beforeArgs...)
+	rows, err := ds.db.QueryContext(ctx, beforeQuery, beforeArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("before query failed: %w", err)
 	}
@@ -821,7 +837,7 @@ func (ds *DuckStore) GetBoundaryValues(startTs, endTs time.Time, signals []strin
 	`
 	afterArgs := append([]interface{}{endMs}, args...)
 
-	rows2, err := ds.db.Query(afterQuery, afterArgs...)
+	rows2, err := ds.db.QueryContext(ctx, afterQuery, afterArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("after query failed: %w", err)
 	}

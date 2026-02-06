@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -40,7 +41,7 @@ func TestSessionManager(t *testing.T) {
 	}
 
 	// Verify entries
-	entries, total, ok := m.GetEntries(sess.ID, 1, 10)
+	entries, total, ok := m.GetEntries(context.Background(), sess.ID, 1, 10)
 	if !ok {
 		t.Fatalf("Failed to get entries")
 	}

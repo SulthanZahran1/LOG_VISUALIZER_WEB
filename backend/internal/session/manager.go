@@ -419,12 +419,12 @@ func (m *Manager) QueryEntries(ctx context.Context, id string, params parser.Que
 	}
 
 	// Fallback to legacy in-memory GetEntries (no filtering for simplicity, as legacy is for small files)
-	entries, total, ok := m.GetEntries(id, page, pageSize)
+	entries, total, ok := m.GetEntries(ctx, id, page, pageSize)
 	return entries, total, ok
 }
 
 // GetCategories returns all unique categories for a session.
-func (m *Manager) GetCategories(id string) ([]string, bool) {
+func (m *Manager) GetCategories(ctx context.Context, id string) ([]string, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -434,18 +434,17 @@ func (m *Manager) GetCategories(id string) ([]string, bool) {
 	}
 
 	if state.DuckStore != nil {
-		cats, err := state.DuckStore.GetCategories()
+		cats, err := state.DuckStore.GetCategories(ctx)
 		if err != nil {
 			return nil, false
 		}
 		return cats, true
 	}
-
 	return []string{}, true
 }
 
 // GetEntries returns paginated entries for a session.
-func (m *Manager) GetEntries(id string, page, pageSize int) ([]models.LogEntry, int, bool) {
+func (m *Manager) GetEntries(ctx context.Context, id string, page, pageSize int) ([]models.LogEntry, int, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -457,20 +456,20 @@ func (m *Manager) GetEntries(id string, page, pageSize int) ([]models.LogEntry, 
 	// Use DuckStore if available (memory-efficient)
 	if state.DuckStore != nil {
 		total := state.DuckStore.Len()
-		start := (page - 1) * pageSize
-		if start < 0 {
-			start = 0
+		offset := (page - 1) * pageSize
+		if offset < 0 {
+			offset = 0
 		}
-		if start >= total {
+		if offset >= total {
 			return []models.LogEntry{}, total, true
 		}
 
-		end := start + pageSize
+		end := offset + pageSize
 		if end > total {
 			end = total
 		}
 
-		entries, err := state.DuckStore.GetEntries(start, end)
+		entries, err := state.DuckStore.GetEntries(ctx, offset, end)
 		if err != nil {
 			return nil, 0, false
 		}
@@ -499,9 +498,8 @@ func (m *Manager) GetEntries(id string, page, pageSize int) ([]models.LogEntry, 
 	return state.Result.Entries[start:end], total, true
 }
 
-// GetChunk returns entries within a time window.
 // GetChunk returns entries within a time range for a session.
-func (m *Manager) GetChunk(id string, startTs, endTs time.Time, signals []string) ([]models.LogEntry, bool) {
+func (m *Manager) GetChunk(ctx context.Context, id string, startTs, endTs time.Time, signals []string) ([]models.LogEntry, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -512,7 +510,7 @@ func (m *Manager) GetChunk(id string, startTs, endTs time.Time, signals []string
 
 	// Use DuckStore if available (memory-efficient + indexed)
 	if state.DuckStore != nil {
-		entries, err := state.DuckStore.GetChunk(startTs, endTs, signals)
+		entries, err := state.DuckStore.GetChunk(ctx, startTs, endTs, signals)
 		if err != nil {
 			return nil, false
 		}
@@ -523,8 +521,8 @@ func (m *Manager) GetChunk(id string, startTs, endTs time.Time, signals []string
 	return []models.LogEntry{}, true
 }
 
-// GetValuesAtTime returns the most recent value for all signals at or before the given timestamp.
-func (m *Manager) GetValuesAtTime(id string, ts time.Time, signals []string) ([]models.LogEntry, bool) {
+// GetValuesAtTime returns signal states at a specific point in time.
+func (m *Manager) GetValuesAtTime(ctx context.Context, id string, ts time.Time, signals []string) ([]models.LogEntry, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -534,7 +532,7 @@ func (m *Manager) GetValuesAtTime(id string, ts time.Time, signals []string) ([]
 	}
 
 	if state.DuckStore != nil {
-		entries, err := state.DuckStore.GetValuesAtTime(ts, signals)
+		entries, err := state.DuckStore.GetValuesAtTime(ctx, ts, signals)
 		if err != nil {
 			return nil, false
 		}
@@ -545,8 +543,7 @@ func (m *Manager) GetValuesAtTime(id string, ts time.Time, signals []string) ([]
 }
 
 // GetBoundaryValues returns the last value before startTs and first value after endTs for each signal.
-// This is used by waveform rendering to properly draw signal state continuation.
-func (m *Manager) GetBoundaryValues(id string, startTs, endTs time.Time, signals []string) (*parser.BoundaryValues, bool) {
+func (m *Manager) GetBoundaryValues(ctx context.Context, id string, startTs, endTs time.Time, signals []string) (*parser.BoundaryValues, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -556,7 +553,7 @@ func (m *Manager) GetBoundaryValues(id string, startTs, endTs time.Time, signals
 	}
 
 	if state.DuckStore != nil {
-		boundaries, err := state.DuckStore.GetBoundaryValues(startTs, endTs, signals)
+		boundaries, err := state.DuckStore.GetBoundaryValues(ctx, startTs, endTs, signals)
 		if err != nil {
 			return nil, false
 		}
