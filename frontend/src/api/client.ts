@@ -236,6 +236,15 @@ export async function getValuesAtTime(
 }
 
 /**
+ * Send a keepalive ping to prevent session cleanup during long viewing sessions.
+ * Call this periodically (e.g., every 2 minutes) when user is actively viewing
+ * but not making data requests (e.g., paused on waveform view).
+ */
+export async function sessionKeepAlive(sessionId: string): Promise<void> {
+    await request<void>(`/parse/${sessionId}/keepalive`, { method: 'POST' });
+}
+
+/**
  * Stream log entries via Server-Sent Events for progressive loading.
  * This allows displaying entries incrementally as they are received.
  * 

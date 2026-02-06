@@ -21,6 +21,16 @@
   - Frontend: Better visual distinction between upload phase (blue) and processing phase (orange/animated)
   - Extended timeout from 3 to 5 minutes for very large files
 
+- **Session Cleanup While Actively Viewing**: Fixed sessions being cleaned up while user is actively using the waveform
+  - Added `LastAccessed` timestamp to `SessionState` to track activity
+  - Added `TouchSession()` method to update activity timestamp
+  - Added `SessionKeepAliveWindow` (5 min) - sessions accessed within this window won't be cleaned up
+  - Modified `CleanupOldSessions()` to skip recently accessed sessions
+  - All session API endpoints now call `TouchSession()` on successful access
+  - Added `POST /api/parse/:sessionId/keepalive` endpoint for explicit keepalive pings
+  - Added `sessionKeepAlive()` API client function
+  - Cleanup log now shows time since last access for visibility
+
 ### Technical
 - New `sendProcessingProgress()` helper in backend WebSocket handler
 - New `streamDecompressGzipWithProgress()` for streaming decompression with progress

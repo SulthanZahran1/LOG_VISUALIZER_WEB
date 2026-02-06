@@ -19,6 +19,9 @@ const MaxSessions = 10
 // SessionMaxAge is how long to keep completed sessions before cleanup
 const SessionMaxAge = 30 * time.Minute
 
+// SessionKeepAliveWindow is how long to keep sessions that are actively being used
+const SessionKeepAliveWindow = 5 * time.Minute
+
 // Manager handles active log parsing sessions.
 type Manager struct {
 	sessions map[string]*SessionState
@@ -29,9 +32,10 @@ type Manager struct {
 
 // SessionState holds the session metadata and the DuckDB-backed storage.
 type SessionState struct {
-	Session   *models.ParseSession
-	Result    *models.ParsedLog // Legacy: used for backward compatibility with non-DuckDB parsers
-	DuckStore *parser.DuckStore // Memory-efficient storage for large files
+	Session      *models.ParseSession
+	Result       *models.ParsedLog // Legacy: used for backward compatibility with non-DuckDB parsers
+	DuckStore    *parser.DuckStore // Memory-efficient storage for large files
+	LastAccessed time.Time         // Last time the session was accessed (for keep-alive)
 }
 
 // NewManager creates a new session manager.
@@ -66,7 +70,8 @@ func (m *Manager) StartSession(fileID, filePath string) (*models.ParseSession, e
 	session.Status = models.SessionStatusParsing
 
 	state := &SessionState{
-		Session: session,
+		Session:      session,
+		LastAccessed: time.Now(),
 	}
 
 	m.mu.Lock()
@@ -322,12 +327,15 @@ func (m *Manager) cleanupOldSessionsIfNeeded() {
 	}
 }
 
-// CleanupOldSessions removes sessions older than maxAge
+// CleanupOldSessions removes sessions older than maxAge,
+// but keeps sessions that have been accessed within SessionKeepAliveWindow.
 func (m *Manager) CleanupOldSessions(maxAge time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	cutoff := time.Now().Add(-maxAge)
+	keepAliveCutoff := time.Now().Add(-SessionKeepAliveWindow)
+
 	for id, state := range m.sessions {
 		// Only clean up completed/error sessions
 		if state.Session.Status != models.SessionStatusComplete &&
@@ -335,14 +343,27 @@ func (m *Manager) CleanupOldSessions(maxAge time.Duration) {
 			continue
 		}
 
-		// Check if session has a completion time stored (use CreatedAt as proxy)
-		// For now, clean up any completed session
-		_ = cutoff
-		if state.DuckStore != nil {
-			state.DuckStore.Close()
+		// Don't clean up sessions that are actively being used
+		if state.LastAccessed.After(keepAliveCutoff) {
+			continue
 		}
-		delete(m.sessions, id)
-		fmt.Printf("[Manager] Cleaned up aged session %s\n", id[:8])
+
+		// Check if session is older than maxAge
+		// We use LastAccessed if available, otherwise fall back to session creation
+		sessionTime := state.LastAccessed
+		if sessionTime.IsZero() {
+			// Fallback: if LastAccessed not set, use a safe default
+			sessionTime = time.Now().Add(-maxAge - time.Hour) // Force cleanup
+		}
+
+		if sessionTime.Before(cutoff) {
+			if state.DuckStore != nil {
+				state.DuckStore.Close()
+			}
+			delete(m.sessions, id)
+			fmt.Printf("[Manager] Cleaned up aged session %s (last accessed: %s ago)\n",
+				id[:8], time.Since(state.LastAccessed).Round(time.Second))
+		}
 	}
 }
 
@@ -356,6 +377,21 @@ func (m *Manager) GetSession(id string) (*models.ParseSession, bool) {
 		return nil, false
 	}
 	return state.Session, true
+}
+
+// TouchSession updates the LastAccessed timestamp for a session.
+// This should be called whenever a session is actively being used
+// to prevent it from being cleaned up.
+func (m *Manager) TouchSession(id string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	state, ok := m.sessions[id]
+	if !ok {
+		return false
+	}
+	state.LastAccessed = time.Now()
+	return true
 }
 
 // QueryEntries returns filtered, sorted and paginated entries for a session.

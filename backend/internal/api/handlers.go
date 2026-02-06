@@ -224,6 +224,8 @@ func (h *Handler) HandleParseStatus(c echo.Context) error {
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found"})
 	}
+	// Touch session to prevent cleanup while being viewed
+	h.session.TouchSession(id)
 	return c.JSON(http.StatusOK, sess)
 }
 
@@ -328,6 +330,9 @@ func (h *Handler) HandleParseEntries(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
 	}
 
+	// Touch session to prevent cleanup while being actively viewed
+	h.session.TouchSession(id)
+
 	fmt.Printf("[API] QueryEntries: session=%s done in %v (returning %d/%d entries)\n", id[:8], time.Since(start), len(entries), total)
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -377,6 +382,9 @@ func (h *Handler) HandleParseChunk(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
 	}
 
+	// Touch session to prevent cleanup while being actively viewed (waveform)
+	h.session.TouchSession(id)
+
 	fmt.Printf("[API] HandleParseChunk: session=%s done in %v, returning %d entries\n", id[:8], time.Since(startTime), len(entries))
 
 	return c.JSON(http.StatusOK, entries)
@@ -389,7 +397,8 @@ func (h *Handler) HandleGetSignals(c echo.Context) error {
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
 	}
-
+	// Touch session to prevent cleanup while being actively viewed
+	h.session.TouchSession(id)
 	return c.JSON(http.StatusOK, signals)
 }
 
@@ -400,7 +409,8 @@ func (h *Handler) HandleGetCategories(c echo.Context) error {
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
 	}
-
+	// Touch session to prevent cleanup while being actively viewed
+	h.session.TouchSession(id)
 	return c.JSON(http.StatusOK, cats)
 }
 
@@ -422,8 +432,21 @@ func (h *Handler) HandleGetValuesAtTime(c echo.Context) error {
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found"})
 	}
-
+	// Touch session to prevent cleanup while being actively viewed
+	h.session.TouchSession(id)
 	return c.JSON(http.StatusOK, entries)
+}
+
+// HandleSessionKeepAlive allows clients to explicitly keep a session alive.
+// This is useful for long-running views (waveform, map) where the user may
+// not be making data requests but is still actively viewing the session.
+func (h *Handler) HandleSessionKeepAlive(c echo.Context) error {
+	id := c.Param("sessionId")
+	ok := h.session.TouchSession(id)
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found"})
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // HandleGetMapLayout returns the currently active map layout.
@@ -1144,6 +1167,11 @@ func (h *Handler) HandleParseStream(c echo.Context) error {
 		c.Response().Flush()
 
 		sent += len(entries)
+
+		// Touch session periodically during streaming to prevent cleanup
+		if sent%10000 == 0 {
+			h.session.TouchSession(id)
+		}
 
 		// Small delay to prevent overwhelming the connection
 		if sent < totalEntries {
