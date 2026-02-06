@@ -48,12 +48,14 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
         );
 
     const handleToggle = (cat: string) => {
+        // Normalize null/undefined to empty string for consistent filtering
+        const normalizedCat = cat ?? '';
         const currentFilter = categoryFilter.value;
         const newFilter = new Set(currentFilter);
-        if (newFilter.has(cat)) {
-            newFilter.delete(cat);
+        if (newFilter.has(normalizedCat)) {
+            newFilter.delete(normalizedCat);
         } else {
-            newFilter.add(cat);
+            newFilter.add(normalizedCat);
         }
         categoryFilter.value = newFilter;
     };
@@ -107,16 +109,20 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
                 ) : filteredCategories.length === 0 ? (
                     <div className="popover-empty">No matching categories</div>
                 ) : (
-                    filteredCategories.map(cat => (
-                        <label key={cat || '__uncategorized__'} className="filter-item">
-                            <input
-                                type="checkbox"
-                                checked={categoryFilter.value.has(cat)}
-                                onChange={() => handleToggle(cat)}
-                            />
-                            <span className="filter-label">{cat || '(Uncategorized)'}</span>
-                        </label>
-                    ))
+                    filteredCategories.map(cat => {
+                        // Normalize null/undefined to empty string for consistent filtering
+                        const normalizedCat = cat ?? '';
+                        return (
+                            <label key={normalizedCat || '__uncategorized__'} className="filter-item">
+                                <input
+                                    type="checkbox"
+                                    checked={categoryFilter.value.has(normalizedCat)}
+                                    onChange={() => handleToggle(normalizedCat)}
+                                />
+                                <span className="filter-label">{normalizedCat || '(Uncategorized)'}</span>
+                            </label>
+                        );
+                    })
                 )}
             </div>
         </div>

@@ -178,6 +178,8 @@ export const carrierLocations = signal<Map<string, string>>(new Map()); // carri
 export const latestSignalValues = signal<Map<string, any>>(new Map()); // deviceId::signalName -> value
 
 // Signal history for time-based playback (key -> array of {timestamp, value})
+// NOTE: For large files (server-side mode), this is NOT populated to save memory.
+// Instead, getValuesAtTime API is used on-demand.
 export const signalHistory = signal<Map<string, Array<{ timestamp: number, value: any }>>>(new Map());
 
 // Centering and Viewport
@@ -384,6 +386,9 @@ export function getUnitColor(unitId: string): { color?: string, text?: string } 
 
 /**
  * Get signal value at a specific time, or latest if time is null.
+ * 
+ * For large files (server-side mode), this uses the latest cached values
+ * since the server-side API is called separately via effect.
  */
 export function getSignalValueAtTime(key: string, time: number | null): any {
     // If no playback time, use latest value
@@ -391,7 +396,13 @@ export function getSignalValueAtTime(key: string, time: number | null): any {
         return latestSignalValues.value.get(key);
     }
 
-    // Look up in history
+    // For server-side mode (large files), don't use history - rely on latest values
+    // The separate effect fetches values at time from backend
+    if (useServerSide.value) {
+        return latestSignalValues.value.get(key);
+    }
+
+    // Look up in history (client-side mode only)
     const history = signalHistory.value.get(key);
     if (!history || history.length === 0) {
         return latestSignalValues.value.get(key);
@@ -432,9 +443,12 @@ export function getCarrierDisplayText(unitId: string): string | null {
 }
 
 // Bulk update signal values (with optional timestamps for history)
+// NOTE: For large files (server-side mode), history is NOT populated to save memory.
 export function updateSignalValues(entries: { deviceId: string, signalName: string, value: any, timestamp?: string | number }[]): void {
     const newValues = new Map(latestSignalValues.value);
-    const newHistory = new Map(signalHistory.value);
+    // Only update history for client-side mode (small files)
+    const shouldUpdateHistory = !useServerSide.value;
+    const newHistory = shouldUpdateHistory ? new Map(signalHistory.value) : signalHistory.value;
     let changed = false;
 
     for (const entry of entries) {
@@ -446,8 +460,8 @@ export function updateSignalValues(entries: { deviceId: string, signalName: stri
             changed = true;
         }
 
-        // Add to history if timestamp is provided
-        if (entry.timestamp) {
+        // Add to history if timestamp is provided (client-side mode only)
+        if (shouldUpdateHistory && entry.timestamp) {
             const ts = new Date(entry.timestamp).getTime();
             if (!isNaN(ts)) {
                 const existing = newHistory.get(key) || [];

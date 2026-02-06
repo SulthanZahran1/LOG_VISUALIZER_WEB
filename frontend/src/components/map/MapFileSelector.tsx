@@ -123,7 +123,9 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
         const endTime = currentSession.value.endTime;
         const totalCount = currentSession.value.entryCount;
 
-        // First link with existing (partial) entries for immediate feedback
+        // Link with available entries for immediate feedback
+        // For large files (server-side mode), we don't fetch ALL entries
+        // Instead, we rely on getValuesAtTime API for time-based queries
         linkSignalLogSession(
             sessionId,
             sessionName,
@@ -133,22 +135,26 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
             totalCount
         );
 
-        // Then fetch ALL entries to ensure map has full data across the entire range
-        try {
-            const { fetchAllEntries } = await import('../../stores/logStore');
-            const allEntries = await fetchAllEntries(sessionId);
+        // Only fetch all entries for small files (client-side mode)
+        // Large files use server-side API for on-demand value fetching
+        const { useServerSide } = await import('../../stores/logStore');
+        if (!useServerSide.value) {
+            try {
+                const { fetchAllEntries } = await import('../../stores/logStore');
+                const allEntries = await fetchAllEntries(sessionId);
 
-            // Re-link with full data (this will update history and entry count)
-            linkSignalLogSession(
-                sessionId,
-                sessionName,
-                allEntries,
-                startTime,
-                endTime,
-                totalCount
-            );
-        } catch (err) {
-            console.error('Failed to load full session data for map:', err);
+                // Re-link with full data (this will update history and entry count)
+                linkSignalLogSession(
+                    sessionId,
+                    sessionName,
+                    allEntries,
+                    startTime,
+                    endTime,
+                    totalCount
+                );
+            } catch (err) {
+                console.error('Failed to load full session data for map:', err);
+            }
         }
     };
 
