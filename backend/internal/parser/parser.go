@@ -36,8 +36,10 @@ var (
 	intRegex   = regexp.MustCompile(`^[+-]?(?:0[xX][0-9A-Fa-f_]+|0[bB][01_]+|0[oO][0-7_]+|\d[\d_,]*)$`)
 	floatRegex = regexp.MustCompile(`^[+-]?(?:\d[\d_,]*\.\d+|\.\d+|\d+\.)(?:[eE][+-]?\d+)?$|^[+-]?\d+(?:[eE][+-]?\d+)$`)
 
-	boolTrue  = map[string]bool{"ON": true, "TRUE": true, "1": true, "YES": true}
-	boolFalse = map[string]bool{"OFF": true, "FALSE": true, "0": true, "NO": true}
+	// Boolean keywords - do NOT include "0" and "1" as they are ambiguous
+	// and should be treated as integers to avoid misclassifying integer signals
+	boolTrue  = map[string]bool{"ON": true, "TRUE": true, "YES": true}
+	boolFalse = map[string]bool{"OFF": true, "FALSE": true, "NO": true}
 )
 
 // InferType guesses the SignalType of a raw string.
