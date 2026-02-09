@@ -506,10 +506,15 @@ New-DefaultConfig -OutputPath $configPath -DefaultPort $Port
 
 # Create data directories
 $dataDir = Join-Path $packageDir "data"
+$defaultsDir = Join-Path $dataDir "defaults"
+$mapsDir = Join-Path $defaultsDir "maps"
+
 New-Item -ItemType Directory -Path (Join-Path $dataDir "uploads") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $dataDir "temp") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $dataDir "parsed") -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $dataDir "defaults" "maps") -Force | Out-Null
+New-Item -ItemType Directory -Path $defaultsDir -Force | Out-Null
+New-Item -ItemType Directory -Path $mapsDir -Force | Out-Null
+Write-Status "Created directories: data/, defaults/, maps/" "Info"
 
 # Copy default rules if exists
 $defaultRules = Join-Path $backendDir "data" "defaults" "rules.yaml"
@@ -523,15 +528,28 @@ if (Test-Path $defaultRules) {
 
 # Copy all default maps (.xml files)
 $sourceMapsDir = Join-Path $backendDir "data" "defaults" "maps"
-$destMapsDir = Join-Path $dataDir "defaults" "maps"
+
+Write-Status "Source maps dir: $sourceMapsDir" "Info"
+Write-Status "Dest maps dir: $mapsDir" "Info"
 
 if (Test-Path $sourceMapsDir) {
-    $mapFiles = Get-ChildItem -Path $sourceMapsDir -Filter "*.xml" -File
+    $mapFiles = Get-ChildItem -Path $sourceMapsDir -Filter "*.xml" -File -ErrorAction SilentlyContinue
+    $mapCount = ($mapFiles | Measure-Object).Count
+    Write-Status "Found $mapCount XML map files to copy" "Info"
+    
     if ($mapFiles) {
         foreach ($mapFile in $mapFiles) {
-            $destPath = Join-Path $destMapsDir $mapFile.Name
-            Copy-Item -Path $mapFile.FullName -Destination $destPath -Force
-            Write-Status "Copied map: $($mapFile.Name) ($( [math]::Round($mapFile.Length/1KB, 2) ) KB)" "Info"
+            try {
+                $destPath = Join-Path $mapsDir $mapFile.Name
+                Copy-Item -Path $mapFile.FullName -Destination $destPath -Force -ErrorAction Stop
+                if (Test-Path $destPath) {
+                    Write-Status "Copied map: $($mapFile.Name) ($( [math]::Round($mapFile.Length/1KB, 2) ) KB)" "Info"
+                } else {
+                    Write-Status "FAILED to copy: $($mapFile.Name)" "Error"
+                }
+            } catch {
+                Write-Status "Error copying $($mapFile.Name): $_" "Error"
+            }
         }
     } else {
         Write-Status "No .xml map files found in: $sourceMapsDir" "Warning"
@@ -541,15 +559,19 @@ if (Test-Path $sourceMapsDir) {
 }
 
 # List what was copied
-$defaultsDir = Join-Path $dataDir "defaults"
 if (Test-Path $defaultsDir) {
-    $copiedFiles = Get-ChildItem -Path $defaultsDir -Recurse -File | Select-Object -ExpandProperty FullName
+    $copiedFiles = Get-ChildItem -Path $defaultsDir -Recurse -File -ErrorAction SilentlyContinue
     if ($copiedFiles) {
-        Write-Status "Defaults directory contents:" "Info"
+        $fileCount = ($copiedFiles | Measure-Object).Count
+        Write-Status "Defaults directory contains $fileCount files:" "Info"
         foreach ($file in $copiedFiles) {
-            Write-Host "  - $file" -ForegroundColor Gray
+            Write-Host "  - $($file.Name) ($( [math]::Round($file.Length/1KB, 2) ) KB)" -ForegroundColor Gray
         }
+    } else {
+        Write-Status "No files found in defaults directory!" "Warning"
     }
+} else {
+    Write-Status "Defaults directory not found: $defaultsDir" "Error"
 }
 
 # Create start script
