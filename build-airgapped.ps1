@@ -66,8 +66,17 @@ $Colors = @{
 
 function Write-Status {
     param([string]$Message, [string]$Type = "Info")
-    $color = $Colors[$Type]
-    Write-Host "[$Type] $Message" -ForegroundColor $color
+    
+    # Normalize the type and get color with fallback
+    $typeKey = $Type.Substring(0,1).ToUpper() + $Type.Substring(1).ToLower()
+    $color = $Colors[$typeKey]
+    
+    # Fallback to White if color not found
+    if (-not $color) {
+        $color = "White"
+    }
+    
+    Write-Host "[$typeKey] $Message" -ForegroundColor $color
 }
 
 function Test-Command {
