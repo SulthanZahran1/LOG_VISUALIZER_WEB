@@ -206,12 +206,12 @@ effect(() => {
 // Trigger server-side fetch when filters/sort change in server-side mode
 effect(() => {
     if (useServerSide.value && currentSession.value?.status === 'complete') {
-        // Track dependencies
+        // Track dependencies - these are read to trigger the effect when they change
         const search = searchQuery.value;
         const category = categoryFilter.value;
-        const sort = sortColumn.value;
-        const order = sortDirection.value;
-        const type = signalTypeFilter.value;
+        sortColumn.value;
+        sortDirection.value;
+        signalTypeFilter.value;
 
         // Clear cache when filters change
         console.log('[filter effect] Filters changed, clearing cache. Search:', search, 'Category:', Array.from(category));
