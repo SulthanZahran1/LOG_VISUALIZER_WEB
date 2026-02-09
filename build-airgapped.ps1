@@ -512,17 +512,35 @@ New-Item -ItemType Directory -Path (Join-Path $dataDir "parsed") -Force | Out-Nu
 New-Item -ItemType Directory -Path (Join-Path $dataDir "defaults" "maps") -Force | Out-Null
 
 # Copy default rules if exists
-$defaultRules = Join-Path $backendDir "data/defaults/rules.yaml"
+$defaultRules = Join-Path $backendDir "data" "defaults" "rules.yaml"
 if (Test-Path $defaultRules) {
-    Copy-Item $defaultRules (Join-Path $dataDir "defaults/rules.yaml")
-    Write-Status "Copied default rules.yaml" "Info"
+    $destRules = Join-Path $dataDir "defaults" "rules.yaml"
+    Copy-Item -Path $defaultRules -Destination $destRules -Force
+    Write-Status "Copied default rules.yaml ($( [math]::Round((Get-Item $defaultRules).Length/1KB, 2) ) KB)" "Info"
+} else {
+    Write-Status "No default rules.yaml found at: $defaultRules" "Warning"
 }
 
 # Copy default map if exists
-$defaultMap = Join-Path $backendDir "data/defaults/maps/conveyor_layout.xml"
+$defaultMap = Join-Path $backendDir "data" "defaults" "maps" "conveyor_layout.xml"
 if (Test-Path $defaultMap) {
-    Copy-Item $defaultMap (Join-Path $dataDir "defaults/maps/conveyor_layout.xml")
-    Write-Status "Copied default map layout" "Info"
+    $destMap = Join-Path $dataDir "defaults" "maps" "conveyor_layout.xml"
+    Copy-Item -Path $defaultMap -Destination $destMap -Force
+    Write-Status "Copied default map layout ($( [math]::Round((Get-Item $defaultMap).Length/1KB, 2) ) KB)" "Info"
+} else {
+    Write-Status "No default map found at: $defaultMap" "Warning"
+}
+
+# List what was copied
+$defaultsDir = Join-Path $dataDir "defaults"
+if (Test-Path $defaultsDir) {
+    $copiedFiles = Get-ChildItem -Path $defaultsDir -Recurse -File | Select-Object -ExpandProperty FullName
+    if ($copiedFiles) {
+        Write-Status "Defaults directory contents:" "Info"
+        foreach ($file in $copiedFiles) {
+            Write-Host "  - $file" -ForegroundColor Gray
+        }
+    }
 }
 
 # Create start script
