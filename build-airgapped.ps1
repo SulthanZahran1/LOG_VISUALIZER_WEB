@@ -280,6 +280,34 @@ if (-not (Test-Command "go")) {
 $goVersion = Get-GoVersion
 Write-Status "Go version: $goVersion" "Success"
 
+# Check for C compiler (GCC) - Required for CGO/DuckDB
+Write-Status "Checking for C compiler (GCC)..." "Info"
+$gcc = Get-Command "gcc" -ErrorAction SilentlyContinue
+if (-not $gcc) {
+    Write-Status "GCC (C compiler) not found in PATH" "Error"
+    Write-Host ""
+    Write-Host "This build requires a C compiler for DuckDB support." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Install one of the following:" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Option 1: MinGW-w64 (Recommended)" -ForegroundColor White
+    Write-Host "    - Download from: https://www.mingw-w64.org/downloads/" -ForegroundColor Gray
+    Write-Host "    - Or install via Chocolatey: choco install mingw" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  Option 2: TDM-GCC" -ForegroundColor White
+    Write-Host "    - Download from: https://jmeubank.github.io/tdm-gcc/" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  Option 3: MSYS2" -ForegroundColor White
+    Write-Host "    - Install MSYS2 and run: pacman -S mingw-w64-x86_64-gcc" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "After installation, ensure gcc.exe is in your PATH." -ForegroundColor Yellow
+    Write-Host ""
+    exit 1
+}
+
+$gccVersion = & gcc --version 2>$null | Select-Object -First 1
+Write-Status "C compiler found: $gccVersion" "Success"
+
 # Verify node_modules exists or install
 $nodeModulesDir = Join-Path $frontendDir "node_modules"
 if (-not (Test-Path $nodeModulesDir)) {
