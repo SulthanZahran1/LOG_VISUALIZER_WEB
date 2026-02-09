@@ -1,10 +1,6 @@
 #!/usr/bin/env pwsh
 # Quick test script to verify the air-gapped build works
 
-param(
-    [int]$TestPort = 18089
-)
-
 $ErrorActionPreference = "Stop"
 
 Write-Host "========================================" -ForegroundColor Cyan
@@ -14,6 +10,18 @@ Write-Host ""
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $distDir = Join-Path $scriptDir "dist"
+
+# Function to read port from XML config
+function Get-ConfigPort {
+    param([string]$ConfigPath)
+    try {
+        [xml]$config = Get-Content $ConfigPath
+        return [int]$config.PLCLogVisualizer.Server.Port
+    } catch {
+        Write-Host "Warning: Could not read port from config, using default 8089" -ForegroundColor Yellow
+        return 8089
+    }
+}
 
 # Look for package in multiple locations
 $packageDir = $null
@@ -57,6 +65,11 @@ if (-not $packageDir) {
     $binaryPath = Join-Path $packageDir.FullName "plc-visualizer.exe"
 }
 
+# Read the actual port from config file
+$configPath = Join-Path $packageDir.FullName "PLCLogVisualizer.exe.config"
+$TestPort = Get-ConfigPort -ConfigPath $configPath
+Write-Host "Config port: $TestPort" -ForegroundColor Cyan
+
 Write-Host ""
 
 # Test 1: Check binary exists
@@ -70,7 +83,6 @@ Write-Host "[PASS] Binary exists" -ForegroundColor Green
 Write-Host ""
 Write-Host "Testing binary startup..." -ForegroundColor Cyan
 
-$env:PORT = $TestPort
 $env:DATA_DIR = Join-Path $packageDir.FullName "data"
 
 $process = $null

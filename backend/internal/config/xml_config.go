@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 )
 
 // AppConfig represents the root XML configuration structure
@@ -144,9 +143,6 @@ func LoadConfig(configPath string) (*AppConfig, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// Apply environment variable overrides
-	config.applyEnvironmentOverrides()
-
 	// Resolve relative paths
 	config.resolvePaths(filepath.Dir(configPath))
 
@@ -168,26 +164,6 @@ func (c *AppConfig) Save(configPath string) error {
 	}
 
 	return nil
-}
-
-// applyEnvironmentOverrides allows environment variables to override config values
-func (c *AppConfig) applyEnvironmentOverrides() {
-	// PORT override
-	if port := os.Getenv("PORT"); port != "" {
-		if p, err := strconv.Atoi(port); err == nil {
-			c.Server.Port = p
-		}
-	}
-
-	// DATA_DIR override
-	if dataDir := os.Getenv("DATA_DIR"); dataDir != "" {
-		c.Storage.DataDirectory = dataDir
-	}
-
-	// DUCKDB_TEMP_DIR override (special handling)
-	if tempDir := os.Getenv("DUCKDB_TEMP_DIR"); tempDir != "" {
-		c.Storage.TempDirectory = tempDir
-	}
 }
 
 // resolvePaths converts relative paths to absolute based on config file location
