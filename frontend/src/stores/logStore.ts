@@ -22,9 +22,16 @@ interface PageCache {
     page: number;
     entries: LogEntry[];
     timestamp: number;
+    filterKey: string; // Include filters in cache key
 }
-const serverPageCache = new Map<number, PageCache>();
+const serverPageCache = new Map<string, PageCache>();
 const CACHE_MAX_SIZE = 10; // Keep last 10 pages in memory
+
+// Generate cache key from page and filters
+function getCacheKey(page: number, filters: any): string {
+    const filterKey = JSON.stringify(filters);
+    return `${page}:${filterKey}`;
+}
 
 // Selected log entry time - used for bookmarking from Log Table view
 export const selectedLogTime = signal<number | null>(null);
@@ -200,17 +207,19 @@ effect(() => {
 effect(() => {
     if (useServerSide.value && currentSession.value?.status === 'complete') {
         // Track dependencies
-        searchQuery.value;
-        categoryFilter.value;
-        sortColumn.value;
-        sortDirection.value;
-        signalTypeFilter.value;
+        const search = searchQuery.value;
+        const category = categoryFilter.value;
+        const sort = sortColumn.value;
+        const order = sortDirection.value;
+        const type = signalTypeFilter.value;
 
         // Clear cache when filters change
+        console.log('[filter effect] Filters changed, clearing cache. Search:', search, 'Category:', Array.from(category));
         serverPageCache.clear();
 
         // Debounce fetch slightly
         const timer = setTimeout(() => {
+            console.log('[filter effect] Triggering fetch for page 1');
             fetchEntries(1, SERVER_PAGE_SIZE); // Back to page 1 on filter change
         }, 100);
         return () => clearTimeout(timer);
@@ -404,41 +413,51 @@ async function finalizeSessionLoad(session: ParseSession) {
 export async function fetchEntries(page: number, pageSize: number) {
     if (!currentSession.value || currentSession.value.status !== 'complete') return;
 
+    // Prepare filters for server-side mode
+    const filters = useServerSide.value ? {
+        search: searchQuery.value,
+        category: Array.from(categoryFilter.value)[0] || undefined,
+        sort: sortColumn.value || undefined,
+        order: sortDirection.value,
+        type: signalTypeFilter.value || undefined
+    } : undefined;
+
+    const cacheKey = useServerSide.value ? getCacheKey(page, filters) : String(page);
+
+    // DEBUG: Log cache operation
+    if (useServerSide.value) {
+        console.log('[fetchEntries] page:', page, 'filters:', filters, 'cacheKey:', cacheKey, 'cacheSize:', serverPageCache.size);
+    }
+
     // Check cache first for server-side mode
     if (useServerSide.value) {
-        const cached = serverPageCache.get(page);
+        const cached = serverPageCache.get(cacheKey);
         if (cached && Date.now() - cached.timestamp < 30000) { // 30s cache
+            console.log('[fetchEntries] Using cached data for key:', cacheKey);
             logEntries.value = cached.entries;
-            // Still update total from cache if available
+            // Still update total from server response
             return;
         }
     }
 
     try {
         // Always show loading for initial fetch or when entries are empty
-        // This gives users feedback that data is being loaded
         const isInitialFetch = logEntries.value.length === 0;
         if (!useServerSide.value || isInitialFetch) {
             isLoadingLog.value = true;
         }
 
-        // Prepare filters for server-side mode
-        const filters = useServerSide.value ? {
-            search: searchQuery.value,
-            category: Array.from(categoryFilter.value)[0] || undefined,
-            sort: sortColumn.value || undefined,
-            order: sortDirection.value,
-            type: signalTypeFilter.value || undefined
-        } : undefined;
-
+        console.log('[fetchEntries] Fetching from server - page:', page, 'filters:', filters);
         const res = await getParseEntries(currentSession.value.id, page, pageSize, filters);
+        console.log('[fetchEntries] Server returned:', res.entries.length, 'entries, total:', res.total);
 
         // In server-side mode, update cache
         if (useServerSide.value) {
-            serverPageCache.set(page, {
+            serverPageCache.set(cacheKey, {
                 page,
                 entries: res.entries as LogEntry[],
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                filterKey: JSON.stringify(filters)
             });
             
             // Prune old cache entries
