@@ -3,39 +3,74 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/plc-visualizer/backend/internal/api"
+	"github.com/plc-visualizer/backend/internal/config"
 	"github.com/plc-visualizer/backend/internal/session"
 	"github.com/plc-visualizer/backend/internal/storage"
 	"github.com/plc-visualizer/backend/internal/upload"
+	"github.com/plc-visualizer/backend/internal/web"
+)
+
+// Version info (set during build)
+var (
+	Version   = "dev"
+	BuildTime = "unknown"
 )
 
 func main() {
-	// Initialize storage
-	fileStore, err := storage.NewLocalStore("./data/uploads")
+	// Get the executable's directory for config resolution
+	exePath, err := os.Executable()
 	if err != nil {
-		fmt.Printf("failed to initialize storage: %v\n", err)
-		return
+		fmt.Printf("Failed to get executable path: %v\n", err)
+		os.Exit(1)
+	}
+	exeDir := filepath.Dir(exePath)
+
+	// Load XML configuration
+	configPath := filepath.Join(exeDir, "PLCLogVisualizer.exe.config")
+	cfg, err := config.LoadConfig(configPath)
+	if err != nil {
+		fmt.Printf("Failed to load configuration: %v\n", err)
+		os.Exit(1)
 	}
 
-	// Initialize session manager (uses DUCKDB_TEMP_DIR env var for temp storage)
+	// Ensure all data directories exist
+	if err := cfg.EnsureDirectories(); err != nil {
+		fmt.Printf("Failed to create directories: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Check if running in embedded mode (frontend built into binary)
+	embeddedMode := web.HasEmbeddedFiles()
+
+	// Initialize storage
+	fileStore, err := storage.NewLocalStore(cfg.GetUploadDir())
+	if err != nil {
+		fmt.Printf("Failed to initialize storage: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Initialize session manager
 	sessionMgr := session.NewManager()
 
-	// Start background session cleanup (every 5 minutes)
+	// Start background session cleanup
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
+		ticker := time.NewTicker(time.Duration(cfg.Processing.CleanupIntervalMinutes) * time.Minute)
 		defer ticker.Stop()
-		for range ticker.C {
-			sessionMgr.CleanupOldSessions(30 * time.Minute)
+		for range ticker {
+			sessionMgr.CleanupOldSessions(time.Duration(cfg.Processing.SessionTimeoutMinutes) * time.Minute)
 		}
 	}()
 
 	// Initialize upload processing manager
-	uploadMgr := upload.NewManager("./data/uploads", fileStore)
+	uploadMgr := upload.NewManager(cfg.GetUploadDir(), fileStore)
 
 	// Initialize API handler
 	h := api.NewHandler(fileStore, sessionMgr, uploadMgr)
@@ -52,31 +87,29 @@ func main() {
 
 	e := echo.New()
 
-	// Middleware - skip logging for noisy polling endpoints
+	// Configure middleware
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
 		Skipper: func(c echo.Context) bool {
+			// Skip logging if disabled in config
+			if !cfg.Advanced.EnableRequestLogging {
+				return true
+			}
 			path := c.Request().URL.Path
-			// Skip logging for frequent status polling requests
 			return strings.HasSuffix(path, "/status") ||
 				strings.HasSuffix(path, "/progress") ||
 				path == "/api/health"
 		},
 	}))
 
-	// Recovery with custom error handling
 	e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
-		StackSize:         1024 * 4, // 4KB
+		StackSize:         1024 * 4,
 		DisablePrintStack: false,
-		LogLevel:          0, // ERROR level
+		LogLevel:          0,
 	}))
 
-	// Timeout middleware - prevents long-running queries from crashing the server
-	// SSE streams and uploads are excluded from timeout
-	// Note: /entries endpoint is also excluded for large file queries
 	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
-		Timeout: 60 * time.Second,
+		Timeout: time.Duration(cfg.Server.ReadTimeout) * time.Second,
 		Skipper: func(c echo.Context) bool {
-			// Skip timeout for SSE streams, upload endpoints, and entry queries
 			path := c.Request().URL.Path
 			return strings.Contains(path, "/stream") ||
 				strings.Contains(path, "/upload") ||
@@ -86,29 +119,56 @@ func main() {
 		ErrorMessage: "Request timeout - query took too long",
 	}))
 
-	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
-		Level: 5, // Balanced compression/speed
-		Skipper: func(c echo.Context) bool {
-			// Skip compression for SSE streams (they handle their own streaming)
-			return c.Request().Header.Get("Accept") == "text/event-stream"
-		},
-	}))
-	e.Use(middleware.BodyLimit("2G"))
+	// Compression middleware
+	if cfg.Processing.EnableCompression {
+		e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
+			Level: cfg.Processing.CompressionLevel,
+			Skipper: func(c echo.Context) bool {
+				return c.Request().Header.Get("Accept") == "text/event-stream"
+			},
+		}))
+	}
 
-	// CORS configuration for frontend dev server
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"},
-		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept},
-	}))
+	// Body limit middleware
+	e.Use(middleware.BodyLimit(cfg.Server.BodyLimit))
 
-	// Routes
+	// CORS configuration
+	if cfg.Server.EnableCORS {
+		if embeddedMode {
+			// In embedded mode, use config settings
+			origins := strings.Split(cfg.Server.AllowOrigins, ",")
+			for i := range origins {
+				origins[i] = strings.TrimSpace(origins[i])
+			}
+			if len(origins) == 0 || (len(origins) == 1 && origins[0] == "") {
+				origins = []string{"*"}
+			}
+			e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+				AllowOrigins: origins,
+				AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
+				AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+			}))
+		} else {
+			// Development mode - only allow localhost
+			e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+				AllowOrigins: []string{
+					"http://localhost:5173", "http://127.0.0.1:5173",
+					"http://localhost:5174", "http://127.0.0.1:5174",
+					"http://localhost:3000", "http://127.0.0.1:3000",
+				},
+				AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
+				AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept},
+			}))
+		}
+	}
+
+	// API Routes
 	apiGroup := e.Group("/api")
 
 	// Health check
 	apiGroup.GET("/health", h.HandleHealth)
 
-	// WebSocket endpoint for uploads
+	// WebSocket endpoint
 	apiGroup.GET("/ws/uploads", wsHandler.HandleWebSocket)
 
 	// File management
@@ -119,7 +179,12 @@ func main() {
 	apiGroup.GET("/files/upload/:jobId/status", h.HandleUploadJobStream)
 	apiGroup.GET("/files/recent", h.HandleRecentFiles)
 	apiGroup.GET("/files/:id", h.HandleGetFile)
-	apiGroup.DELETE("/files/:id", h.HandleDeleteFile)
+	
+	// Conditional delete based on config
+	if cfg.Security.AllowFileDeletion {
+		apiGroup.DELETE("/files/:id", h.HandleDeleteFile)
+	}
+	
 	apiGroup.PUT("/files/:id", h.HandleRenameFile)
 
 	// Parse management
@@ -136,7 +201,6 @@ func main() {
 	apiGroup.GET("/parse/:sessionId/at-time", h.HandleGetValuesAtTime)
 	apiGroup.POST("/parse/:sessionId/keepalive", h.HandleSessionKeepAlive)
 
-	// Config
 	// Map Layout
 	apiGroup.GET("/map/layout", h.HandleGetMapLayout)
 	apiGroup.POST("/map/upload", h.HandleUploadMapLayout)
@@ -149,7 +213,7 @@ func main() {
 	apiGroup.GET("/map/defaults", h.HandleGetDefaultMaps)
 	apiGroup.POST("/map/defaults/load", h.HandleLoadDefaultMap)
 
-	// Carrier log for map tracking
+	// Carrier log
 	apiGroup.POST("/map/carrier-log", h.HandleUploadCarrierLog)
 	apiGroup.GET("/map/carrier-log", h.HandleGetCarrierLog)
 	apiGroup.GET("/map/carrier-log/entries", h.HandleGetCarrierEntries)
@@ -157,14 +221,46 @@ func main() {
 	apiGroup.GET("/config/validation-rules", h.HandleGetValidationRules)
 	apiGroup.PUT("/config/validation-rules", h.HandleUpdateValidationRules)
 
-	// Configure server with timeouts
-	s := &http.Server{
-		Addr:         ":8089",
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  120 * time.Second,
+	// Register embedded frontend if available
+	if embeddedMode {
+		if err := web.RegisterStaticRoutes(e); err != nil {
+			fmt.Printf("Warning: failed to register static routes: %v\n", err)
+		} else {
+			fmt.Println("Serving embedded frontend from binary")
+		}
 	}
 
-	fmt.Println("Server starting on :8089")
+	// Configure server with settings from XML config
+	s := &http.Server{
+		Addr:         cfg.GetServerAddr(),
+		ReadTimeout:  time.Duration(cfg.Server.ReadTimeout) * time.Second,
+		WriteTimeout: time.Duration(cfg.Server.WriteTimeout) * time.Second,
+		IdleTimeout:  time.Duration(cfg.Server.IdleTimeout) * time.Second,
+	}
+
+	// Print startup banner
+	mode := "Development"
+	if embeddedMode {
+		mode = "Air-Gapped (Embedded)"
+	}
+
+	fmt.Printf("\n")
+	fmt.Printf("╔═══════════════════════════════════════════════════════════╗\n")
+	fmt.Printf("║           PLC Log Visualizer Server                       ║\n")
+	fmt.Printf("╠═══════════════════════════════════════════════════════════╣\n")
+	fmt.Printf("║  Version:    %-45s║\n", Version)
+	fmt.Printf("║  Build Time: %-45s║\n", BuildTime)
+	fmt.Printf("║  Mode:       %-45s║\n", mode)
+	fmt.Printf("╠═══════════════════════════════════════════════════════════╣\n")
+	fmt.Printf("║  Config:    %-46s║\n", configPath)
+	fmt.Printf("║  Listen:    http://%-38s║\n", cfg.GetServerAddr())
+	fmt.Printf("║  Data Dir:  %-46s║\n", cfg.GetDataDir())
+	fmt.Printf("╚═══════════════════════════════════════════════════════════╝\n")
+	fmt.Printf("\n")
+
+	if embeddedMode {
+		fmt.Printf("Open http://localhost:%d in your browser\n\n", cfg.Server.Port)
+	}
+
 	e.Logger.Fatal(e.StartServer(s))
 }

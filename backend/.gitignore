@@ -1,2 +1,9 @@
 *.duckdb
 *.duckdb.wal
+
+# Embedded frontend build (generated during build process)
+internal/web/dist/
+
+# Build outputs
+/dist/
+*.exe
