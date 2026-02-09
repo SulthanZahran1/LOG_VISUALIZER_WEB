@@ -540,12 +540,17 @@ if (Test-Path $sourceMapsDir) {
     if ($mapFiles) {
         foreach ($mapFile in $mapFiles) {
             try {
+                $sourcePath = $mapFile.FullName
                 $destPath = Join-Path $mapsDir $mapFile.Name
-                Copy-Item -Path $mapFile.FullName -Destination $destPath -Force -ErrorAction Stop
-                if (Test-Path $destPath) {
-                    Write-Status "Copied map: $($mapFile.Name) ($( [math]::Round($mapFile.Length/1KB, 2) ) KB)" "Info"
+                
+                # Use .NET method to handle special characters in filenames
+                [System.IO.File]::Copy($sourcePath, $destPath, $true)
+                
+                if (Test-Path -LiteralPath $destPath) {
+                    $destFile = Get-Item -LiteralPath $destPath
+                    Write-Status "Copied map: $($mapFile.Name) ($( [math]::Round($destFile.Length/1KB, 2) ) KB)" "Info"
                 } else {
-                    Write-Status "FAILED to copy: $($mapFile.Name)" "Error"
+                    Write-Status "FAILED to verify: $($mapFile.Name)" "Error"
                 }
             } catch {
                 Write-Status "Error copying $($mapFile.Name): $_" "Error"
@@ -565,7 +570,7 @@ if (Test-Path $defaultsDir) {
         $fileCount = ($copiedFiles | Measure-Object).Count
         Write-Status "Defaults directory contains $fileCount files:" "Info"
         foreach ($file in $copiedFiles) {
-            Write-Host "  - $($file.Name) ($( [math]::Round($file.Length/1KB, 2) ) KB)" -ForegroundColor Gray
+            Write-Host "  - '$($file.Name)' ($( [math]::Round($file.Length/1KB, 2) ) KB)" -ForegroundColor Gray
         }
     } else {
         Write-Status "No files found in defaults directory!" "Warning"
