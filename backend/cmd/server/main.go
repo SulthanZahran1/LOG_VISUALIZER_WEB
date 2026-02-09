@@ -64,8 +64,11 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(time.Duration(cfg.Processing.CleanupIntervalMinutes) * time.Minute)
 		defer ticker.Stop()
-		for range ticker {
-			sessionMgr.CleanupOldSessions(time.Duration(cfg.Processing.SessionTimeoutMinutes) * time.Minute)
+		for {
+			select {
+			case <-ticker.C:
+				sessionMgr.CleanupOldSessions(time.Duration(cfg.Processing.SessionTimeoutMinutes) * time.Minute)
+			}
 		}
 	}()
 
