@@ -3,7 +3,7 @@
  * Base URL configured for dev server proxy
  */
 
-import type { FileInfo, ParseSession, HealthResponse, LogEntry } from '../models/types';
+import type { FileInfo, ParseSession, HealthResponse, LogEntry, SignalType } from '../models/types';
 export { uploadFileOptimized, CONFIG as UPLOAD_CONFIG } from './upload';
 export {
     uploadFileWebSocket,
@@ -146,6 +146,10 @@ export async function getParseSignals(sessionId: string): Promise<string[]> {
 
 export async function getParseCategories(sessionId: string): Promise<string[]> {
     return request<string[]>(`/parse/${sessionId}/categories`);
+}
+
+export async function getParseSignalTypes(sessionId: string): Promise<Record<string, SignalType>> {
+    return request<Record<string, SignalType>>(`/parse/${sessionId}/signal-types`);
 }
 
 export interface PaginatedEntries {

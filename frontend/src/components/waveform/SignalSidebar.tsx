@@ -15,9 +15,9 @@ import {
     loadPreset,
     deletePreset,
     deviceColors,
-    focusedSignal
+    focusedSignal,
+    allSignalTypes
 } from '../../stores/waveformStore';
-import { logEntries } from '../../stores/logStore';
 import { ChevronRightIcon } from '../icons';
 import type { SignalType } from '../../models/types';
 
@@ -32,18 +32,8 @@ export function SignalSidebar() {
         signalKey: null
     });
 
-    // Build a map of signal key -> type
-    const signalTypes = useMemo(() => {
-        const types = new Map<string, SignalType>();
-        for (const entry of logEntries.value) {
-            const key = `${entry.deviceId}::${entry.signalName}`;
-            if (!types.has(key)) {
-                types.set(key, entry.signalType);
-            }
-        }
-        return types;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [logEntries.value]);
+    // Signal types from the backend (covers all signals, not just the current page)
+    const signalTypes = allSignalTypes.value;
 
     // Get all available signals grouped by device
     // Note: accessing .value inside useMemo creates reactivity; empty deps is intentional for signals
@@ -113,7 +103,7 @@ export function SignalSidebar() {
 
         return result;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [devices, signalSearchQuery.value, signalIsRegex.value, signalTypeFilter.value, signalTypes]);
+    }, [devices, signalSearchQuery.value, signalIsRegex.value, signalTypeFilter.value, signalTypes, showChangedInView.value, signalsWithChanges.value]);
 
     const toggleDevice = (device: string) => {
         const next = new Set(expandedDevices);

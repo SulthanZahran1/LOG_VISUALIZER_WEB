@@ -1,5 +1,5 @@
 import { signal, computed, effect } from '@preact/signals';
-import { getParseChunk, getParseSignals, getChunkBoundaries, type ChunkBoundaries } from '../api/client';
+import { getParseChunk, getParseSignals, getParseSignalTypes, getChunkBoundaries, type ChunkBoundaries } from '../api/client';
 import { currentSession, logEntries, clearSession, useServerSide } from './logStore';
 import { selectedSignals, focusedSignal, isSignalSelected, toggleSignal } from './selectionStore';
 import type { LogEntry, TimeRange, SignalType } from '../models/types';
@@ -22,6 +22,7 @@ export const waveformBoundaries = signal<ChunkBoundaries>({ before: {}, after: {
 
 // Full signal list from backend
 export const allSignals = signal<string[]>([]);
+export const allSignalTypes = signal<Map<string, SignalType>>(new Map());
 export const showChangedInView = signal(false);
 export const signalsWithChanges = signal<Set<string>>(new Set());
 
@@ -187,14 +188,21 @@ effect(() => {
 });
 
 /**
- * Fetch all signals for the session once it's complete
+ * Fetch all signals and signal types for the session once it's complete
  */
 effect(() => {
     const session = currentSession.value;
     if (session && session.status === 'complete' && allSignals.value.length === 0) {
-        getParseSignals(session.id).then(signals => {
+        Promise.all([
+            getParseSignals(session.id),
+            getParseSignalTypes(session.id),
+        ]).then(([signals, typesRecord]) => {
             allSignals.value = signals;
-            // Note: No default selection - empty selectedSignals means "None" (show all entries)
+            const typesMap = new Map<string, SignalType>();
+            for (const [key, val] of Object.entries(typesRecord)) {
+                typesMap.set(key, val);
+            }
+            allSignalTypes.value = typesMap;
         }).catch(err => {
             if (err.status === 404) {
                 console.warn('Session not found on server during getParseSignals, clearing local state');
@@ -205,6 +213,7 @@ effect(() => {
         });
     } else if (!session) {
         allSignals.value = [];
+        allSignalTypes.value = new Map();
     }
 });
 

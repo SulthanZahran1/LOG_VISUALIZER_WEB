@@ -455,6 +455,18 @@ func (h *Handler) HandleGetSignals(c echo.Context) error {
 	return c.JSON(http.StatusOK, signals)
 }
 
+// HandleGetSignalTypes returns a map of signal key to signal type for a session.
+func (h *Handler) HandleGetSignalTypes(c echo.Context) error {
+	id := c.Param("sessionId")
+	types, ok := h.session.GetSignalTypes(id)
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
+	}
+	// Touch session to prevent cleanup while being actively viewed
+	h.session.TouchSession(id)
+	return c.JSON(http.StatusOK, types)
+}
+
 // HandleGetCategories returns the list of all unique categories for a session.
 func (h *Handler) HandleGetCategories(c echo.Context) error {
 	id := c.Param("sessionId")

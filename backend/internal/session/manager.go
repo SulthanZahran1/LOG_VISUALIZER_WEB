@@ -628,6 +628,44 @@ func (m *Manager) GetBoundaryValues(ctx context.Context, id string, startTs, end
 	}, true
 }
 
+// GetSignalTypes returns a map of signal key to signal type string for a session.
+func (m *Manager) GetSignalTypes(id string) (map[string]string, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	state, ok := m.sessions[id]
+	if !ok {
+		return nil, false
+	}
+
+	// Use DuckStore if available
+	if state.DuckStore != nil {
+		types, err := state.DuckStore.GetSignalTypes()
+		if err != nil {
+			return nil, false
+		}
+		result := make(map[string]string, len(types))
+		for k, v := range types {
+			result[k] = string(v)
+		}
+		return result, true
+	}
+
+	// Fallback to legacy in-memory Result
+	if state.Result == nil {
+		return nil, false
+	}
+
+	result := make(map[string]string)
+	for _, entry := range state.Result.Entries {
+		key := entry.DeviceID + "::" + entry.SignalName
+		if _, exists := result[key]; !exists {
+			result[key] = string(entry.SignalType)
+		}
+	}
+	return result, true
+}
+
 // GetSignals returns the full list of signal keys for a session.
 func (m *Manager) GetSignals(id string) ([]string, bool) {
 	m.mu.RLock()

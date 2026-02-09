@@ -938,6 +938,27 @@ func (ds *DuckStore) GetBoundaryValues(ctx context.Context, startTs, endTs time.
 	return result, rows2.Err()
 }
 
+// GetSignalTypes returns a map of signal key (deviceId::signal) to SignalType.
+// Uses DISTINCT query to get one type per signal efficiently.
+func (ds *DuckStore) GetSignalTypes() (map[string]models.SignalType, error) {
+	rows, err := ds.db.Query("SELECT DISTINCT device_id || '::' || signal AS key, val_type FROM entries")
+	if err != nil {
+		return nil, fmt.Errorf("signal types query failed: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]models.SignalType)
+	for rows.Next() {
+		var key string
+		var valType int
+		if err := rows.Scan(&key, &valType); err != nil {
+			return nil, err
+		}
+		result[key] = valTypeToSignalType(valType)
+	}
+	return result, rows.Err()
+}
+
 // GetSignals returns all unique signal keys
 func (ds *DuckStore) GetSignals() map[string]struct{} {
 	return ds.signals

@@ -200,6 +200,7 @@ func main() {
 	apiGroup.POST("/parse/:sessionId/chunk", h.HandleParseChunk)
 	apiGroup.POST("/parse/:sessionId/chunk-boundaries", h.HandleParseChunkBoundaries)
 	apiGroup.GET("/parse/:sessionId/signals", h.HandleGetSignals)
+	apiGroup.GET("/parse/:sessionId/signal-types", h.HandleGetSignalTypes)
 	apiGroup.GET("/parse/:sessionId/categories", h.HandleGetCategories)
 	apiGroup.GET("/parse/:sessionId/at-time", h.HandleGetValuesAtTime)
 	apiGroup.POST("/parse/:sessionId/keepalive", h.HandleSessionKeepAlive)
