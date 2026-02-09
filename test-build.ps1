@@ -15,27 +15,40 @@ Write-Host ""
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $distDir = Join-Path $scriptDir "dist"
 
-# Check if dist directory exists
-if (-not (Test-Path $distDir)) {
-    Write-Host "ERROR: dist/ directory not found" -ForegroundColor Red
-    Write-Host "Run build-airgapped.ps1 first to create the build" -ForegroundColor Yellow
-    exit 1
-}
+# Look for package in multiple locations
+$packageDir = $null
+$searchPaths = @($distDir, $scriptDir)
 
-$packageDir = Get-ChildItem -Path $distDir -Filter "plc-visualizer-airgapped-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+foreach ($path in $searchPaths) {
+    if (Test-Path $path) {
+        $packageDir = Get-ChildItem -Path $path -Filter "plc-visualizer-airgapped-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($packageDir) {
+            break
+        }
+    }
+}
 
 if (-not $packageDir) {
     Write-Host "WARNING: No packaged distribution found" -ForegroundColor Yellow
     Write-Host "Looking for standalone binary..." -ForegroundColor Cyan
     
-    # Look for standalone binary
-    $binaryPath = Get-ChildItem -Path $distDir -Filter "plc-visualizer_*.exe" | Select-Object -First 1
+    # Look for standalone binary in multiple locations
+    $binaryPath = $null
+    foreach ($path in $searchPaths) {
+        if (Test-Path $path) {
+            $binaryPath = Get-ChildItem -Path $path -Filter "plc-visualizer_*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($binaryPath) {
+                break
+            }
+        }
+    }
+    
     if ($binaryPath) {
         Write-Host "Found binary: $($binaryPath.Name)" -ForegroundColor Green
         $binaryPath = $binaryPath.FullName
-        $packageDir = @{ FullName = $distDir }
+        $packageDir = @{ FullName = (Split-Path -Parent $binaryPath) }
     } else {
-        Write-Host "ERROR: No binary found in dist/" -ForegroundColor Red
+        Write-Host "ERROR: No binary found" -ForegroundColor Red
         Write-Host "Run build-airgapped.ps1 first" -ForegroundColor Yellow
         exit 1
     }
