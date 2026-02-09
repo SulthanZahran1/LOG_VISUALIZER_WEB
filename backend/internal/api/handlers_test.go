@@ -25,7 +25,7 @@ func TestMapHandlers(t *testing.T) {
 	store, _ := storage.NewLocalStore(tmpDir)
 	sessionMgr := session.NewManager()
 	uploadMgr := upload.NewManager(tmpDir, store)
-	h := NewHandler(store, sessionMgr, uploadMgr)
+	h := NewHandler(store, sessionMgr, uploadMgr, "")
 
 	// 1. Initially no map
 	req := httptest.NewRequest(http.MethodGet, "/api/map/layout", nil)
@@ -67,7 +67,7 @@ func TestChunkedUpload(t *testing.T) {
 	store, _ := storage.NewLocalStore(tmpDir)
 	sessionMgr := session.NewManager()
 	uploadMgr := upload.NewManager(tmpDir, store)
-	h := NewHandler(store, sessionMgr, uploadMgr)
+	h := NewHandler(store, sessionMgr, uploadMgr, "")
 
 	uploadID := "test-upload-v1"
 	chunk1 := []byte("chunk one ")
@@ -127,7 +127,7 @@ func TestRecentFilesFiltering(t *testing.T) {
 	store, _ := storage.NewLocalStore(tmpDir)
 	sessionMgr := session.NewManager()
 	uploadMgr := upload.NewManager(tmpDir, store)
-	h := NewHandler(store, sessionMgr, uploadMgr)
+	h := NewHandler(store, sessionMgr, uploadMgr, "")
 
 	// Upload files with different extensions using the store directly
 	// to avoid mocking the multipart file creation repeatedly
@@ -175,7 +175,7 @@ func TestSetActiveMap(t *testing.T) {
 	store, _ := storage.NewLocalStore(tmpDir)
 	sessionMgr := session.NewManager()
 	uploadMgr := upload.NewManager(tmpDir, store)
-	h := NewHandler(store, sessionMgr, uploadMgr)
+	h := NewHandler(store, sessionMgr, uploadMgr, "")
 
 	// 1. Upload a map
 	data := bytes.NewBufferString(`<?xml version="1.0" ?><ConveyorMap><Object name="O1" type="T"><Size>1,1</Size><Location>0,0</Location></Object></ConveyorMap>`)

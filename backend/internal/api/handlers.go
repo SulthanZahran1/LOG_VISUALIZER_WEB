@@ -28,6 +28,7 @@ type Handler struct {
 	store            storage.Store
 	session          *session.Manager
 	uploadManager    *upload.Manager
+	dataDir          string
 	currentMapID     string
 	currentRulesID   string
 	currentRules     *models.MapRules
@@ -35,17 +36,21 @@ type Handler struct {
 }
 
 // NewHandler creates a new API handler.
-func NewHandler(store storage.Store, session *session.Manager, uploadMgr *upload.Manager) *Handler {
+func NewHandler(store storage.Store, session *session.Manager, uploadMgr *upload.Manager, dataDir string) *Handler {
+	if dataDir == "" {
+		dataDir = "./data"
+	}
 	return &Handler{
 		store:         store,
 		session:       session,
 		uploadManager: uploadMgr,
+		dataDir:       dataDir,
 	}
 }
 
 // LoadDefaultRules loads the default rules.yaml file if it exists.
 func (h *Handler) LoadDefaultRules() error {
-	rulesPath := "./data/defaults/rules.yaml"
+	rulesPath := filepath.Join(h.dataDir, "defaults", "rules.yaml")
 	if _, err := os.Stat(rulesPath); os.IsNotExist(err) {
 		return nil // No default rules file
 	}
@@ -509,7 +514,7 @@ func (h *Handler) HandleGetMapLayout(c echo.Context) error {
 	// Check if it's a default map
 	if strings.HasPrefix(h.currentMapID, "default:") {
 		cleanName := strings.TrimPrefix(h.currentMapID, "default:")
-		path = filepath.Join("./data/defaults/maps", cleanName)
+		path = filepath.Join(h.dataDir, "defaults", "maps", cleanName)
 		mapName = cleanName
 	} else {
 		// Get file from store
@@ -815,7 +820,7 @@ func (h *Handler) HandleUpdateValidationRules(c echo.Context) error {
 
 // HandleGetDefaultMaps returns a list of available default map layouts.
 func (h *Handler) HandleGetDefaultMaps(c echo.Context) error {
-	defaultsDir := "./data/defaults/maps"
+	defaultsDir := filepath.Join(h.dataDir, "defaults", "maps")
 
 	entries, err := os.ReadDir(defaultsDir)
 	if err != nil {
@@ -859,7 +864,7 @@ func (h *Handler) HandleLoadDefaultMap(c echo.Context) error {
 
 	// Sanitize filename to prevent path traversal
 	cleanName := filepath.Base(req.Name)
-	mapPath := filepath.Join("./data/defaults/maps", cleanName)
+	mapPath := filepath.Join(h.dataDir, "defaults", "maps", cleanName)
 
 	// Verify file exists
 	if _, err := os.Stat(mapPath); os.IsNotExist(err) {

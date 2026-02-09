@@ -76,7 +76,7 @@ func main() {
 	uploadMgr := upload.NewManager(cfg.GetUploadDir(), fileStore)
 
 	// Initialize API handler
-	h := api.NewHandler(fileStore, sessionMgr, uploadMgr)
+	h := api.NewHandler(fileStore, sessionMgr, uploadMgr, cfg.GetDataDir())
 
 	// Initialize WebSocket handler
 	wsHandler := api.NewWebSocketHandler(h)
