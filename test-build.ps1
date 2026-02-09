@@ -13,19 +13,40 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$packageDir = Get-ChildItem -Path (Join-Path $scriptDir "dist") -Filter "plc-visualizer-airgapped-*" -Directory | Select-Object -First 1
+$distDir = Join-Path $scriptDir "dist"
 
-if (-not $packageDir) {
-    Write-Host "ERROR: No air-gapped package found in dist/" -ForegroundColor Red
-    Write-Host "Run build-airgapped.ps1 first" -ForegroundColor Yellow
+# Check if dist directory exists
+if (-not (Test-Path $distDir)) {
+    Write-Host "ERROR: dist/ directory not found" -ForegroundColor Red
+    Write-Host "Run build-airgapped.ps1 first to create the build" -ForegroundColor Yellow
     exit 1
 }
 
-Write-Host "Found package: $($packageDir.Name)" -ForegroundColor Green
+$packageDir = Get-ChildItem -Path $distDir -Filter "plc-visualizer-airgapped-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
+
+if (-not $packageDir) {
+    Write-Host "WARNING: No packaged distribution found" -ForegroundColor Yellow
+    Write-Host "Looking for standalone binary..." -ForegroundColor Cyan
+    
+    # Look for standalone binary
+    $binaryPath = Get-ChildItem -Path $distDir -Filter "plc-visualizer_*.exe" | Select-Object -First 1
+    if ($binaryPath) {
+        Write-Host "Found binary: $($binaryPath.Name)" -ForegroundColor Green
+        $binaryPath = $binaryPath.FullName
+        $packageDir = @{ FullName = $distDir }
+    } else {
+        Write-Host "ERROR: No binary found in dist/" -ForegroundColor Red
+        Write-Host "Run build-airgapped.ps1 first" -ForegroundColor Yellow
+        exit 1
+    }
+} else {
+    Write-Host "Found package: $($packageDir.Name)" -ForegroundColor Green
+    $binaryPath = Join-Path $packageDir.FullName "plc-visualizer.exe"
+}
+
 Write-Host ""
 
 # Test 1: Check binary exists
-$binaryPath = Join-Path $packageDir.FullName "plc-visualizer.exe"
 if (-not (Test-Path $binaryPath)) {
     Write-Host "FAIL: Binary not found at expected path" -ForegroundColor Red
     exit 1
