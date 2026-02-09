@@ -521,14 +521,23 @@ if (Test-Path $defaultRules) {
     Write-Status "No default rules.yaml found at: $defaultRules" "Warning"
 }
 
-# Copy default map if exists
-$defaultMap = Join-Path $backendDir "data" "defaults" "maps" "conveyor_layout.xml"
-if (Test-Path $defaultMap) {
-    $destMap = Join-Path $dataDir "defaults" "maps" "conveyor_layout.xml"
-    Copy-Item -Path $defaultMap -Destination $destMap -Force
-    Write-Status "Copied default map layout ($( [math]::Round((Get-Item $defaultMap).Length/1KB, 2) ) KB)" "Info"
+# Copy all default maps (.xml files)
+$sourceMapsDir = Join-Path $backendDir "data" "defaults" "maps"
+$destMapsDir = Join-Path $dataDir "defaults" "maps"
+
+if (Test-Path $sourceMapsDir) {
+    $mapFiles = Get-ChildItem -Path $sourceMapsDir -Filter "*.xml" -File
+    if ($mapFiles) {
+        foreach ($mapFile in $mapFiles) {
+            $destPath = Join-Path $destMapsDir $mapFile.Name
+            Copy-Item -Path $mapFile.FullName -Destination $destPath -Force
+            Write-Status "Copied map: $($mapFile.Name) ($( [math]::Round($mapFile.Length/1KB, 2) ) KB)" "Info"
+        }
+    } else {
+        Write-Status "No .xml map files found in: $sourceMapsDir" "Warning"
+    }
 } else {
-    Write-Status "No default map found at: $defaultMap" "Warning"
+    Write-Status "Maps source directory not found: $sourceMapsDir" "Warning"
 }
 
 # List what was copied
