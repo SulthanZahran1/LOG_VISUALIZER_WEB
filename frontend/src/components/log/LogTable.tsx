@@ -196,7 +196,7 @@ function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (
                 <button className="popover-go-btn" onClick={handleJump}>Go</button>
             </div>
             <div className="popover-tip">
-                Tip: Format is YYYY-MM-DD HH:mm:ss.ms
+                Tip: Format is YYYY-MM-DD HH:mm:ss.ms — press Ctrl+G to toggle
             </div>
         </div>
     );
@@ -381,6 +381,13 @@ export function LogTable() {
 
     // --- Keyboard Navigation ---
     const handleKeyDown = (e: KeyboardEvent) => {
+        // Ctrl+G / Cmd+G: Toggle Jump to Time popover (works even with no selection)
+        if ((e.ctrlKey || e.metaKey) && e.key === 'g') {
+            e.preventDefault();
+            jumpToTimeOpen.value = !jumpToTimeOpen.value;
+            return;
+        }
+
         if (selectedRows.value.size === 0) return;
 
         // Get the last selected index (anchor)
@@ -738,10 +745,11 @@ export function LogTable() {
                     <span className="selection-count">
                         {selectedRows.value.size > 0 && `${selectedRows.value.size} selected`}
                     </span>
-                    <div className="toolbar-separator"></div>
                     <div className="toolbar-jump">
-                        <button className="btn-icon" onClick={() => jumpToTimeOpen.value = !jumpToTimeOpen.value} title="Jump to point in time">
+                        <button className="btn-jump-to-time" onClick={() => jumpToTimeOpen.value = !jumpToTimeOpen.value} title="Jump to point in time (Ctrl+G)">
                             <ClockIcon />
+                            <span>Jump to Time</span>
+                            <kbd>Ctrl+G</kbd>
                         </button>
                         {jumpToTimeOpen.value && (
                             <JumpToTimePopover
@@ -757,6 +765,7 @@ export function LogTable() {
                             />
                         )}
                     </div>
+                    <div className="toolbar-separator"></div>
                     <button className="btn-icon" onClick={() => openView('waveform')} title="Open Timing Diagram"><ChartIcon /></button>
                     <button className="btn-icon" onClick={handleCopy} title="Copy selected (Ctrl+C)"><CopyIcon /></button>
                     <button className="btn-icon" onClick={() => fetchEntries(1, 1000)} title="Reload data"><RefreshIcon /></button>
