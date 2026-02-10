@@ -1,6 +1,6 @@
 
 import { useSignal } from '@preact/signals';
-import { useRef, useEffect, useState, useCallback } from 'preact/hooks';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'preact/hooks';
 import {
     filteredEntries,
     currentSession,
@@ -134,37 +134,60 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
  * Jump to Time Popover Component
  */
 function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (ts: number) => void }) {
-    const [timeInput, setTimeInput] = useState('');
-    const inputRef = useRef<HTMLInputElement>(null);
+    const entries = filteredEntries.value;
 
-    useEffect(() => {
-        inputRef.current?.focus();
-    }, []);
+    // Build a date -> hour -> minute -> earliest timestamp tree in one pass
+    const timeTree = useMemo(() => {
+        const tree = new Map<string, Map<number, Map<number, number>>>();
+        for (const e of entries) {
+            const d = new Date(e.timestamp);
+            const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+            const hour = d.getUTCHours();
+            const minute = d.getUTCMinutes();
 
-    const handleJump = () => {
-        if (!timeInput.trim()) return;
-
-        // Attempt to parse various formats
-        let ts = new Date(timeInput).getTime();
-
-        if (isNaN(ts)) {
-            // Check if it's a numeric Unix timestamp (ms)
-            const numeric = Number(timeInput);
-            if (!isNaN(numeric) && numeric > 1000000000000) {
-                ts = numeric;
-            }
+            if (!tree.has(dateStr)) tree.set(dateStr, new Map());
+            const hours = tree.get(dateStr)!;
+            if (!hours.has(hour)) hours.set(hour, new Map());
+            const minutes = hours.get(hour)!;
+            if (!minutes.has(minute)) minutes.set(minute, e.timestamp);
         }
+        return tree;
+    }, [entries]);
 
-        if (!isNaN(ts)) {
+    const dates = useMemo(() => Array.from(timeTree.keys()).sort(), [timeTree]);
+
+    const [selectedDate, setSelectedDate] = useState('');
+    const [selectedHour, setSelectedHour] = useState('');
+    const [selectedMinute, setSelectedMinute] = useState('');
+
+    const hours = useMemo(() => {
+        if (!selectedDate || !timeTree.has(selectedDate)) return [];
+        return Array.from(timeTree.get(selectedDate)!.keys()).sort((a, b) => a - b);
+    }, [selectedDate, timeTree]);
+
+    const minutes = useMemo(() => {
+        if (!selectedDate || !selectedHour || !timeTree.has(selectedDate)) return [];
+        const hourMap = timeTree.get(selectedDate)!;
+        const h = Number(selectedHour);
+        if (!hourMap.has(h)) return [];
+        return Array.from(hourMap.get(h)!.keys()).sort((a, b) => a - b);
+    }, [selectedDate, selectedHour, timeTree]);
+
+    const handleGo = () => {
+        if (!selectedDate || selectedHour === '' || selectedMinute === '') return;
+        const hourMap = timeTree.get(selectedDate);
+        if (!hourMap) return;
+        const minuteMap = hourMap.get(Number(selectedHour));
+        if (!minuteMap) return;
+        const ts = minuteMap.get(Number(selectedMinute));
+        if (ts !== undefined) {
             onJump(ts);
             onClose();
-        } else {
-            alert('Invalid time format. Please use YYYY-MM-DD HH:mm:ss.ms or a Unix timestamp.');
         }
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Enter') handleJump();
+        if (e.key === 'Enter') handleGo();
         if (e.key === 'Escape') onClose();
     };
 
@@ -180,23 +203,62 @@ function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (
     }, [onClose]);
 
     return (
-        <div ref={popoverRef} className="jump-to-time-popover">
+        <div ref={popoverRef} className="jump-to-time-popover" onKeyDown={handleKeyDown}>
             <div className="popover-header">
                 <span>Jump to Time</span>
             </div>
-            <div className="popover-input-row">
-                <input
-                    ref={inputRef}
-                    type="text"
-                    placeholder="YYYY-MM-DD HH:mm:ss.ms"
-                    value={timeInput}
-                    onInput={(e) => setTimeInput((e.target as HTMLInputElement).value)}
-                    onKeyDown={handleKeyDown}
-                />
-                <button className="popover-go-btn" onClick={handleJump}>Go</button>
+            <div className="jump-dropdowns">
+                <label className="jump-field">
+                    <span className="jump-field-label">Date</span>
+                    <select
+                        value={selectedDate}
+                        onChange={(e) => {
+                            setSelectedDate((e.target as HTMLSelectElement).value);
+                            setSelectedHour('');
+                            setSelectedMinute('');
+                        }}
+                    >
+                        <option value="" disabled>—</option>
+                        {dates.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                </label>
+                <label className="jump-field">
+                    <span className="jump-field-label">Hour</span>
+                    <select
+                        value={selectedHour}
+                        disabled={!selectedDate}
+                        onChange={(e) => {
+                            setSelectedHour((e.target as HTMLSelectElement).value);
+                            setSelectedMinute('');
+                        }}
+                    >
+                        <option value="" disabled>—</option>
+                        {hours.map(h => <option key={h} value={String(h)}>{String(h).padStart(2, '0')}</option>)}
+                    </select>
+                </label>
+                <label className="jump-field">
+                    <span className="jump-field-label">Min</span>
+                    <select
+                        value={selectedMinute}
+                        disabled={selectedHour === ''}
+                        onChange={(e) => {
+                            setSelectedMinute((e.target as HTMLSelectElement).value);
+                        }}
+                    >
+                        <option value="" disabled>—</option>
+                        {minutes.map(m => <option key={m} value={String(m)}>{String(m).padStart(2, '0')}</option>)}
+                    </select>
+                </label>
             </div>
+            <button
+                className="popover-go-btn jump-go-btn"
+                onClick={handleGo}
+                disabled={!selectedDate || selectedHour === '' || selectedMinute === ''}
+            >
+                Go
+            </button>
             <div className="popover-tip">
-                Tip: Format is YYYY-MM-DD HH:mm:ss.ms — press Ctrl+G to toggle
+                Ctrl+Shift+G to toggle
             </div>
         </div>
     );
@@ -381,8 +443,8 @@ export function LogTable() {
 
     // --- Keyboard Navigation ---
     const handleKeyDown = (e: KeyboardEvent) => {
-        // Ctrl+G / Cmd+G: Toggle Jump to Time popover (works even with no selection)
-        if ((e.ctrlKey || e.metaKey) && e.key === 'g') {
+        // Ctrl+Shift+G / Cmd+Shift+G: Toggle Jump to Time popover (works even with no selection)
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'G') {
             e.preventDefault();
             jumpToTimeOpen.value = !jumpToTimeOpen.value;
             return;
@@ -746,10 +808,10 @@ export function LogTable() {
                         {selectedRows.value.size > 0 && `${selectedRows.value.size} selected`}
                     </span>
                     <div className="toolbar-jump">
-                        <button className="btn-jump-to-time" onClick={() => jumpToTimeOpen.value = !jumpToTimeOpen.value} title="Jump to point in time (Ctrl+G)">
+                        <button className="btn-jump-to-time" onClick={() => jumpToTimeOpen.value = !jumpToTimeOpen.value} title="Jump to point in time (Ctrl+Shift+G)">
                             <ClockIcon />
                             <span>Jump to Time</span>
-                            <kbd>Ctrl+G</kbd>
+                            <kbd>Ctrl+Shift+G</kbd>
                         </button>
                         {jumpToTimeOpen.value && (
                             <JumpToTimePopover
