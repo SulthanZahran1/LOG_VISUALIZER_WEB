@@ -351,14 +351,15 @@ func (ds *DuckStore) GetEntry(i int) (models.LogEntry, error) {
 
 // QueryParams defines filters and sorting for log entry queries
 type QueryParams struct {
-	Search             string
-	Categories         []string // Multiple categories supported (IN clause)
-	SortColumn         string
-	SortDirection      string // "asc" or "desc"
-	SignalType         string
-	SearchRegex        bool
+	Search              string
+	Categories          []string // Multiple categories supported (IN clause)
+	Signals             []string // Filter to specific signals (format: "deviceId::signalName")
+	SortColumn          string
+	SortDirection       string // "asc" or "desc"
+	SignalType          string
+	SearchRegex         bool
 	SearchCaseSensitive bool
-	ShowChanged        bool
+	ShowChanged         bool
 }
 
 // QueryEntries returns filtered, sorted, and paginated entries
@@ -671,6 +672,21 @@ func (ds *DuckStore) buildWhereClause(params QueryParams) (string, []interface{}
 		if t != -1 {
 			clauses = append(clauses, "val_type = ?")
 			args = append(args, t)
+		}
+	}
+
+	// Signal name filter (format: "deviceId::signalName")
+	if len(params.Signals) > 0 {
+		var signalClauses []string
+		for _, s := range params.Signals {
+			parts := strings.Split(s, "::")
+			if len(parts) == 2 {
+				signalClauses = append(signalClauses, "(device_id = ? AND signal = ?)")
+				args = append(args, parts[0], parts[1])
+			}
+		}
+		if len(signalClauses) > 0 {
+			clauses = append(clauses, "("+strings.Join(signalClauses, " OR ")+")")
 		}
 	}
 

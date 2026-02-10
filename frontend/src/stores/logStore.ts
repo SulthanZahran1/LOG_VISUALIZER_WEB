@@ -113,15 +113,9 @@ export const useServerSide = computed(() => (currentSession.value?.entryCount ??
 export const filteredEntries = computed(() => {
     let entries = logEntries.value;
 
-    // In server-side mode, backend handles search/category/sort/type.
-    // We still apply signal selection and showChangedOnly locally on the current page.
+    // In server-side mode, backend handles search/category/sort/type/signals.
+    // We still apply showChangedOnly locally on the current page.
     if (useServerSide.value) {
-        // Signal selection filter (from waveform sidebar)
-        const selected = new Set(selectedSignals.value);
-        if (selected.size > 0) {
-            entries = entries.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
-        }
-
         // Show changed only (applied on current page - approximate but useful)
         if (showChangedOnly.value) {
             const lastValues = new Map<string, string | number | boolean>();
@@ -235,6 +229,7 @@ effect(() => {
         signalTypeFilter.value;
         searchRegex.value;
         searchCaseSensitive.value;
+        selectedSignals.value; // Track signal selection changes
 
         // Clear cache when filters change
         console.log('[filter effect] Filters changed, clearing cache. Search:', search, 'Category:', Array.from(category));
@@ -447,6 +442,9 @@ export async function fetchEntries(page: number, pageSize: number) {
         type: signalTypeFilter.value || undefined,
         regex: searchRegex.value || undefined,
         caseSensitive: searchCaseSensitive.value || undefined,
+        signals: selectedSignals.value.length > 0
+            ? selectedSignals.value.join(',')
+            : undefined,
     } : undefined;
 
     const cacheKey = useServerSide.value ? getCacheKey(page, filters) : String(page);
@@ -486,7 +484,7 @@ export async function fetchEntries(page: number, pageSize: number) {
                 timestamp: Date.now(),
                 filterKey: JSON.stringify(filters)
             });
-            
+
             // Prune old cache entries
             if (serverPageCache.size > CACHE_MAX_SIZE) {
                 const oldest = Array.from(serverPageCache.entries())

@@ -22,7 +22,6 @@ import {
     availableCategories
 } from '../../stores/logStore';
 import { toggleSignal } from '../../stores/waveformStore';
-import { selectedSignals } from '../../stores/selectionStore';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
 import type { LogEntry } from '../../models/types';
 import { SignalSidebar } from '../waveform/SignalSidebar';
@@ -596,31 +595,24 @@ export function LogTable() {
 
     // Viewport calculations - ALWAYS use scrollSignal to ensure re-renders on scroll
     const viewportHeight = tableRef.current?.clientHeight || 600;
-
-    // When signal selection filters entries locally in server-side mode,
-    // fall back to client-side-style virtual scrolling so rows are visible
-    const hasLocalSignalFilter = useServerSide.value && selectedSignals.value.length > 0;
-    const totalCount = (useServerSide.value && !hasLocalSignalFilter)
-        ? totalEntries.value
-        : filteredEntries.value.length;
+    const totalCount = useServerSide.value ? totalEntries.value : filteredEntries.value.length;
     const totalHeight = totalCount * ROW_HEIGHT;
 
     // Use scrollSignal to ensure component re-renders when scroll position changes
     const currentScroll = scrollSignal.value;
 
-    const startIdx = (useServerSide.value && !hasLocalSignalFilter)
+    const startIdx = useServerSide.value
         ? 0
         : Math.max(0, Math.floor(currentScroll / ROW_HEIGHT) - BUFFER);
 
-    const endIdx = (useServerSide.value && !hasLocalSignalFilter)
+    const endIdx = useServerSide.value
         ? filteredEntries.value.length
         : Math.min(totalCount, Math.ceil((currentScroll + viewportHeight) / ROW_HEIGHT) + BUFFER);
 
     const visibleEntries = filteredEntries.value.slice(startIdx, endIdx);
 
-    // For server-side without local signal filter, position based on page offset;
-    // otherwise use standard virtual scrolling offset
-    const offsetTop = (useServerSide.value && !hasLocalSignalFilter)
+    // For server-side, calculate offset based on current page position
+    const offsetTop = useServerSide.value
         ? Math.floor(currentScroll / (SERVER_PAGE_SIZE * ROW_HEIGHT)) * SERVER_PAGE_SIZE * ROW_HEIGHT
         : startIdx * ROW_HEIGHT;
 

@@ -334,6 +334,10 @@ func (h *Handler) HandleParseEntries(c echo.Context) error {
 	if catParam := c.QueryParam("category"); catParam != "" {
 		params.Categories = strings.Split(catParam, ",")
 	}
+	// Support comma-separated signal keys for signal selection filtering
+	if sigParam := c.QueryParam("signals"); sigParam != "" {
+		params.Signals = strings.Split(sigParam, ",")
+	}
 
 	fmt.Printf("[API] QueryEntries: session=%s page=%d pageSize=%d search='%s'\n", id[:8], page, pageSize, params.Search)
 	start := time.Now()
