@@ -118,11 +118,14 @@ func NewDuckStoreAtPath(dbPath string) (*DuckStore, error) {
 
 // OpenDuckStoreReadOnly opens an existing DuckDB file in read-only mode.
 // Used for loading previously parsed files from persistent storage.
+// Read-only mode allows multiple processes to access the same file without locking conflicts.
 func OpenDuckStoreReadOnly(dbPath string) (*DuckStore, error) {
 	fmt.Printf("[DuckStore] Opening existing database (read-only) at: %s\n", dbPath)
 
-	// Open with read-only mode and optimized settings for querying
-	connector, err := duckdb.NewConnector(dbPath, func(execer driver.ExecerContext) error {
+	// Open with read-only mode to avoid file locking issues
+	// This allows multiple processes/connections to read the same database
+	readOnlyPath := dbPath + "?access_mode=read_only"
+	connector, err := duckdb.NewConnector(readOnlyPath, func(execer driver.ExecerContext) error {
 		// Set pragmas optimized for read-only queries
 		pragmas := []string{
 			"PRAGMA memory_limit='1GB'",
