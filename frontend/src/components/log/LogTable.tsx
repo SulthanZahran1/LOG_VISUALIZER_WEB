@@ -19,13 +19,14 @@ import {
     isStreaming,
     streamProgress,
     categoryFilter,
-    availableCategories
+    availableCategories,
+    jumpToTime
 } from '../../stores/logStore';
 import { toggleSignal } from '../../stores/waveformStore';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
 import type { LogEntry } from '../../models/types';
 import { SignalSidebar } from '../waveform/SignalSidebar';
-import { SearchIcon, ChartIcon, CopyIcon, RefreshIcon, ChevronUpIcon, ChevronDownIcon, FilterIcon } from '../icons';
+import { SearchIcon, ChartIcon, CopyIcon, RefreshIcon, ChevronUpIcon, ChevronDownIcon, FilterIcon, ClockIcon } from '../icons';
 import './LogTable.css';
 
 const ROW_HEIGHT = 28;
@@ -130,6 +131,78 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
 }
 
 /**
+ * Jump to Time Popover Component
+ */
+function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (ts: number) => void }) {
+    const [timeInput, setTimeInput] = useState('');
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        inputRef.current?.focus();
+    }, []);
+
+    const handleJump = () => {
+        if (!timeInput.trim()) return;
+
+        // Attempt to parse various formats
+        let ts = new Date(timeInput).getTime();
+
+        if (isNaN(ts)) {
+            // Check if it's a numeric Unix timestamp (ms)
+            const numeric = Number(timeInput);
+            if (!isNaN(numeric) && numeric > 1000000000000) {
+                ts = numeric;
+            }
+        }
+
+        if (!isNaN(ts)) {
+            onJump(ts);
+            onClose();
+        } else {
+            alert('Invalid time format. Please use YYYY-MM-DD HH:mm:ss.ms or a Unix timestamp.');
+        }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Enter') handleJump();
+        if (e.key === 'Escape') onClose();
+    };
+
+    const popoverRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (popoverRef.current && e.target instanceof HTMLElement && !popoverRef.current.contains(e.target)) {
+                onClose();
+            }
+        };
+        setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [onClose]);
+
+    return (
+        <div ref={popoverRef} className="jump-to-time-popover">
+            <div className="popover-header">
+                <span>Jump to Time</span>
+            </div>
+            <div className="popover-input-row">
+                <input
+                    ref={inputRef}
+                    type="text"
+                    placeholder="YYYY-MM-DD HH:mm:ss.ms"
+                    value={timeInput}
+                    onInput={(e) => setTimeInput((e.target as HTMLInputElement).value)}
+                    onKeyDown={handleKeyDown}
+                />
+                <button className="popover-go-btn" onClick={handleJump}>Go</button>
+            </div>
+            <div className="popover-tip">
+                Tip: Format is YYYY-MM-DD HH:mm:ss.ms
+            </div>
+        </div>
+    );
+}
+
+/**
  * Performant Log Table with Virtual Scrolling and Premium UX
  */
 // Column definition type
@@ -177,6 +250,7 @@ export function LogTable() {
 
     // --- Category Filter Popover ---
     const categoryFilterOpen = useSignal(false);
+    const jumpToTimeOpen = useSignal(false);
 
     // --- Debounced Search ---
     const [localQuery, setLocalQuery] = useState(searchQuery.value);
@@ -664,6 +738,25 @@ export function LogTable() {
                     <span className="selection-count">
                         {selectedRows.value.size > 0 && `${selectedRows.value.size} selected`}
                     </span>
+                    <div className="toolbar-separator"></div>
+                    <div className="toolbar-jump">
+                        <button className="btn-icon" onClick={() => jumpToTimeOpen.value = !jumpToTimeOpen.value} title="Jump to point in time">
+                            <ClockIcon />
+                        </button>
+                        {jumpToTimeOpen.value && (
+                            <JumpToTimePopover
+                                onClose={() => jumpToTimeOpen.value = false}
+                                onJump={async (ts) => {
+                                    const index = await jumpToTime(ts);
+                                    if (index !== null && tableRef.current) {
+                                        tableRef.current.scrollTop = index * ROW_HEIGHT;
+                                        // Brief highlight or selection
+                                        selectedRows.value = new Set([index]);
+                                    }
+                                }}
+                            />
+                        )}
+                    </div>
                     <button className="btn-icon" onClick={() => openView('waveform')} title="Open Timing Diagram"><ChartIcon /></button>
                     <button className="btn-icon" onClick={handleCopy} title="Copy selected (Ctrl+C)"><CopyIcon /></button>
                     <button className="btn-icon" onClick={() => fetchEntries(1, 1000)} title="Reload data"><RefreshIcon /></button>

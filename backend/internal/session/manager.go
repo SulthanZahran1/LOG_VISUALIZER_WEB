@@ -504,6 +504,38 @@ func (m *Manager) GetCategories(ctx context.Context, id string) ([]string, bool)
 	return []string{}, true
 }
 
+// GetIndexByTime returns the 0-based index of the first record matching filters where timestamp >= ts.
+func (m *Manager) GetIndexByTime(ctx context.Context, id string, params parser.QueryParams, ts int64) (int, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	state, ok := m.sessions[id]
+	if !ok {
+		return 0, false
+	}
+
+	if state.DuckStore != nil {
+		index, err := state.DuckStore.GetIndexByTime(ctx, params, ts)
+		if err != nil {
+			fmt.Printf("[Manager] GetIndexByTime error: %v\n", err)
+			return 0, false
+		}
+		return index, true
+	}
+
+	// Legacy mode: linear search (since it's only for small files)
+	if state.Result != nil {
+		for i, entry := range state.Result.Entries {
+			if entry.Timestamp.UnixMilli() >= ts {
+				return i, true
+			}
+		}
+		return -1, true
+	}
+
+	return 0, false
+}
+
 // GetEntries returns paginated entries for a session.
 func (m *Manager) GetEntries(ctx context.Context, id string, page, pageSize int) ([]models.LogEntry, int, bool) {
 	m.mu.RLock()

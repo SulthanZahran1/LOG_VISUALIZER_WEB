@@ -204,6 +204,95 @@
     white-space: nowrap;
 }
 
+/* === Toolbar Jump to Time === */
+.toolbar-jump {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.toolbar-separator {
+    width: 1px;
+    height: 20px;
+    background: var(--border-color);
+    margin: 0 var(--spacing-xs);
+}
+
+.jump-to-time-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 100;
+    background: rgba(30, 35, 45, 0.98);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    width: 260px;
+    padding: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    animation: menu-pop 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    backdrop-filter: blur(12px);
+}
+
+.jump-to-time-popover::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    right: 12px;
+    width: 10px;
+    height: 10px;
+    background: rgba(30, 35, 45, 0.98);
+    border-left: 1px solid var(--border-color);
+    border-top: 1px solid var(--border-color);
+    transform: rotate(45deg);
+}
+
+.popover-input-row {
+    display: flex;
+    gap: 8px;
+}
+
+.popover-input-row input {
+    flex: 1;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    color: var(--text-primary);
+    padding: 8px 10px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    outline: none;
+    transition: border-color var(--transition-fast);
+}
+
+.popover-input-row input:focus {
+    border-color: var(--primary-accent);
+}
+
+.popover-go-btn {
+    background: var(--primary-accent);
+    color: white;
+    border: none;
+    padding: 0 16px;
+    border-radius: var(--border-radius);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity var(--transition-fast);
+}
+
+.popover-go-btn:hover {
+    opacity: 0.9;
+}
+
+.popover-tip {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
 .log-col:hover {
     border-right-color: var(--border-light);
 }

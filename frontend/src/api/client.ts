@@ -216,6 +216,36 @@ export async function getParseEntries(
     };
 }
 
+export async function getIndexOfTime(
+    sessionId: string,
+    ts: number,
+    filters?: {
+        search?: string;
+        category?: string;
+        sort?: string;
+        order?: string;
+        type?: string;
+        regex?: boolean;
+        caseSensitive?: boolean;
+        signals?: string;
+    }
+): Promise<number> {
+    let url = `/parse/${sessionId}/index-of-time?ts=${ts}`;
+    if (filters) {
+        if (filters.search) url += `&search=${encodeURIComponent(filters.search)}`;
+        if (filters.category) url += `&category=${encodeURIComponent(filters.category)}`;
+        if (filters.sort) url += `&sort=${encodeURIComponent(filters.sort)}`;
+        if (filters.order) url += `&order=${encodeURIComponent(filters.order)}`;
+        if (filters.type) url += `&type=${encodeURIComponent(filters.type)}`;
+        if (filters.regex) url += `&regex=true`;
+        if (filters.caseSensitive) url += `&caseSensitive=true`;
+        if (filters.signals) url += `&signals=${encodeURIComponent(filters.signals)}`;
+    }
+
+    const res = await request<{ index: number }>(url);
+    return res.index;
+}
+
 export async function getParseChunk(
     sessionId: string,
     start: number,

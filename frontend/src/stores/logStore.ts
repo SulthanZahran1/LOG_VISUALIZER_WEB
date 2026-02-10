@@ -1,5 +1,5 @@
 import { signal, computed, effect } from '@preact/signals';
-import { startParse, getParseStatus, getParseEntries, streamParseEntries, getParseCategories } from '../api/client';
+import { startParse, getParseStatus, getParseEntries, streamParseEntries, getParseCategories, getIndexOfTime } from '../api/client';
 import type { LogEntry, ParseSession } from '../models/types';
 import { saveSession, getSessions } from '../utils/persistence';
 import { selectedSignals } from './selectionStore';
@@ -527,6 +527,96 @@ export async function fetchAllEntries(sessionId: string): Promise<LogEntry[]> {
         throw err;
     } finally {
         isLoadingLog.value = false;
+    }
+}
+
+/**
+ * Finds the index of the first entry at or after the given timestamp.
+ * In server-side mode, it queries the backend.
+ * In client-side mode, it searches locally.
+ */
+export async function jumpToTime(timestamp: number): Promise<number | null> {
+    if (!currentSession.value) return null;
+
+    if (useServerSide.value) {
+        // Prepare filters for server-side mode
+        const filters = {
+            search: searchQuery.value,
+            category: categoryFilter.value.size > 0
+                ? Array.from(categoryFilter.value).join(',')
+                : undefined,
+            sort: sortColumn.value || undefined,
+            order: sortDirection.value,
+            type: signalTypeFilter.value || undefined,
+            regex: searchRegex.value || undefined,
+            caseSensitive: searchCaseSensitive.value || undefined,
+            signals: selectedSignals.value.length > 0
+                ? selectedSignals.value.join(',')
+                : undefined,
+        };
+
+        try {
+            const index = await getIndexOfTime(currentSession.value.id, timestamp, filters);
+            if (index === -1) return null;
+
+            // Jump to the correct page
+            const page = Math.floor(index / SERVER_PAGE_SIZE) + 1;
+            await fetchEntries(page, SERVER_PAGE_SIZE);
+
+            return index;
+        } catch (err) {
+            console.error('Failed to jump to time (server-side):', err);
+            return null;
+        }
+    } else {
+        // Client-side search
+        const entries = filteredEntries.value;
+        if (entries.length === 0) return null;
+
+        // Use binary search if sorted by timestamp
+        if (sortColumn.value === 'timestamp') {
+            const dir = sortDirection.value === 'asc' ? 1 : -1;
+
+            if (dir === 1) {
+                let low = 0;
+                let high = entries.length - 1;
+                let bestIdx = -1;
+
+                while (low <= high) {
+                    const mid = Math.floor((low + high) / 2);
+                    const midTs = new Date(entries[mid].timestamp).getTime();
+
+                    if (midTs >= timestamp) {
+                        bestIdx = mid;
+                        high = mid - 1;
+                    } else {
+                        low = mid + 1;
+                    }
+                }
+                return bestIdx === -1 ? null : bestIdx;
+            } else {
+                // Descending order: binary search differently
+                let low = 0;
+                let high = entries.length - 1;
+                let bestIdx = -1;
+
+                while (low <= high) {
+                    const mid = Math.floor((low + high) / 2);
+                    const midTs = new Date(entries[mid].timestamp).getTime();
+
+                    if (midTs <= timestamp) {
+                        bestIdx = mid;
+                        high = mid - 1;
+                    } else {
+                        low = mid + 1;
+                    }
+                }
+                return bestIdx === -1 ? null : bestIdx;
+            }
+        } else {
+            // Linear search for other sort columns
+            return entries.findIndex(e => new Date(e.timestamp).getTime() >= timestamp);
+        }
     }
 }
 

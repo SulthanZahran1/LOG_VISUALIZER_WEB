@@ -997,6 +997,73 @@ func (ds *DuckStore) GetSignalTypes() (map[string]models.SignalType, error) {
 }
 
 // GetSignals returns all unique signal keys
+// GetIndexByTime returns the 0-based index of the first record matching filters where timestamp >= ts.
+func (ds *DuckStore) GetIndexByTime(ctx context.Context, params QueryParams, ts int64) (int, error) {
+	// Acquire semaphore to limit concurrent queries
+	select {
+	case ds.querySem <- struct{}{}:
+		defer func() { <-ds.querySem }()
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+
+	where, args := ds.buildWhereClause(params)
+
+	sortCol := "timestamp"
+	if params.SortColumn != "" {
+		switch params.SortColumn {
+		case "timestamp":
+			sortCol = "timestamp"
+		case "deviceId":
+			sortCol = "device_id"
+		case "signalName":
+			sortCol = "signal"
+		case "category":
+			sortCol = "category"
+		}
+	}
+
+	dir := "ASC"
+	if params.SortDirection == "desc" {
+		dir = "DESC"
+	}
+
+	// Inner query to rank all filtered rows
+	// Outer query to find the first one that satisfies the timestamp condition
+	// We use id as a tie-breaker for stable ordering
+	whereClause := ""
+	if where != "" {
+		whereClause = "WHERE " + where
+	}
+
+	query := fmt.Sprintf(`
+		WITH ranked AS (
+			SELECT timestamp, ROW_NUMBER() OVER (ORDER BY %s %s, id %s) - 1 as row_idx
+			FROM entries
+			%s
+		)
+		SELECT row_idx FROM ranked
+		WHERE timestamp >= ?
+		ORDER BY row_idx ASC
+		LIMIT 1
+	`, sortCol, dir, dir, whereClause)
+
+	queryArgs := append(args, ts)
+
+	var index int
+	err := ds.db.QueryRowContext(ctx, query, queryArgs...).Scan(&index)
+	if err == sql.ErrNoRows {
+		// If no record found with ts >= target, it means we're past the end
+		// Return -1 to indicate not found
+		return -1, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("index query failed: %w", err)
+	}
+
+	return index, nil
+}
+
 func (ds *DuckStore) GetSignals() map[string]struct{} {
 	return ds.signals
 }

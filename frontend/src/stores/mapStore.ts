@@ -751,23 +751,38 @@ effect(() => {
  * If in server-side mode, fetch signal state on-demand for the current playback time.
  * Also re-fetches when signalLogSessionId changes (new session linked).
  */
+let isFetchingState = false;
+let lastFetchCompleteTime = 0;
+
 effect(() => {
     const time = playbackTime.value;
+    const playing = isPlaying.value;
     const session = currentSession.value;
     const large = useServerSide.value;
     const linkedSessionId = signalLogSessionId.value; // Track linked session changes
 
-    if (!large || !time || !session || session.status !== 'complete') return;
-    if (!linkedSessionId) return; // Don't fetch if no session is linked
+    if (!large || !time || !session || session.status !== 'complete' || !linkedSessionId) return;
 
-    // Debounce slightly to avoid slamming backend during playback
-    const timer = setTimeout(async () => {
+    const now = Date.now();
+    // Throttle: 500ms during playback, 50ms debounce when scrubbing for responsiveness
+    const minInterval = playing ? 500 : 50;
+
+    // If we are currently fetching or fetched too recently, wait for next time tick
+    if (isFetchingState || (now - lastFetchCompleteTime < minInterval)) return;
+
+    async function fetchValues() {
+        if (isFetchingState) return;
+        isFetchingState = true;
         try {
-            // We want latest state for "all" signals used in map/rules
-            // For now, we fetch ALL signals (backend rn=1 logic handles this efficiently)
-            const entries = await getValuesAtTime(session.id, time);
+            // OPTIMIZATION: Only fetch signals used in map rules/tracking to reduce backend load
+            const rules = mapRules.value?.rules || [];
+            const ruleSignals = [...new Set(rules.map(r => r.signal))];
+            if (carrierTrackingEnabled.value) ruleSignals.push('CurrentLocation');
 
-            // Map the entries to the format updateSignalValues expects
+            // If no rules, fetch everything (backend rn=1 logic handles this)
+            const signalsToFetch = ruleSignals.length > 0 ? ruleSignals : undefined;
+            const entries = await getValuesAtTime(linkedSessionId, time, signalsToFetch);
+
             const signalEntries = entries.map(e => ({
                 deviceId: e.deviceId,
                 signalName: e.signalName,
@@ -778,8 +793,18 @@ effect(() => {
             updateSignalValues(signalEntries);
         } catch (err) {
             console.error('Failed to fetch signal state for Map Viewer (server-side):', err);
+        } finally {
+            isFetchingState = false;
+            lastFetchCompleteTime = Date.now();
         }
-    }, 150);
+    }
 
-    return () => clearTimeout(timer);
+    if (playing) {
+        // During playback, trigger immediately if interval is met
+        fetchValues();
+    } else {
+        // When scrubbing, use a small debounce
+        const timer = setTimeout(fetchValues, minInterval);
+        return () => clearTimeout(timer);
+    }
 });

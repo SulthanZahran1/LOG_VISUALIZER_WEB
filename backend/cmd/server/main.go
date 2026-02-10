@@ -182,12 +182,12 @@ func main() {
 	apiGroup.GET("/files/upload/:jobId/status", h.HandleUploadJobStream)
 	apiGroup.GET("/files/recent", h.HandleRecentFiles)
 	apiGroup.GET("/files/:id", h.HandleGetFile)
-	
+
 	// Conditional delete based on config
 	if cfg.Security.AllowFileDeletion {
 		apiGroup.DELETE("/files/:id", h.HandleDeleteFile)
 	}
-	
+
 	apiGroup.PUT("/files/:id", h.HandleRenameFile)
 
 	// Parse management
@@ -203,6 +203,7 @@ func main() {
 	apiGroup.GET("/parse/:sessionId/signal-types", h.HandleGetSignalTypes)
 	apiGroup.GET("/parse/:sessionId/categories", h.HandleGetCategories)
 	apiGroup.GET("/parse/:sessionId/at-time", h.HandleGetValuesAtTime)
+	apiGroup.GET("/parse/:sessionId/index-of-time", h.HandleGetIndexByTime)
 	apiGroup.POST("/parse/:sessionId/keepalive", h.HandleSessionKeepAlive)
 
 	// Map Layout

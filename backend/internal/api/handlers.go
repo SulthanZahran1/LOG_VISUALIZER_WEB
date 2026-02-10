@@ -361,6 +361,42 @@ func (h *Handler) HandleParseEntries(c echo.Context) error {
 	})
 }
 
+// HandleGetIndexByTime returns the 0-based index of the first record matching filters where timestamp >= ts.
+func (h *Handler) HandleGetIndexByTime(c echo.Context) error {
+	id := c.Param("sessionId")
+	tsMs, err := strconv.ParseInt(c.QueryParam("ts"), 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid timestamp"})
+	}
+
+	// Extract filter parameters (same as HandleParseEntries)
+	params := parser.QueryParams{
+		Search:              c.QueryParam("search"),
+		SortColumn:          c.QueryParam("sort"),
+		SortDirection:       c.QueryParam("order"),
+		SignalType:          c.QueryParam("type"),
+		SearchRegex:         c.QueryParam("regex") == "true",
+		SearchCaseSensitive: c.QueryParam("caseSensitive") == "true",
+	}
+	if catParam := c.QueryParam("category"); catParam != "" {
+		params.Categories = strings.Split(catParam, ",")
+	}
+	if sigParam := c.QueryParam("signals"); sigParam != "" {
+		params.Signals = strings.Split(sigParam, ",")
+	}
+
+	index, ok := h.session.GetIndexByTime(c.Request().Context(), id, params, tsMs)
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
+	}
+
+	h.session.TouchSession(id)
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"index": index,
+	})
+}
+
 // HandleParseChunk returns a time-windowed chunk of log entries.
 // Accepts start/end via query params and signals via JSON body to avoid 414 URI Too Long errors.
 func (h *Handler) HandleParseChunk(c echo.Context) error {
