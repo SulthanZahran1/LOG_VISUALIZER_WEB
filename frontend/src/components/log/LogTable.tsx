@@ -22,6 +22,7 @@ import {
     availableCategories
 } from '../../stores/logStore';
 import { toggleSignal } from '../../stores/waveformStore';
+import { selectedSignals } from '../../stores/selectionStore';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
 import type { LogEntry } from '../../models/types';
 import { SignalSidebar } from '../waveform/SignalSidebar';
@@ -43,7 +44,7 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
     // Filter categories based on search query
     const filteredCategories = searchQuery.trim() === ''
         ? categories
-        : categories.filter(cat => 
+        : categories.filter(cat =>
             (cat || '(Uncategorized)').toLowerCase().includes(searchQuery.toLowerCase())
         );
 
@@ -213,12 +214,12 @@ export function LogTable() {
     const scrollTopRef = useRef(0);
     const scrollTimeoutRef = useRef<number | null>(null);
     const isScrollingRef = useRef(false);
-    
+
     // Track loaded page range for server-side mode
     const loadedRangeRef = useRef({ start: 1, end: 1 });
     const pendingFetchRef = useRef<Promise<void> | null>(null);
     const [isFetchingPage, setIsFetchingPage] = useState(false);
-    
+
     // Force re-render when entries change (for server-side virtual scrolling)
     // Debounced to prevent excessive re-renders during rapid scrolling
     const [, forceRender] = useState({});
@@ -242,12 +243,12 @@ export function LogTable() {
     // Separate ref for fetch debouncing
     const fetchTimeoutRef = useRef<number | null>(null);
     const scrollDebounceRef = useRef<number | null>(null);
-    
+
     // Optimized scroll handler with debouncing
     const onScroll = useCallback((e: Event) => {
         const scrollTop = (e.target as HTMLDivElement).scrollTop;
         scrollTopRef.current = scrollTop;
-        
+
         // Clear existing timeouts
         if (scrollDebounceRef.current) {
             window.clearTimeout(scrollDebounceRef.current);
@@ -255,10 +256,10 @@ export function LogTable() {
         if (fetchTimeoutRef.current) {
             window.clearTimeout(fetchTimeoutRef.current);
         }
-        
+
         // Mark as actively scrolling
         isScrollingRef.current = true;
-        
+
         // Update scroll signal immediately for rigid scrolling
         scrollSignal.value = scrollTop;
 
@@ -266,14 +267,14 @@ export function LogTable() {
         if (useServerSide.value) {
             const targetPage = Math.floor(scrollTop / (SERVER_PAGE_SIZE * ROW_HEIGHT)) + 1;
             const bufferPages = 2; // Preload 2 pages ahead
-            
+
             // Check if we need to fetch (with buffer for prefetching)
-            if (targetPage + bufferPages > loadedRangeRef.current.end || 
+            if (targetPage + bufferPages > loadedRangeRef.current.end ||
                 targetPage < loadedRangeRef.current.start) {
-                
+
                 fetchTimeoutRef.current = window.setTimeout(() => {
                     const fetchPage = Math.max(1, targetPage);
-                    
+
                     // Avoid duplicate fetches
                     if (!pendingFetchRef.current) {
                         setIsFetchingPage(true);
@@ -289,7 +290,7 @@ export function LogTable() {
 
         if (contextMenu.value.visible) contextMenu.value = { ...contextMenu.value, visible: false };
     }, []);
-    
+
     // Cleanup timeout on unmount
     useEffect(() => {
         return () => {
@@ -595,24 +596,31 @@ export function LogTable() {
 
     // Viewport calculations - ALWAYS use scrollSignal to ensure re-renders on scroll
     const viewportHeight = tableRef.current?.clientHeight || 600;
-    const totalCount = useServerSide.value ? totalEntries.value : filteredEntries.value.length;
+
+    // When signal selection filters entries locally in server-side mode,
+    // fall back to client-side-style virtual scrolling so rows are visible
+    const hasLocalSignalFilter = useServerSide.value && selectedSignals.value.length > 0;
+    const totalCount = (useServerSide.value && !hasLocalSignalFilter)
+        ? totalEntries.value
+        : filteredEntries.value.length;
     const totalHeight = totalCount * ROW_HEIGHT;
 
     // Use scrollSignal to ensure component re-renders when scroll position changes
     const currentScroll = scrollSignal.value;
 
-    const startIdx = useServerSide.value
+    const startIdx = (useServerSide.value && !hasLocalSignalFilter)
         ? 0
         : Math.max(0, Math.floor(currentScroll / ROW_HEIGHT) - BUFFER);
 
-    const endIdx = useServerSide.value
+    const endIdx = (useServerSide.value && !hasLocalSignalFilter)
         ? filteredEntries.value.length
         : Math.min(totalCount, Math.ceil((currentScroll + viewportHeight) / ROW_HEIGHT) + BUFFER);
 
     const visibleEntries = filteredEntries.value.slice(startIdx, endIdx);
 
-    // For server-side, calculate offset based on current page position
-    const offsetTop = useServerSide.value
+    // For server-side without local signal filter, position based on page offset;
+    // otherwise use standard virtual scrolling offset
+    const offsetTop = (useServerSide.value && !hasLocalSignalFilter)
         ? Math.floor(currentScroll / (SERVER_PAGE_SIZE * ROW_HEIGHT)) * SERVER_PAGE_SIZE * ROW_HEIGHT
         : startIdx * ROW_HEIGHT;
 
