@@ -781,7 +781,7 @@ effect(() => {
 
             // If no rules, fetch everything (backend rn=1 logic handles this)
             const signalsToFetch = ruleSignals.length > 0 ? ruleSignals : undefined;
-            const entries = await getValuesAtTime(linkedSessionId, time, signalsToFetch);
+            const entries = await getValuesAtTime(linkedSessionId!, time!, signalsToFetch);
 
             const signalEntries = entries.map(e => ({
                 deviceId: e.deviceId,
