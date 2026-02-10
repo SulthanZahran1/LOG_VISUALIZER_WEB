@@ -323,11 +323,16 @@ func (h *Handler) HandleParseEntries(c echo.Context) error {
 
 	// Extract filter parameters
 	params := parser.QueryParams{
-		Search:        c.QueryParam("search"),
-		Category:      c.QueryParam("category"),
-		SortColumn:    c.QueryParam("sort"),
-		SortDirection: c.QueryParam("order"),
-		SignalType:    c.QueryParam("type"),
+		Search:              c.QueryParam("search"),
+		SortColumn:          c.QueryParam("sort"),
+		SortDirection:       c.QueryParam("order"),
+		SignalType:          c.QueryParam("type"),
+		SearchRegex:         c.QueryParam("regex") == "true",
+		SearchCaseSensitive: c.QueryParam("caseSensitive") == "true",
+	}
+	// Support comma-separated categories for multi-select filtering
+	if catParam := c.QueryParam("category"); catParam != "" {
+		params.Categories = strings.Split(catParam, ",")
 	}
 
 	fmt.Printf("[API] QueryEntries: session=%s page=%d pageSize=%d search='%s'\n", id[:8], page, pageSize, params.Search)

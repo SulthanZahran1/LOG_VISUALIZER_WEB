@@ -351,12 +351,14 @@ func (ds *DuckStore) GetEntry(i int) (models.LogEntry, error) {
 
 // QueryParams defines filters and sorting for log entry queries
 type QueryParams struct {
-	Search        string
-	Category      string
-	SortColumn    string
-	SortDirection string // "asc" or "desc"
-	SignalType    string
-	ShowChanged   bool
+	Search             string
+	Categories         []string // Multiple categories supported (IN clause)
+	SortColumn         string
+	SortDirection      string // "asc" or "desc"
+	SignalType         string
+	SearchRegex        bool
+	SearchCaseSensitive bool
+	ShowChanged        bool
 }
 
 // QueryEntries returns filtered, sorted, and paginated entries
@@ -620,15 +622,34 @@ func (ds *DuckStore) buildWhereClause(params QueryParams) (string, []interface{}
 	var args []interface{}
 
 	if params.Search != "" {
-		// Simple ILIKE search on signal/device/value
-		searchPattern := "%" + params.Search + "%"
-		clauses = append(clauses, "(device_id ILIKE ? OR signal ILIKE ? OR val_str ILIKE ?)")
-		args = append(args, searchPattern, searchPattern, searchPattern)
+		if params.SearchRegex {
+			// Regex search using DuckDB regexp_matches
+			clauses = append(clauses, "(regexp_matches(device_id, ?) OR regexp_matches(signal, ?) OR regexp_matches(COALESCE(val_str, ''), ?) OR regexp_matches(CAST(val_int AS VARCHAR), ?) OR regexp_matches(CAST(val_float AS VARCHAR), ?) OR regexp_matches(CAST(val_bool AS VARCHAR), ?))")
+			args = append(args, params.Search, params.Search, params.Search, params.Search, params.Search, params.Search)
+		} else {
+			// Substring search on signal/device/value (all value columns)
+			searchPattern := "%" + params.Search + "%"
+			op := "ILIKE"
+			if params.SearchCaseSensitive {
+				op = "LIKE"
+			}
+			clause := fmt.Sprintf("(device_id %s ? OR signal %s ? OR val_str %s ? OR CAST(val_int AS VARCHAR) %s ? OR CAST(val_float AS VARCHAR) %s ? OR CAST(val_bool AS VARCHAR) %s ?)",
+				op, op, op, op, op, op)
+			clauses = append(clauses, clause)
+			args = append(args, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern)
+		}
 	}
 
-	if params.Category != "" {
+	if len(params.Categories) == 1 {
 		clauses = append(clauses, "category = ?")
-		args = append(args, params.Category)
+		args = append(args, params.Categories[0])
+	} else if len(params.Categories) > 1 {
+		placeholders := make([]string, len(params.Categories))
+		for i, cat := range params.Categories {
+			placeholders[i] = "?"
+			args = append(args, cat)
+		}
+		clauses = append(clauses, "category IN ("+strings.Join(placeholders, ", ")+")")
 	}
 
 	if params.SignalType != "" {

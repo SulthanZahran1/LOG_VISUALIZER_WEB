@@ -192,6 +192,8 @@ export async function getParseEntries(
         sort?: string;
         order?: string;
         type?: string;
+        regex?: boolean;
+        caseSensitive?: boolean;
     }
 ): Promise<PaginatedEntries> {
     let url = `/parse/${sessionId}/entries?page=${page}&pageSize=${pageSize}`;
@@ -201,6 +203,8 @@ export async function getParseEntries(
         if (filters.sort) url += `&sort=${encodeURIComponent(filters.sort)}`;
         if (filters.order) url += `&order=${encodeURIComponent(filters.order)}`;
         if (filters.type) url += `&type=${encodeURIComponent(filters.type)}`;
+        if (filters.regex) url += `&regex=true`;
+        if (filters.caseSensitive) url += `&caseSensitive=true`;
     }
 
     const res = await request<RawPaginatedEntries>(url);

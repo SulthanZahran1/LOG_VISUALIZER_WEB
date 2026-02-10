@@ -111,15 +111,36 @@ export const availableCategories = computed(() => {
 export const useServerSide = computed(() => (currentSession.value?.entryCount ?? 0) > 100000);
 
 export const filteredEntries = computed(() => {
-    // In server-side mode, logEntries already contains the filtered result from backend
+    let entries = logEntries.value;
+
+    // In server-side mode, backend handles search/category/sort/type.
+    // We still apply signal selection and showChangedOnly locally on the current page.
     if (useServerSide.value) {
-        return logEntries.value;
+        // Signal selection filter (from waveform sidebar)
+        const selected = new Set(selectedSignals.value);
+        if (selected.size > 0) {
+            entries = entries.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
+        }
+
+        // Show changed only (applied on current page - approximate but useful)
+        if (showChangedOnly.value) {
+            const lastValues = new Map<string, string | number | boolean>();
+            entries = entries.filter(e => {
+                const key = `${e.deviceId}::${e.signalName}`;
+                const lastVal = lastValues.get(key);
+                const isChanged = lastVal === undefined || lastVal !== e.value;
+                lastValues.set(key, e.value);
+                return isChanged;
+            });
+        }
+
+        return entries;
     }
+
+    // --- Client-side mode (< 100k entries) ---
 
     // 1. Selection Filter (Implicit: if selected, filter. If empty, show all)
     const selected = new Set(selectedSignals.value);
-    let entries = logEntries.value;
-
     if (selected.size > 0) {
         entries = entries.filter(e => selected.has(`${e.deviceId}::${e.signalName}`));
     }
@@ -138,7 +159,7 @@ export const filteredEntries = computed(() => {
         entries = entries.filter(e => e.signalType === signalTypeFilter.value);
     }
 
-    // 4. Filter "Show Changed Only" 
+    // 4. Filter "Show Changed Only"
     // NOTE: Backend returns entries sorted by timestamp, so change detection is accurate
     // We only create the Map when this filter is enabled
     if (showChangedOnly.value) {
@@ -212,6 +233,8 @@ effect(() => {
         sortColumn.value;
         sortDirection.value;
         signalTypeFilter.value;
+        searchRegex.value;
+        searchCaseSensitive.value;
 
         // Clear cache when filters change
         console.log('[filter effect] Filters changed, clearing cache. Search:', search, 'Category:', Array.from(category));
@@ -416,10 +439,14 @@ export async function fetchEntries(page: number, pageSize: number) {
     // Prepare filters for server-side mode
     const filters = useServerSide.value ? {
         search: searchQuery.value,
-        category: Array.from(categoryFilter.value)[0] || undefined,
+        category: categoryFilter.value.size > 0
+            ? Array.from(categoryFilter.value).join(',')
+            : undefined,
         sort: sortColumn.value || undefined,
         order: sortDirection.value,
-        type: signalTypeFilter.value || undefined
+        type: signalTypeFilter.value || undefined,
+        regex: searchRegex.value || undefined,
+        caseSensitive: searchCaseSensitive.value || undefined,
     } : undefined;
 
     const cacheKey = useServerSide.value ? getCacheKey(page, filters) : String(page);
