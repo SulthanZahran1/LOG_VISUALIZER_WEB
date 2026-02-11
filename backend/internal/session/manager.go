@@ -94,9 +94,33 @@ func (m *Manager) StartSession(fileID, filePath string) (*models.ParseSession, e
 	return session, nil
 }
 
+// closeExistingStoresForFile closes DuckStore connections held by other sessions
+// for the same file. This prevents DuckDB file locking conflicts on Windows
+// when re-opening a previously parsed file.
+func (m *Manager) closeExistingStoresForFile(fileID, excludeSessionID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for id, state := range m.sessions {
+		if id == excludeSessionID {
+			continue
+		}
+		if state.Session.FileID == fileID && state.DuckStore != nil {
+			fmt.Printf("[Manager] Closing existing DuckStore for file %s (session %s) to release file lock\n",
+				shortID(fileID), shortID(id))
+			state.DuckStore.Close()
+			state.DuckStore = nil
+		}
+	}
+}
+
 // loadFromPersistentStore loads an already-parsed file from persistent storage.
 func (m *Manager) loadFromPersistentStore(sessionID, fileID string) {
 	start := time.Now()
+
+	// Close any existing DuckStore connections for the same file
+	// to prevent DuckDB file locking conflicts (especially on Windows)
+	m.closeExistingStoresForFile(fileID, sessionID)
 
 	// Open the persistent store
 	store, err := m.parsedStore.Open(fileID)
@@ -301,6 +325,7 @@ func (m *Manager) runParseToDuckStore(sessionID, filePath, fileID string, p *par
 
 	// Mark as successfully parsed for future reuse
 	m.parsedStore.MarkComplete(fileID)
+	store.SetPersistent(true) // Don't delete the persistent DB file on session cleanup
 
 	elapsed := time.Since(start).Milliseconds()
 

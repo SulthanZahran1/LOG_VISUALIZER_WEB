@@ -35,6 +35,10 @@ type DuckStore struct {
 
 	// Semaphore to limit concurrent queries (prevents memory spikes during rapid scrolling)
 	querySem chan struct{}
+
+	// persistent means Close() should not delete the database file.
+	// Set for parsed files stored in the persistent cache.
+	persistent bool
 }
 
 // NewDuckStore creates a new DuckDB-backed store in the given temp directory.
@@ -193,6 +197,7 @@ func OpenDuckStoreReadOnly(dbPath string) (*DuckStore, error) {
 		maxTs:      maxTs,
 		countCache: make(map[string]int),
 		querySem:   make(chan struct{}, 3),
+		persistent: true, // Read-only stores should never delete the file
 	}, nil
 }
 
@@ -1139,12 +1144,18 @@ func (ds *DuckStore) GetTimeRange() *models.TimeRange {
 	}
 }
 
-// Close closes the database and removes the temp file
+// SetPersistent marks this store so Close() won't delete the database file.
+func (ds *DuckStore) SetPersistent(p bool) {
+	ds.persistent = p
+}
+
+// Close closes the database connection.
+// If the store is not persistent, it also removes the database file.
 func (ds *DuckStore) Close() error {
 	if ds.db != nil {
 		ds.db.Close()
 	}
-	if ds.dbPath != "" {
+	if ds.dbPath != "" && !ds.persistent {
 		os.Remove(ds.dbPath)
 	}
 	return nil
