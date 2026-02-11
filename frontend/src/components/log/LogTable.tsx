@@ -185,9 +185,9 @@ function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (
     }, [isServerSide]);
 
     // Client-side: build from loaded entries
-    const clientTree = useMemo(() => isServerSide ? new Map() : buildTimeTree(entries), [entries, isServerSide]);
+    const clientTree = useMemo(() => isServerSide ? new Map<string, Map<number, Map<number, number>>>() : buildTimeTree(entries), [entries, isServerSide]);
 
-    const timeTree = isServerSide ? (serverTree ?? new Map()) : clientTree;
+    const timeTree = isServerSide ? (serverTree ?? new Map<string, Map<number, Map<number, number>>>()) : clientTree;
 
     const dates = useMemo(() => Array.from(timeTree.keys()).sort(), [timeTree]);
 

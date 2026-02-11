@@ -26,3 +26,6 @@ mapping_and_rules.yaml
 # Go build artifacts
 backend/server
 *.exe
+
+# Build output
+dist/
