@@ -409,27 +409,23 @@ async function handleSessionComplete(session: ParseSession) {
 }
 
 /**
- * Common finalization tasks for a loaded session
+ * Common finalization tasks for a loaded session.
+ * Auto-links the session to the map viewer for playback.
  */
 async function finalizeSessionLoad(session: ParseSession) {
-    // 2. Trigger map and view updates
     const mapStore = await import('./mapStore');
-    mapStore.updateSignalValues(logEntries.value);
 
-    // 3. Set playback time range from session metadata (preferred)
-    if (session.startTime && session.endTime) {
-        mapStore.setPlaybackRange(session.startTime, session.endTime);
-    } else if (logEntries.value.length > 0) {
-        // Fallback: Set from available entries
-        const timestamps = logEntries.value
-            .map(e => e.timestamp ? new Date(e.timestamp).getTime() : null)
-            .filter((t): t is number => t !== null && !isNaN(t));
-        if (timestamps.length > 0) {
-            const startTime = Math.min(...timestamps);
-            const endTime = Math.max(...timestamps);
-            mapStore.setPlaybackRange(startTime, endTime);
-        }
-    }
+    // Auto-link the session to the map viewer.
+    // For large files, linkSignalLogSession triggers server-side fetching via the map effect.
+    // For small files, it populates signalHistory from the loaded entries.
+    await mapStore.linkSignalLogSession(
+        session.id,
+        session.fileId || 'Session',
+        logEntries.value,
+        session.startTime,
+        session.endTime,
+        session.entryCount
+    );
 }
 
 
