@@ -29,3 +29,5 @@ backend/server
 
 # Build output
 dist/
+
+*.xml

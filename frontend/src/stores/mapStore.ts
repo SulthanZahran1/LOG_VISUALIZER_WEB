@@ -87,6 +87,13 @@ export async function fetchMapLayout() {
     mapError.value = null;
     try {
         const data = await getMapLayout();
+        if (data?.objects) {
+            const allObjs = Object.values(data.objects) as MapObject[];
+            const withUnitId = allObjs.filter(o => o.unitId);
+            console.log('[fetchMapLayout] Total objects:', allObjs.length,
+                'with unitId:', withUnitId.length,
+                'sample unitIds:', withUnitId.slice(0, 5).map(o => o.unitId));
+        }
         mapLayout.value = data;
     } catch (err: unknown) {
         mapError.value = err instanceof Error ? err.message : 'Failed to fetch map layout';
@@ -347,14 +354,34 @@ export function getUnitColor(unitId: string): { color?: string, text?: string } 
                 'signalMap size:', signalMap.size,
                 'latestSignalValues size:', latestSignalValues.value.size,
                 'mapped entries:', [...signalMap.entries()]);
-            // Log a sample of device->unit mappings to check if heuristic works
+            // Detailed diagnostic on first cache build
             if (unitSignalCache.size === 1) {
-                const sampleKeys = [...latestSignalValues.value.keys()].slice(0, 5);
-                const sampleMapUnits = mapLayout.value ? Object.values(mapLayout.value.objects).slice(0, 5).map(o => o.unitId) : [];
-                console.log('[getUnitColor] Sample device keys:', sampleKeys);
-                console.log('[getUnitColor] Sample mapped unitIds:', sampleKeys.map(k => applyDeviceMapping(k.split('::')[0])));
-                console.log('[getUnitColor] Sample map layout unitIds:', sampleMapUnits);
-                console.log('[getUnitColor] Rule signals:', sortedRules.map(r => r.signal));
+                // Show all unique signal names in loaded data vs what rules need
+                const allSignalNames = new Set<string>();
+                for (const key of latestSignalValues.value.keys()) {
+                    allSignalNames.add(key.split('::')[1]);
+                }
+                const ruleSignalNames = [...new Set(sortedRules.map(r => r.signal))];
+                const matchingNames = ruleSignalNames.filter(s => allSignalNames.has(s));
+                const missingNames = ruleSignalNames.filter(s => !allSignalNames.has(s));
+
+                console.log('[getUnitColor] Unique signal names in data (' + allSignalNames.size + '):', [...allSignalNames].slice(0, 20));
+                console.log('[getUnitColor] Rule signals needed:', ruleSignalNames);
+                console.log('[getUnitColor] Matching:', matchingNames, 'Missing:', missingNames);
+
+                if (missingNames.length > 0) {
+                    console.warn('[getUnitColor] Rule signals NOT found in loaded data:', missingNames,
+                        '— coloring will not work for these rules');
+                }
+
+                // Sample map layout unitIds (non-empty only)
+                const totalWithUnitId = mapLayout.value
+                    ? Object.values(mapLayout.value.objects).filter(o => o.unitId).length
+                    : 0;
+                const sampleMapUnits = mapLayout.value
+                    ? Object.values(mapLayout.value.objects).filter(o => o.unitId).slice(0, 5).map(o => o.unitId)
+                    : [];
+                console.log('[getUnitColor] Map layout units with unitId:', totalWithUnitId, 'sample:', sampleMapUnits);
             }
         }
     }
