@@ -36,6 +36,12 @@ type DuckStore struct {
 	// Semaphore to limit concurrent queries (prevents memory spikes during rapid scrolling)
 	querySem chan struct{}
 
+	// Cache of ordered id lists for filtered pagination.
+	// Key: "where|sort|dir|args" — Value: ordered slice of matching row ids.
+	// First request builds the cache (one scan), subsequent pages use primary key lookup.
+	pageIndex   map[string][]int32
+	pageIndexMu sync.RWMutex
+
 	// persistent means Close() should not delete the database file.
 	// Set for parsed files stored in the persistent cache.
 	persistent bool
@@ -116,6 +122,7 @@ func NewDuckStoreAtPath(dbPath string) (*DuckStore, error) {
 		minTs:      0,
 		maxTs:      0,
 		countCache: make(map[string]int),
+		pageIndex:  make(map[string][]int32),
 		querySem:   make(chan struct{}, 3), // Max 3 concurrent queries
 	}, nil
 }
@@ -196,6 +203,7 @@ func OpenDuckStoreReadOnly(dbPath string) (*DuckStore, error) {
 		minTs:      minTs,
 		maxTs:      maxTs,
 		countCache: make(map[string]int),
+		pageIndex:  make(map[string][]int32),
 		querySem:   make(chan struct{}, 3),
 		persistent: true, // Read-only stores should never delete the file
 	}, nil
@@ -436,8 +444,11 @@ func (ds *DuckStore) QueryEntries(ctx context.Context, params QueryParams, page,
 	return entries, total, nil
 }
 
-// queryWithKeysetPagination uses efficient keyset pagination for deep pages
-// Falls back to OFFSET for first few pages or complex sort orders
+// queryWithKeysetPagination uses efficient pagination for all page depths.
+//
+// Unfiltered + timestamp/id sort: direct primary key range scan — O(log n).
+// Filtered or other sorts: builds a cached ordered id list on first request (one scan),
+// then all subsequent pages use primary key IN lookup — O(pageSize).
 func (ds *DuckStore) queryWithKeysetPagination(ctx context.Context, params QueryParams, pageSize, offset int, where string, args []interface{}) ([]models.LogEntry, error) {
 	// Check context
 	select {
@@ -445,6 +456,7 @@ func (ds *DuckStore) queryWithKeysetPagination(ctx context.Context, params Query
 		return nil, ctx.Err()
 	default:
 	}
+
 	// Determine sort column
 	sortCol := "id"
 	if params.SortColumn != "" {
@@ -465,127 +477,143 @@ func (ds *DuckStore) queryWithKeysetPagination(ctx context.Context, params Query
 		dir = "DESC"
 	}
 
-	// Use OFFSET for first 1000 rows (first 5 pages at 200/page) - it's fast enough
-	// Use keyset pagination for deeper pages
-	const offsetThreshold = 1000
+	// FAST PATH: For unfiltered queries sorted by timestamp or id (the default),
+	// the sequential id column maps directly to row position. Use a primary key
+	// range scan which is O(log n) regardless of depth — no OFFSET needed.
+	if where == "" && (sortCol == "timestamp" || sortCol == "id") {
+		var startID, endID int
+		if dir == "ASC" {
+			startID = offset
+			endID = offset + pageSize
+		} else {
+			// DESC: position 0 = last row (id=entryCount-1)
+			startID = ds.entryCount - offset - pageSize
+			endID = ds.entryCount - offset
+			if startID < 0 {
+				startID = 0
+			}
+		}
 
-	if offset < offsetThreshold || sortCol == "category" || sortCol == "signal" {
-		// Simple OFFSET pagination for shallow pages or complex sorts
-		query := `
+		query := fmt.Sprintf(`
 			SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
 			FROM entries
-		`
-		if where != "" {
-			query += " WHERE " + where
-		}
-		query += fmt.Sprintf(" ORDER BY %s %s LIMIT %d OFFSET %d", sortCol, dir, pageSize, offset)
+			WHERE id >= %d AND id < %d
+			ORDER BY id %s
+		`, startID, endID, dir)
 
-		rows, err := ds.db.QueryContext(ctx, query, args...)
+		rows, err := ds.db.QueryContext(ctx, query)
 		if err != nil {
-			return nil, fmt.Errorf("query failed: %w", err)
+			return nil, fmt.Errorf("primary key range query failed: %w", err)
 		}
 		defer rows.Close()
-
 		return scanEntries(rows, pageSize)
 	}
 
-	// Keyset pagination for deep pages
-	// Get the cursor value (id/timestamp) at the offset position
-	var cursorQuery string
-	if where != "" {
-		cursorQuery = fmt.Sprintf("SELECT %s FROM entries WHERE %s ORDER BY %s %s LIMIT 1 OFFSET %d",
-			sortCol, where, sortCol, dir, offset)
-	} else {
-		cursorQuery = fmt.Sprintf("SELECT %s FROM entries ORDER BY %s %s LIMIT 1 OFFSET %d",
-			sortCol, sortCol, dir, offset)
+	// INDEXED PATH: For filtered queries or non-timestamp sorts, use a cached
+	// ordered id list. First request builds the cache (one table scan), then all
+	// subsequent pages fetch by primary key IN (...) — O(pageSize).
+	cacheKey := fmt.Sprintf("%s|%s|%s|%v", where, sortCol, dir, args)
+
+	ds.pageIndexMu.RLock()
+	ids, cached := ds.pageIndex[cacheKey]
+	ds.pageIndexMu.RUnlock()
+
+	if !cached {
+		// Build the ordered id list for this filter+sort combination
+		indexQuery := "SELECT id FROM entries"
+		if where != "" {
+			indexQuery += " WHERE " + where
+		}
+		indexQuery += fmt.Sprintf(" ORDER BY %s %s, id %s", sortCol, dir, dir)
+
+		rows, err := ds.db.QueryContext(ctx, indexQuery, args...)
+		if err != nil {
+			return nil, fmt.Errorf("index build query failed: %w", err)
+		}
+
+		ids = make([]int32, 0, 1024)
+		for rows.Next() {
+			var id int32
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("index scan failed: %w", err)
+			}
+			ids = append(ids, id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("index iteration failed: %w", err)
+		}
+
+		// Cache it (limit to 8 entries to bound memory)
+		ds.pageIndexMu.Lock()
+		if len(ds.pageIndex) >= 8 {
+			// Evict all — simple reset
+			ds.pageIndex = make(map[string][]int32)
+		}
+		ds.pageIndex[cacheKey] = ids
+		ds.pageIndexMu.Unlock()
+
+		fmt.Printf("[DuckStore] Built page index: %d matching ids for filter (cache key len=%d)\n", len(ids), len(cacheKey))
 	}
 
-	var cursorValue interface{}
-	err := ds.db.QueryRowContext(ctx, cursorQuery, args...).Scan(&cursorValue)
-	if err == sql.ErrNoRows {
-		// Beyond end of results
+	// Slice the page from the cached id list
+	if offset >= len(ids) {
 		return []models.LogEntry{}, nil
 	}
+	end := offset + pageSize
+	if end > len(ids) {
+		end = len(ids)
+	}
+	pageIDs := ids[offset:end]
+
+	if len(pageIDs) == 0 {
+		return []models.LogEntry{}, nil
+	}
+
+	// Fetch rows by primary key — O(pageSize)
+	placeholders := make([]string, len(pageIDs))
+	fetchArgs := make([]interface{}, len(pageIDs))
+	for i, id := range pageIDs {
+		placeholders[i] = fmt.Sprintf("%d", id)
+		fetchArgs[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
+		FROM entries
+		WHERE id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	rows, err := ds.db.QueryContext(ctx, query)
 	if err != nil {
-		// Fall back to OFFSET if cursor query fails
-		query := `
-			SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
-			FROM entries
-		`
-		if where != "" {
-			query += " WHERE " + where
-		}
-		query += fmt.Sprintf(" ORDER BY %s %s LIMIT %d OFFSET %d", sortCol, dir, pageSize, offset)
-
-		rows, err := ds.db.QueryContext(ctx, query, args...)
-		if err != nil {
-			return nil, fmt.Errorf("fallback query failed: %w", err)
-		}
-		defer rows.Close()
-		return scanEntries(rows, pageSize)
-	}
-
-	// Check context before main query
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
-	}
-
-	// Now fetch rows starting from cursor value
-	// Use (sort_col, id) as composite key for stable ordering
-	var query string
-	var queryArgs []interface{}
-
-	if where != "" {
-		query = fmt.Sprintf(`
-			SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
-			FROM entries
-			WHERE %s AND %s %s ?
-			ORDER BY %s %s, id %s
-			LIMIT %d
-		`, where, sortCol, getComparisonOp(dir), sortCol, dir, dir, pageSize)
-		queryArgs = append(args, cursorValue)
-	} else {
-		query = fmt.Sprintf(`
-			SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
-			FROM entries
-			WHERE %s %s ?
-			ORDER BY %s %s, id %s
-			LIMIT %d
-		`, sortCol, getComparisonOp(dir), sortCol, dir, dir, pageSize)
-		queryArgs = []interface{}{cursorValue}
-	}
-
-	rows, err := ds.db.QueryContext(ctx, query, queryArgs...)
-	if err != nil {
-		// Fall back to OFFSET
-		query := `
-			SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
-			FROM entries
-		`
-		if where != "" {
-			query += " WHERE " + where
-		}
-		query += fmt.Sprintf(" ORDER BY %s %s LIMIT %d OFFSET %d", sortCol, dir, pageSize, offset)
-
-		rows, err := ds.db.QueryContext(ctx, query, args...)
-		if err != nil {
-			return nil, fmt.Errorf("fallback query failed: %w", err)
-		}
-		defer rows.Close()
-		return scanEntries(rows, pageSize)
+		return nil, fmt.Errorf("page fetch query failed: %w", err)
 	}
 	defer rows.Close()
 
-	return scanEntries(rows, pageSize)
-}
-
-func getComparisonOp(dir string) string {
-	if dir == "DESC" {
-		return "<="
+	// Scan into a map keyed by id for reordering
+	entryMap := make(map[int32]models.LogEntry, len(pageIDs))
+	for rows.Next() {
+		var id int32
+		entry, err := scanEntryRowsWithID(rows, &id)
+		if err != nil {
+			return nil, err
+		}
+		entryMap[id] = entry
 	}
-	return ">="
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("page scan failed: %w", err)
+	}
+
+	// Reorder to match the cached sort order
+	entries := make([]models.LogEntry, 0, len(pageIDs))
+	for _, id := range pageIDs {
+		if entry, ok := entryMap[id]; ok {
+			entries = append(entries, entry)
+		}
+	}
+
+	return entries, nil
 }
 
 func scanEntries(rows *sql.Rows, capacity int) ([]models.LogEntry, error) {
@@ -600,11 +628,15 @@ func scanEntries(rows *sql.Rows, capacity int) ([]models.LogEntry, error) {
 	return entries, rows.Err()
 }
 
-// ClearCountCache clears the count cache (call when data changes)
+// ClearCountCache clears the count and page index caches (call when data changes)
 func (ds *DuckStore) ClearCountCache() {
 	ds.countCacheMu.Lock()
 	ds.countCache = make(map[string]int)
 	ds.countCacheMu.Unlock()
+
+	ds.pageIndexMu.Lock()
+	ds.pageIndex = make(map[string][]int32)
+	ds.pageIndexMu.Unlock()
 }
 
 // GetCategories returns all unique categories in the store
@@ -1252,6 +1284,31 @@ func scanEntryRows(rows *sql.Rows) (models.LogEntry, error) {
 	var valStr sql.NullString
 
 	err := rows.Scan(&tsMs, &deviceID, &signal, &category, &valType, &valBool, &valInt, &valFloat, &valStr)
+	if err != nil {
+		return models.LogEntry{}, err
+	}
+
+	return models.LogEntry{
+		Timestamp:  time.UnixMilli(tsMs),
+		DeviceID:   deviceID,
+		SignalName: signal,
+		Category:   category,
+		Value:      decodeValue(valType, valBool.Bool, valInt.Int64, valFloat.Float64, valStr.String),
+		SignalType: valTypeToSignalType(valType),
+	}, nil
+}
+
+// scanEntryRowsWithID scans a row that includes the id column as the first field.
+func scanEntryRowsWithID(rows *sql.Rows, id *int32) (models.LogEntry, error) {
+	var tsMs int64
+	var deviceID, signal, category string
+	var valType int
+	var valBool sql.NullBool
+	var valInt sql.NullInt64
+	var valFloat sql.NullFloat64
+	var valStr sql.NullString
+
+	err := rows.Scan(id, &tsMs, &deviceID, &signal, &category, &valType, &valBool, &valInt, &valFloat, &valStr)
 	if err != nil {
 		return models.LogEntry{}, err
 	}
