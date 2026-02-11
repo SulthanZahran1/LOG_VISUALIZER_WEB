@@ -4,7 +4,6 @@ import {
     getDefaultMaps, loadDefaultMap, getValuesAtTime,
     type MapRules, type RecentMapFiles, type CarrierLogInfo, type CarrierEntry, type DefaultMapInfo
 } from '../api/client';
-import { useServerSide, currentSession } from './logStore';
 
 
 export interface MapObject {
@@ -62,6 +61,11 @@ export const carrierLogFileName = signal<string | null>(null);
 export const signalLogSessionId = signal<string | null>(null);
 export const signalLogFileName = signal<string | null>(null);
 export const signalLogEntryCount = signal<number>(0);
+
+// Map viewer determines server-side mode independently based on linked session's entry count.
+// This decouples the map from the log viewer's current session state.
+const MAP_SERVER_SIDE_THRESHOLD = 100000;
+const mapUseServerSide = computed(() => signalLogEntryCount.value > MAP_SERVER_SIDE_THRESHOLD);
 
 // Follow state
 export const followedCarrierId = signal<string | null>(null);
@@ -398,7 +402,7 @@ export function getSignalValueAtTime(key: string, time: number | null): any {
 
     // For server-side mode (large files), don't use history - rely on latest values
     // The separate effect fetches values at time from backend
-    if (useServerSide.value) {
+    if (mapUseServerSide.value) {
         return latestSignalValues.value.get(key);
     }
 
@@ -447,7 +451,7 @@ export function getCarrierDisplayText(unitId: string): string | null {
 export function updateSignalValues(entries: { deviceId: string, signalName: string, value: any, timestamp?: string | number }[]): void {
     const newValues = new Map(latestSignalValues.value);
     // Only update history for client-side mode (small files)
-    const shouldUpdateHistory = !useServerSide.value;
+    const shouldUpdateHistory = !mapUseServerSide.value;
     const newHistory = shouldUpdateHistory ? new Map(signalHistory.value) : signalHistory.value;
     let changed = false;
 
@@ -607,7 +611,7 @@ export async function linkSignalLogSession(
 
     // For large files (server-side mode), fetch initial signal state at start time
     // This ensures the map has current data even before playback starts
-    if (useServerSide.value && effectiveStartTime !== undefined) {
+    if (mapUseServerSide.value && effectiveStartTime !== undefined) {
         try {
             const initialEntries = await getValuesAtTime(sessionId, effectiveStartTime);
             const signalEntries = initialEntries.map(e => ({
@@ -747,9 +751,10 @@ effect(() => {
 });
 
 /**
- * LARGE FILE OPTIMIZATION: 
- * If in server-side mode, fetch signal state on-demand for the current playback time.
- * Also re-fetches when signalLogSessionId changes (new session linked).
+ * SERVER-SIDE DATA FETCHING:
+ * When a large log session is linked to the map, fetch signal state on-demand
+ * for the current playback time. Decoupled from logStore's currentSession —
+ * the map only needs signalLogSessionId and signalLogEntryCount.
  */
 let isFetchingState = false;
 let lastFetchCompleteTime = 0;
@@ -757,11 +762,10 @@ let lastFetchCompleteTime = 0;
 effect(() => {
     const time = playbackTime.value;
     const playing = isPlaying.value;
-    const session = currentSession.value;
-    const large = useServerSide.value;
-    const linkedSessionId = signalLogSessionId.value; // Track linked session changes
+    const large = mapUseServerSide.value;
+    const linkedSessionId = signalLogSessionId.value;
 
-    if (!large || !time || !session || session.status !== 'complete' || !linkedSessionId) return;
+    if (!large || !time || !linkedSessionId) return;
 
     const now = Date.now();
     // Throttle: 500ms during playback, 50ms debounce when scrubbing for responsiveness
