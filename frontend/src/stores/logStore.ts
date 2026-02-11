@@ -485,7 +485,7 @@ export async function fetchEntries(page: number, pageSize: number) {
         }
 
         console.log('[fetchEntries] Fetching from server - page:', page, 'filters:', filters);
-        const res = await getParseEntries(currentSession.value.id, page, pageSize, filters);
+        const res = await getParseEntries(currentSession.value.id, page, pageSize, filters, fetchAbortSignal.signal);
 
         // If this fetch was aborted while in flight, discard results
         if (fetchAbortSignal !== currentFetchAbortController) return;

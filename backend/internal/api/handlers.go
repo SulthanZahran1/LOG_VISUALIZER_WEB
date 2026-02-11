@@ -2,6 +2,7 @@ package api
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -342,8 +343,11 @@ func (h *Handler) HandleParseEntries(c echo.Context) error {
 	fmt.Printf("[API] QueryEntries: session=%s page=%d pageSize=%d search='%s'\n", id[:8], page, pageSize, params.Search)
 	start := time.Now()
 
-	// Pass request context for timeout/cancellation support
-	entries, total, ok := h.session.QueryEntries(c.Request().Context(), id, params, page, pageSize)
+	// Timeout prevents deep-page queries from running indefinitely
+	ctx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
+	defer cancel()
+
+	entries, total, ok := h.session.QueryEntries(ctx, id, params, page, pageSize)
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
 	}
