@@ -526,6 +526,22 @@ func (m *Manager) GetCategories(ctx context.Context, id string) ([]string, bool)
 		}
 		return cats, true
 	}
+	
+	// Fallback to legacy in-memory Result (for merged sessions)
+	if state.Result != nil {
+		catMap := make(map[string]struct{})
+		for _, entry := range state.Result.Entries {
+			if entry.Category != "" {
+				catMap[entry.Category] = struct{}{}
+			}
+		}
+		cats := make([]string, 0, len(catMap))
+		for c := range catMap {
+			cats = append(cats, c)
+		}
+		return cats, true
+	}
+	
 	return []string{}, true
 }
 
@@ -657,7 +673,38 @@ func (m *Manager) GetChunk(ctx context.Context, id string, startTs, endTs time.T
 		return entries, true
 	}
 
-	// Fallback to legacy in-memory Result (not supported for now)
+	// Fallback to legacy in-memory Result (for merged sessions)
+	if state.Result != nil {
+		startMs := startTs.UnixMilli()
+		endMs := endTs.UnixMilli()
+		
+		var result []models.LogEntry
+		for _, entry := range state.Result.Entries {
+			ts := entry.Timestamp.UnixMilli()
+			if ts < startMs || ts > endMs {
+				continue
+			}
+			
+			// Filter by signals if specified
+			if len(signals) > 0 {
+				key := entry.DeviceID + "::" + entry.SignalName
+				found := false
+				for _, s := range signals {
+					if s == key {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
+			}
+			
+			result = append(result, entry)
+		}
+		return result, true
+	}
+	
 	return []models.LogEntry{}, true
 }
 
@@ -677,6 +724,49 @@ func (m *Manager) GetValuesAtTime(ctx context.Context, id string, ts time.Time, 
 			return nil, false
 		}
 		return entries, true
+	}
+
+	// Fallback to legacy in-memory Result (for merged sessions)
+	if state.Result != nil {
+		tsMs := ts.UnixMilli()
+		
+		// Find most recent entry for each signal at or before ts
+		latest := make(map[string]models.LogEntry)
+		
+		for _, entry := range state.Result.Entries {
+			entryTs := entry.Timestamp.UnixMilli()
+			if entryTs > tsMs {
+				continue
+			}
+			
+			key := entry.DeviceID + "::" + entry.SignalName
+			
+			// Filter by signals if specified
+			if len(signals) > 0 {
+				found := false
+				for _, s := range signals {
+					if s == key {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
+			}
+			
+			// Keep the most recent entry for this signal
+			if existing, ok := latest[key]; !ok || entryTs > existing.Timestamp.UnixMilli() {
+				latest[key] = entry
+			}
+		}
+		
+		// Convert map to slice
+		result := make([]models.LogEntry, 0, len(latest))
+		for _, entry := range latest {
+			result = append(result, entry)
+		}
+		return result, true
 	}
 
 	return []models.LogEntry{}, true
@@ -700,11 +790,51 @@ func (m *Manager) GetBoundaryValues(ctx context.Context, id string, startTs, end
 		return boundaries, true
 	}
 
-	// Return empty boundaries for legacy in-memory mode
-	return &parser.BoundaryValues{
+	// Fallback to legacy in-memory Result (for merged sessions)
+	result := &parser.BoundaryValues{
 		Before: make(map[string]models.LogEntry),
 		After:  make(map[string]models.LogEntry),
-	}, true
+	}
+	
+	if state.Result != nil {
+		startMs := startTs.UnixMilli()
+		endMs := endTs.UnixMilli()
+		
+		for _, entry := range state.Result.Entries {
+			key := entry.DeviceID + "::" + entry.SignalName
+			ts := entry.Timestamp.UnixMilli()
+			
+			// Filter by signals if specified
+			if len(signals) > 0 {
+				found := false
+				for _, s := range signals {
+					if s == key {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
+			}
+			
+			// Check if this is the latest entry before startTs
+			if ts < startMs {
+				if existing, ok := result.Before[key]; !ok || ts > existing.Timestamp.UnixMilli() {
+					result.Before[key] = entry
+				}
+			}
+			
+			// Check if this is the earliest entry after endTs
+			if ts > endMs {
+				if existing, ok := result.After[key]; !ok || ts < existing.Timestamp.UnixMilli() {
+					result.After[key] = entry
+				}
+			}
+		}
+	}
+	
+	return result, true
 }
 
 // GetSignalTypes returns a map of signal key to signal type string for a session.
