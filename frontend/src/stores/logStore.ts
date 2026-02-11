@@ -415,6 +415,13 @@ async function handleSessionComplete(session: ParseSession) {
 async function finalizeSessionLoad(session: ParseSession) {
     const mapStore = await import('./mapStore');
 
+    // Ensure map layout and rules are loaded so the map viewer can apply
+    // coloring rules as soon as signal data arrives.
+    await Promise.all([
+        mapStore.fetchMapLayout(),
+        mapStore.fetchMapRules(),
+    ]);
+
     // Auto-link the session to the map viewer.
     // For large files, linkSignalLogSession triggers server-side fetching via the map effect.
     // For small files, it populates signalHistory from the loaded entries.
