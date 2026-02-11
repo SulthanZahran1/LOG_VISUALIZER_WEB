@@ -519,30 +519,15 @@ func (m *Manager) GetCategories(ctx context.Context, id string) ([]string, bool)
 		return nil, false
 	}
 
-	if state.DuckStore != nil {
-		cats, err := state.DuckStore.GetCategories(ctx)
-		if err != nil {
-			return nil, false
-		}
-		return cats, true
+	if state.DuckStore == nil {
+		return nil, false
 	}
-	
-	// Fallback to legacy in-memory Result (for merged sessions)
-	if state.Result != nil {
-		catMap := make(map[string]struct{})
-		for _, entry := range state.Result.Entries {
-			if entry.Category != "" {
-				catMap[entry.Category] = struct{}{}
-			}
-		}
-		cats := make([]string, 0, len(catMap))
-		for c := range catMap {
-			cats = append(cats, c)
-		}
-		return cats, true
+
+	cats, err := state.DuckStore.GetCategories(ctx)
+	if err != nil {
+		return nil, false
 	}
-	
-	return []string{}, true
+	return cats, true
 }
 
 // GetIndexByTime returns the 0-based index of the first record matching filters where timestamp >= ts.
@@ -664,48 +649,15 @@ func (m *Manager) GetChunk(ctx context.Context, id string, startTs, endTs time.T
 		return nil, false
 	}
 
-	// Use DuckStore if available (memory-efficient + indexed)
-	if state.DuckStore != nil {
-		entries, err := state.DuckStore.GetChunk(ctx, startTs, endTs, signals)
-		if err != nil {
-			return nil, false
-		}
-		return entries, true
+	if state.DuckStore == nil {
+		return nil, false
 	}
 
-	// Fallback to legacy in-memory Result (for merged sessions)
-	if state.Result != nil {
-		startMs := startTs.UnixMilli()
-		endMs := endTs.UnixMilli()
-		
-		var result []models.LogEntry
-		for _, entry := range state.Result.Entries {
-			ts := entry.Timestamp.UnixMilli()
-			if ts < startMs || ts > endMs {
-				continue
-			}
-			
-			// Filter by signals if specified
-			if len(signals) > 0 {
-				key := entry.DeviceID + "::" + entry.SignalName
-				found := false
-				for _, s := range signals {
-					if s == key {
-						found = true
-						break
-					}
-				}
-				if !found {
-					continue
-				}
-			}
-			
-			result = append(result, entry)
-		}
-		return result, true
+	entries, err := state.DuckStore.GetChunk(ctx, startTs, endTs, signals)
+	if err != nil {
+		return nil, false
 	}
-	
-	return []models.LogEntry{}, true
+	return entries, true
 }
 
 // GetValuesAtTime returns signal states at a specific point in time.
@@ -718,58 +670,15 @@ func (m *Manager) GetValuesAtTime(ctx context.Context, id string, ts time.Time, 
 		return nil, false
 	}
 
-	if state.DuckStore != nil {
-		entries, err := state.DuckStore.GetValuesAtTime(ctx, ts, signals)
-		if err != nil {
-			return nil, false
-		}
-		return entries, true
+	if state.DuckStore == nil {
+		return nil, false
 	}
 
-	// Fallback to legacy in-memory Result (for merged sessions)
-	if state.Result != nil {
-		tsMs := ts.UnixMilli()
-		
-		// Find most recent entry for each signal at or before ts
-		latest := make(map[string]models.LogEntry)
-		
-		for _, entry := range state.Result.Entries {
-			entryTs := entry.Timestamp.UnixMilli()
-			if entryTs > tsMs {
-				continue
-			}
-			
-			key := entry.DeviceID + "::" + entry.SignalName
-			
-			// Filter by signals if specified
-			if len(signals) > 0 {
-				found := false
-				for _, s := range signals {
-					if s == key {
-						found = true
-						break
-					}
-				}
-				if !found {
-					continue
-				}
-			}
-			
-			// Keep the most recent entry for this signal
-			if existing, ok := latest[key]; !ok || entryTs > existing.Timestamp.UnixMilli() {
-				latest[key] = entry
-			}
-		}
-		
-		// Convert map to slice
-		result := make([]models.LogEntry, 0, len(latest))
-		for _, entry := range latest {
-			result = append(result, entry)
-		}
-		return result, true
+	entries, err := state.DuckStore.GetValuesAtTime(ctx, ts, signals)
+	if err != nil {
+		return nil, false
 	}
-
-	return []models.LogEntry{}, true
+	return entries, true
 }
 
 // GetBoundaryValues returns the last value before startTs and first value after endTs for each signal.
@@ -782,59 +691,15 @@ func (m *Manager) GetBoundaryValues(ctx context.Context, id string, startTs, end
 		return nil, false
 	}
 
-	if state.DuckStore != nil {
-		boundaries, err := state.DuckStore.GetBoundaryValues(ctx, startTs, endTs, signals)
-		if err != nil {
-			return nil, false
-		}
-		return boundaries, true
+	if state.DuckStore == nil {
+		return nil, false
 	}
 
-	// Fallback to legacy in-memory Result (for merged sessions)
-	result := &parser.BoundaryValues{
-		Before: make(map[string]models.LogEntry),
-		After:  make(map[string]models.LogEntry),
+	boundaries, err := state.DuckStore.GetBoundaryValues(ctx, startTs, endTs, signals)
+	if err != nil {
+		return nil, false
 	}
-	
-	if state.Result != nil {
-		startMs := startTs.UnixMilli()
-		endMs := endTs.UnixMilli()
-		
-		for _, entry := range state.Result.Entries {
-			key := entry.DeviceID + "::" + entry.SignalName
-			ts := entry.Timestamp.UnixMilli()
-			
-			// Filter by signals if specified
-			if len(signals) > 0 {
-				found := false
-				for _, s := range signals {
-					if s == key {
-						found = true
-						break
-					}
-				}
-				if !found {
-					continue
-				}
-			}
-			
-			// Check if this is the latest entry before startTs
-			if ts < startMs {
-				if existing, ok := result.Before[key]; !ok || ts > existing.Timestamp.UnixMilli() {
-					result.Before[key] = entry
-				}
-			}
-			
-			// Check if this is the earliest entry after endTs
-			if ts > endMs {
-				if existing, ok := result.After[key]; !ok || ts < existing.Timestamp.UnixMilli() {
-					result.After[key] = entry
-				}
-			}
-		}
-	}
-	
-	return result, true
+	return boundaries, true
 }
 
 // GetSignalTypes returns a map of signal key to signal type string for a session.
@@ -985,6 +850,26 @@ func (m *Manager) runMultiParse(sessionID string, fileIDs, filePaths []string) {
 	// Merge all parsed logs
 	merged := parser.MergeLogs(parsedLogs, fileIDs, parser.DefaultMergeConfig())
 
+	// Store merged results in DuckStore for consistent querying
+	// This ensures GetChunk, GetValuesAtTime, etc. work without fallback logic
+	store, err := parser.NewDuckStore(m.tempDir, sessionID)
+	if err != nil {
+		m.updateSessionError(sessionID, fmt.Sprintf("failed to create DuckStore for merged session: %v", err))
+		return
+	}
+	
+	// Add all merged entries to DuckStore
+	for i := range merged.Entries {
+		store.AddEntry(&merged.Entries[i])
+	}
+	
+	// Finalize to flush remaining entries and create indexes
+	if err := store.Finalize(); err != nil {
+		store.Close()
+		m.updateSessionError(sessionID, fmt.Sprintf("failed to finalize DuckStore: %v", err))
+		return
+	}
+
 	elapsed := time.Since(start).Milliseconds()
 
 	m.mu.Lock()
@@ -992,21 +877,22 @@ func (m *Manager) runMultiParse(sessionID string, fileIDs, filePaths []string) {
 
 	state, ok := m.sessions[sessionID]
 	if !ok {
+		store.Close()
 		return
 	}
 
-	state.Result = merged
+	state.DuckStore = store
 	state.Session.Status = models.SessionStatusComplete
 	state.Session.Progress = 100
-	state.Session.EntryCount = len(merged.Entries)
-	state.Session.SignalCount = len(merged.Signals)
+	state.Session.EntryCount = store.Len()
+	state.Session.SignalCount = len(store.GetSignals())
 	state.Session.ProcessingTimeMs = elapsed
 	state.Session.ParserName = parserName
 	state.Session.Errors = allErrors
 
-	if merged.TimeRange != nil {
-		state.Session.StartTime = merged.TimeRange.Start.UnixMilli()
-		state.Session.EndTime = merged.TimeRange.End.UnixMilli()
+	if tr := store.GetTimeRange(); tr != nil {
+		state.Session.StartTime = tr.Start.UnixMilli()
+		state.Session.EndTime = tr.End.UnixMilli()
 	}
 }
 
