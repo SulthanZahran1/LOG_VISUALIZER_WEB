@@ -22,6 +22,8 @@ import {
     availableCategories,
     jumpToTime
 } from '../../stores/logStore';
+import { getTimeTree } from '../../api/client';
+import type { TimeTreeEntry } from '../../api/client';
 import { toggleSignal } from '../../stores/waveformStore';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
 import type { LogEntry } from '../../models/types';
@@ -133,26 +135,59 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
 /**
  * Jump to Time Popover Component
  */
+function buildTimeTree(entries: Array<{ timestamp: string | number }>) {
+    const tree = new Map<string, Map<number, Map<number, number>>>();
+    for (const e of entries) {
+        const d = new Date(e.timestamp);
+        const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+        const hour = d.getUTCHours();
+        const minute = d.getUTCMinutes();
+
+        if (!tree.has(dateStr)) tree.set(dateStr, new Map());
+        const hours = tree.get(dateStr)!;
+        if (!hours.has(hour)) hours.set(hour, new Map());
+        const minutes = hours.get(hour)!;
+        if (!minutes.has(minute)) minutes.set(minute, typeof e.timestamp === 'number' ? e.timestamp : new Date(e.timestamp).getTime());
+    }
+    return tree;
+}
+
+function buildTimeTreeFromApi(entries: TimeTreeEntry[]) {
+    const tree = new Map<string, Map<number, Map<number, number>>>();
+    for (const e of entries) {
+        if (!tree.has(e.date)) tree.set(e.date, new Map());
+        const hours = tree.get(e.date)!;
+        if (!hours.has(e.hour)) hours.set(e.hour, new Map());
+        const minutes = hours.get(e.hour)!;
+        if (!minutes.has(e.minute)) minutes.set(e.minute, e.ts);
+    }
+    return tree;
+}
+
 function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (ts: number) => void }) {
+    const isServerSide = useServerSide.value;
     const entries = filteredEntries.value;
 
-    // Build a date -> hour -> minute -> earliest timestamp tree in one pass
-    const timeTree = useMemo(() => {
-        const tree = new Map<string, Map<number, Map<number, number>>>();
-        for (const e of entries) {
-            const d = new Date(e.timestamp);
-            const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-            const hour = d.getUTCHours();
-            const minute = d.getUTCMinutes();
+    // Server-side: fetch full time tree from backend
+    const [serverTree, setServerTree] = useState<Map<string, Map<number, Map<number, number>>> | null>(null);
+    useEffect(() => {
+        if (!isServerSide || !currentSession.value) return;
+        const filters = {
+            search: searchQuery.value || undefined,
+            category: categoryFilter.value.size > 0
+                ? Array.from(categoryFilter.value).join(',')
+                : undefined,
+            type: undefined as string | undefined,
+        };
+        getTimeTree(currentSession.value.id, filters).then(data => {
+            setServerTree(buildTimeTreeFromApi(data));
+        }).catch(err => console.error('Failed to fetch time tree:', err));
+    }, [isServerSide]);
 
-            if (!tree.has(dateStr)) tree.set(dateStr, new Map());
-            const hours = tree.get(dateStr)!;
-            if (!hours.has(hour)) hours.set(hour, new Map());
-            const minutes = hours.get(hour)!;
-            if (!minutes.has(minute)) minutes.set(minute, e.timestamp);
-        }
-        return tree;
-    }, [entries]);
+    // Client-side: build from loaded entries
+    const clientTree = useMemo(() => isServerSide ? new Map() : buildTimeTree(entries), [entries, isServerSide]);
+
+    const timeTree = isServerSide ? (serverTree ?? new Map()) : clientTree;
 
     const dates = useMemo(() => Array.from(timeTree.keys()).sort(), [timeTree]);
 

@@ -246,6 +246,42 @@ export async function getIndexOfTime(
     return res.index;
 }
 
+export interface TimeTreeEntry {
+    date: string;
+    hour: number;
+    minute: number;
+    ts: number;
+}
+
+export async function getTimeTree(
+    sessionId: string,
+    filters?: {
+        search?: string;
+        category?: string;
+        sort?: string;
+        order?: string;
+        type?: string;
+        regex?: boolean;
+        caseSensitive?: boolean;
+        signals?: string;
+    }
+): Promise<TimeTreeEntry[]> {
+    let url = `/parse/${sessionId}/time-tree`;
+    const params: string[] = [];
+    if (filters) {
+        if (filters.search) params.push(`search=${encodeURIComponent(filters.search)}`);
+        if (filters.category) params.push(`category=${encodeURIComponent(filters.category)}`);
+        if (filters.sort) params.push(`sort=${encodeURIComponent(filters.sort)}`);
+        if (filters.order) params.push(`order=${encodeURIComponent(filters.order)}`);
+        if (filters.type) params.push(`type=${encodeURIComponent(filters.type)}`);
+        if (filters.regex) params.push('regex=true');
+        if (filters.caseSensitive) params.push('caseSensitive=true');
+        if (filters.signals) params.push(`signals=${encodeURIComponent(filters.signals)}`);
+    }
+    if (params.length > 0) url += '?' + params.join('&');
+    return request<TimeTreeEntry[]>(url);
+}
+
 export async function getParseChunk(
     sessionId: string,
     start: number,

@@ -536,6 +536,28 @@ func (m *Manager) GetIndexByTime(ctx context.Context, id string, params parser.Q
 	return 0, false
 }
 
+// GetTimeTree returns distinct date/hour/minute combos for the jump-to-time UI.
+func (m *Manager) GetTimeTree(ctx context.Context, id string, params parser.QueryParams) ([]parser.TimeTreeEntry, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	state, ok := m.sessions[id]
+	if !ok {
+		return nil, false
+	}
+
+	if state.DuckStore != nil {
+		entries, err := state.DuckStore.GetTimeTree(ctx, params)
+		if err != nil {
+			fmt.Printf("[Manager] GetTimeTree error: %v\n", err)
+			return nil, false
+		}
+		return entries, true
+	}
+
+	return nil, false
+}
+
 // GetEntries returns paginated entries for a session.
 func (m *Manager) GetEntries(ctx context.Context, id string, page, pageSize int) ([]models.LogEntry, int, bool) {
 	m.mu.RLock()

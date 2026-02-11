@@ -397,6 +397,35 @@ func (h *Handler) HandleGetIndexByTime(c echo.Context) error {
 	})
 }
 
+// HandleGetTimeTree returns distinct date/hour/minute combos for the jump-to-time popover.
+func (h *Handler) HandleGetTimeTree(c echo.Context) error {
+	id := c.Param("sessionId")
+
+	params := parser.QueryParams{
+		Search:              c.QueryParam("search"),
+		SortColumn:          c.QueryParam("sort"),
+		SortDirection:       c.QueryParam("order"),
+		SignalType:          c.QueryParam("type"),
+		SearchRegex:         c.QueryParam("regex") == "true",
+		SearchCaseSensitive: c.QueryParam("caseSensitive") == "true",
+	}
+	if catParam := c.QueryParam("category"); catParam != "" {
+		params.Categories = strings.Split(catParam, ",")
+	}
+	if sigParam := c.QueryParam("signals"); sigParam != "" {
+		params.Signals = strings.Split(sigParam, ",")
+	}
+
+	entries, ok := h.session.GetTimeTree(c.Request().Context(), id, params)
+	if !ok {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "session not found or not complete"})
+	}
+
+	h.session.TouchSession(id)
+
+	return c.JSON(http.StatusOK, entries)
+}
+
 // HandleParseChunk returns a time-windowed chunk of log entries.
 // Accepts start/end via query params and signals via JSON body to avoid 414 URI Too Long errors.
 func (h *Handler) HandleParseChunk(c echo.Context) error {

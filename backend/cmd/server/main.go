@@ -204,6 +204,7 @@ func main() {
 	apiGroup.GET("/parse/:sessionId/categories", h.HandleGetCategories)
 	apiGroup.GET("/parse/:sessionId/at-time", h.HandleGetValuesAtTime)
 	apiGroup.GET("/parse/:sessionId/index-of-time", h.HandleGetIndexByTime)
+	apiGroup.GET("/parse/:sessionId/time-tree", h.HandleGetTimeTree)
 	apiGroup.POST("/parse/:sessionId/keepalive", h.HandleSessionKeepAlive)
 
 	// Map Layout

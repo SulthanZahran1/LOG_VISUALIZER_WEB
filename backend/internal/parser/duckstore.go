@@ -1067,6 +1067,58 @@ func (ds *DuckStore) GetIndexByTime(ctx context.Context, params QueryParams, ts 
 	return index, nil
 }
 
+// TimeTreeEntry represents a distinct date/hour/minute combination with its earliest timestamp.
+type TimeTreeEntry struct {
+	Date   string `json:"date"`
+	Hour   int    `json:"hour"`
+	Minute int    `json:"minute"`
+	Ts     int64  `json:"ts"`
+}
+
+// GetTimeTree returns all distinct date/hour/minute combinations from the full dataset (respecting filters).
+func (ds *DuckStore) GetTimeTree(ctx context.Context, params QueryParams) ([]TimeTreeEntry, error) {
+	select {
+	case ds.querySem <- struct{}{}:
+		defer func() { <-ds.querySem }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	where, args := ds.buildWhereClause(params)
+	whereClause := ""
+	if where != "" {
+		whereClause = "WHERE " + where
+	}
+
+	query := fmt.Sprintf(`
+		SELECT
+			strftime(to_timestamp(timestamp / 1000), '%%Y-%%m-%%d') AS date,
+			EXTRACT(HOUR FROM to_timestamp(timestamp / 1000)) AS hour,
+			EXTRACT(MINUTE FROM to_timestamp(timestamp / 1000)) AS minute,
+			MIN(timestamp) AS ts
+		FROM entries
+		%s
+		GROUP BY date, hour, minute
+		ORDER BY date, hour, minute
+	`, whereClause)
+
+	rows, err := ds.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("time tree query failed: %w", err)
+	}
+	defer rows.Close()
+
+	var result []TimeTreeEntry
+	for rows.Next() {
+		var e TimeTreeEntry
+		if err := rows.Scan(&e.Date, &e.Hour, &e.Minute, &e.Ts); err != nil {
+			return nil, err
+		}
+		result = append(result, e)
+	}
+	return result, rows.Err()
+}
+
 func (ds *DuckStore) GetSignals() map[string]struct{} {
 	return ds.signals
 }
