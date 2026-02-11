@@ -578,6 +578,10 @@ export async function linkSignalLogSession(
     signalLogFileName.value = sessionName;
     signalLogEntryCount.value = totalCount ?? entries.length;
 
+    console.log('[linkSignalLogSession] sessionId:', sessionId, 'totalCount:', totalCount,
+        'entries.length:', entries.length, 'entryCount set to:', signalLogEntryCount.value,
+        'mapUseServerSide:', mapUseServerSide.value);
+
     // Clear caches as we have new data which might introduce new devices/signals
     clearCaches();
 
@@ -765,7 +769,14 @@ effect(() => {
     const large = mapUseServerSide.value;
     const linkedSessionId = signalLogSessionId.value;
 
-    if (!large || !time || !linkedSessionId) return;
+    // Debug: log which conditions are met/failing
+    console.log('[MapEffect] time:', time, 'large:', large, 'linkedSessionId:', linkedSessionId,
+        'entryCount:', signalLogEntryCount.value);
+
+    if (!large || !time || !linkedSessionId) {
+        console.log('[MapEffect] Skipping — large:', large, 'time:', !!time, 'linked:', !!linkedSessionId);
+        return;
+    }
 
     const now = Date.now();
     // Throttle: 500ms during playback, 50ms debounce when scrubbing for responsiveness
@@ -785,6 +796,7 @@ effect(() => {
 
             // If no rules, fetch everything (backend rn=1 logic handles this)
             const signalsToFetch = ruleSignals.length > 0 ? ruleSignals : undefined;
+            console.log('[MapEffect] Fetching values at time:', time, 'signals:', signalsToFetch?.length ?? 'all');
             const entries = await getValuesAtTime(linkedSessionId!, time!, signalsToFetch);
 
             const signalEntries = entries.map(e => ({

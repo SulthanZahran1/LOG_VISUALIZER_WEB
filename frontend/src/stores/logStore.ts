@@ -513,9 +513,8 @@ export async function fetchEntries(page: number, pageSize: number) {
         totalEntries.value = res.total;
         serverPageOffset.value = (page - 1) * pageSize;
 
-        // Update map store with latest values (debounced in mapStore)
-        const mapStore = await import('./mapStore');
-        mapStore.updateSignalValues(logEntries.value);
+        // NOTE: Do NOT push log table page data to mapStore here.
+        // The map viewer fetches its own data via getValuesAtTime based on playback time.
     } catch (err: any) {
         // Ignore aborted fetches (superseded by newer request)
         if (err?.name === 'AbortError' || fetchAbortSignal !== currentFetchAbortController) return;
