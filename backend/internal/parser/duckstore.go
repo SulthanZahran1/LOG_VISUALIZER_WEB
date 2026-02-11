@@ -1093,8 +1093,8 @@ func (ds *DuckStore) GetTimeTree(ctx context.Context, params QueryParams) ([]Tim
 	query := fmt.Sprintf(`
 		SELECT
 			strftime(to_timestamp(timestamp / 1000)::TIMESTAMP, '%%Y-%%m-%%d') AS date,
-			EXTRACT(HOUR FROM to_timestamp(timestamp / 1000)) AS hour,
-			EXTRACT(MINUTE FROM to_timestamp(timestamp / 1000)) AS minute,
+			EXTRACT(HOUR FROM to_timestamp(timestamp / 1000)::TIMESTAMP) AS hour,
+			EXTRACT(MINUTE FROM to_timestamp(timestamp / 1000)::TIMESTAMP) AS minute,
 			MIN(timestamp) AS ts
 		FROM entries
 		%s
