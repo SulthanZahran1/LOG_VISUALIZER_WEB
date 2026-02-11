@@ -1,6 +1,6 @@
 
 import { useSignal } from '@preact/signals';
-import { useRef, useEffect, useState, useCallback } from 'preact/hooks';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'preact/hooks';
 import {
     filteredEntries,
     currentSession,
@@ -134,20 +134,56 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
  * Jump to Time Popover Component
  */
 function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (ts: number) => void }) {
+    const entries = filteredEntries.value;
+
+    // Build a date -> hour -> minute -> earliest timestamp tree in one pass
+    const timeTree = useMemo(() => {
+        const tree = new Map<string, Map<number, Map<number, number>>>();
+        for (const e of entries) {
+            const d = new Date(e.timestamp);
+            const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+            const hour = d.getUTCHours();
+            const minute = d.getUTCMinutes();
+
+            if (!tree.has(dateStr)) tree.set(dateStr, new Map());
+            const hours = tree.get(dateStr)!;
+            if (!hours.has(hour)) hours.set(hour, new Map());
+            const minutes = hours.get(hour)!;
+            if (!minutes.has(minute)) minutes.set(minute, e.timestamp);
+        }
+        return tree;
+    }, [entries]);
+
+    const dates = useMemo(() => Array.from(timeTree.keys()).sort(), [timeTree]);
+
     const [selectedDate, setSelectedDate] = useState('');
     const [selectedHour, setSelectedHour] = useState('');
     const [selectedMinute, setSelectedMinute] = useState('');
 
-    const isValid = selectedDate !== '' && selectedHour !== '' && selectedMinute !== ''
-        && Number(selectedHour) >= 0 && Number(selectedHour) <= 23
-        && Number(selectedMinute) >= 0 && Number(selectedMinute) <= 59;
+    const hours = useMemo(() => {
+        if (!selectedDate || !timeTree.has(selectedDate)) return [];
+        return Array.from(timeTree.get(selectedDate)!.keys()).sort((a, b) => a - b);
+    }, [selectedDate, timeTree]);
+
+    const minutes = useMemo(() => {
+        if (!selectedDate || !selectedHour || !timeTree.has(selectedDate)) return [];
+        const hourMap = timeTree.get(selectedDate)!;
+        const h = Number(selectedHour);
+        if (!hourMap.has(h)) return [];
+        return Array.from(hourMap.get(h)!.keys()).sort((a, b) => a - b);
+    }, [selectedDate, selectedHour, timeTree]);
 
     const handleGo = () => {
-        if (!isValid) return;
-        const [year, month, day] = selectedDate.split('-').map(Number);
-        const ts = Date.UTC(year, month - 1, day, Number(selectedHour), Number(selectedMinute), 0, 0);
-        onJump(ts);
-        onClose();
+        if (!selectedDate || selectedHour === '' || selectedMinute === '') return;
+        const hourMap = timeTree.get(selectedDate);
+        if (!hourMap) return;
+        const minuteMap = hourMap.get(Number(selectedHour));
+        if (!minuteMap) return;
+        const ts = minuteMap.get(Number(selectedMinute));
+        if (ts !== undefined) {
+            onJump(ts);
+            onClose();
+        }
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -172,41 +208,52 @@ function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (
                 <span>Jump to Time</span>
             </div>
             <div className="jump-dropdowns">
-                <label className="jump-field jump-field-date">
+                <label className="jump-field">
                     <span className="jump-field-label">Date</span>
-                    <input
-                        type="date"
+                    <select
                         value={selectedDate}
-                        onChange={(e) => setSelectedDate((e.target as HTMLInputElement).value)}
-                    />
+                        onChange={(e) => {
+                            setSelectedDate((e.target as HTMLSelectElement).value);
+                            setSelectedHour('');
+                            setSelectedMinute('');
+                        }}
+                    >
+                        <option value="" disabled>—</option>
+                        {dates.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
                 </label>
-                <label className="jump-field jump-field-time">
+                <label className="jump-field">
                     <span className="jump-field-label">Hour</span>
-                    <input
-                        type="number"
-                        min={0}
-                        max={23}
-                        placeholder="HH"
+                    <select
                         value={selectedHour}
-                        onChange={(e) => setSelectedHour((e.target as HTMLInputElement).value)}
-                    />
+                        disabled={!selectedDate}
+                        onChange={(e) => {
+                            setSelectedHour((e.target as HTMLSelectElement).value);
+                            setSelectedMinute('');
+                        }}
+                    >
+                        <option value="" disabled>—</option>
+                        {hours.map(h => <option key={h} value={String(h)}>{String(h).padStart(2, '0')}</option>)}
+                    </select>
                 </label>
-                <label className="jump-field jump-field-time">
+                <label className="jump-field">
                     <span className="jump-field-label">Min</span>
-                    <input
-                        type="number"
-                        min={0}
-                        max={59}
-                        placeholder="MM"
+                    <select
                         value={selectedMinute}
-                        onChange={(e) => setSelectedMinute((e.target as HTMLInputElement).value)}
-                    />
+                        disabled={selectedHour === ''}
+                        onChange={(e) => {
+                            setSelectedMinute((e.target as HTMLSelectElement).value);
+                        }}
+                    >
+                        <option value="" disabled>—</option>
+                        {minutes.map(m => <option key={m} value={String(m)}>{String(m).padStart(2, '0')}</option>)}
+                    </select>
                 </label>
             </div>
             <button
                 className="popover-go-btn jump-go-btn"
                 onClick={handleGo}
-                disabled={!isValid}
+                disabled={!selectedDate || selectedHour === '' || selectedMinute === ''}
             >
                 Go
             </button>
