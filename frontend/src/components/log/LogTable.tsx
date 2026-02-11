@@ -208,24 +208,17 @@ function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (
         return Array.from(hourMap.get(h)!.keys()).sort((a, b) => a - b);
     }, [selectedDate, selectedHour, timeTree]);
 
-    const isValid = /^\d{4}-\d{2}-\d{2}$/.test(selectedDate)
-        && selectedHour !== '' && selectedMinute !== ''
-        && Number(selectedHour) >= 0 && Number(selectedHour) <= 23
-        && Number(selectedMinute) >= 0 && Number(selectedMinute) <= 59;
-
     const handleGo = () => {
-        if (!isValid) return;
-        // Construct timestamp from typed values directly (works even if value isn't in suggestions)
-        const [year, month, day] = selectedDate.split('-').map(Number);
-        const h = Number(selectedHour);
-        const m = Number(selectedMinute);
-        // Prefer exact match from timeTree if available
+        if (!selectedDate || selectedHour === '' || selectedMinute === '') return;
         const hourMap = timeTree.get(selectedDate);
-        const minuteMap = hourMap?.get(h);
-        const exactTs = minuteMap?.get(m);
-        const ts = exactTs !== undefined ? exactTs : Date.UTC(year, month - 1, day, h, m, 0, 0);
-        onJump(ts);
-        onClose();
+        if (!hourMap) return;
+        const minuteMap = hourMap.get(Number(selectedHour));
+        if (!minuteMap) return;
+        const ts = minuteMap.get(Number(selectedMinute));
+        if (ts !== undefined) {
+            onJump(ts);
+            onClose();
+        }
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -252,54 +245,50 @@ function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (
             <div className="jump-dropdowns">
                 <label className="jump-field jump-field-date">
                     <span className="jump-field-label">Date</span>
-                    <input
-                        list="jump-dates"
-                        placeholder="YYYY-MM-DD"
+                    <select
                         value={selectedDate}
-                        onInput={(e) => {
-                            setSelectedDate((e.target as HTMLInputElement).value);
+                        onChange={(e) => {
+                            setSelectedDate((e.target as HTMLSelectElement).value);
                             setSelectedHour('');
                             setSelectedMinute('');
                         }}
-                    />
-                    <datalist id="jump-dates">
-                        {dates.map(d => <option key={d} value={d} />)}
-                    </datalist>
+                    >
+                        <option value="" disabled>—</option>
+                        {dates.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
                 </label>
                 <label className="jump-field jump-field-time">
                     <span className="jump-field-label">Hour</span>
-                    <input
-                        list="jump-hours"
-                        placeholder="HH"
+                    <select
                         value={selectedHour}
-                        onInput={(e) => {
-                            setSelectedHour((e.target as HTMLInputElement).value);
+                        disabled={!selectedDate}
+                        onChange={(e) => {
+                            setSelectedHour((e.target as HTMLSelectElement).value);
                             setSelectedMinute('');
                         }}
-                    />
-                    <datalist id="jump-hours">
+                    >
+                        <option value="" disabled>—</option>
                         {hours.map(h => <option key={h} value={String(h)}>{String(h).padStart(2, '0')}</option>)}
-                    </datalist>
+                    </select>
                 </label>
                 <label className="jump-field jump-field-time">
                     <span className="jump-field-label">Min</span>
-                    <input
-                        list="jump-minutes"
-                        placeholder="MM"
+                    <select
                         value={selectedMinute}
-                        onInput={(e) => {
-                            setSelectedMinute((e.target as HTMLInputElement).value);
+                        disabled={selectedHour === ''}
+                        onChange={(e) => {
+                            setSelectedMinute((e.target as HTMLSelectElement).value);
                         }}
-                    />
-                    <datalist id="jump-minutes">
+                    >
+                        <option value="" disabled>—</option>
                         {minutes.map(m => <option key={m} value={String(m)}>{String(m).padStart(2, '0')}</option>)}
-                    </datalist>
+                    </select>
                 </label>
             </div>
             <button
                 className="popover-go-btn jump-go-btn"
                 onClick={handleGo}
-                disabled={!isValid}
+                disabled={!selectedDate || selectedHour === '' || selectedMinute === ''}
             >
                 Go
             </button>
