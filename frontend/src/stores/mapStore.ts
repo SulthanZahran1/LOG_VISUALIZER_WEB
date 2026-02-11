@@ -348,41 +348,48 @@ export function getUnitColor(unitId: string): { color?: string, text?: string } 
         }
         unitSignalCache.set(unitId, signalMap);
 
-        // Debug: log cache building results for first few units
-        if (unitSignalCache.size <= 3) {
-            console.log('[getUnitColor] Cache built for unit:', unitId,
-                'signalMap size:', signalMap.size,
-                'latestSignalValues size:', latestSignalValues.value.size,
-                'mapped entries:', [...signalMap.entries()]);
-            // Detailed diagnostic on first cache build
-            if (unitSignalCache.size === 1) {
-                // Show all unique signal names in loaded data vs what rules need
-                const allSignalNames = new Set<string>();
-                for (const key of latestSignalValues.value.keys()) {
-                    allSignalNames.add(key.split('::')[1]);
-                }
-                const ruleSignalNames = [...new Set(sortedRules.map(r => r.signal))];
-                const matchingNames = ruleSignalNames.filter(s => allSignalNames.has(s));
-                const missingNames = ruleSignalNames.filter(s => !allSignalNames.has(s));
-
-                console.log('[getUnitColor] Unique signal names in data (' + allSignalNames.size + '):', [...allSignalNames].slice(0, 20));
-                console.log('[getUnitColor] Rule signals needed:', ruleSignalNames);
-                console.log('[getUnitColor] Matching:', matchingNames, 'Missing:', missingNames);
-
-                if (missingNames.length > 0) {
-                    console.warn('[getUnitColor] Rule signals NOT found in loaded data:', missingNames,
-                        '— coloring will not work for these rules');
-                }
-
-                // Sample map layout unitIds (non-empty only)
-                const totalWithUnitId = mapLayout.value
-                    ? Object.values(mapLayout.value.objects).filter(o => o.unitId).length
-                    : 0;
-                const sampleMapUnits = mapLayout.value
-                    ? Object.values(mapLayout.value.objects).filter(o => o.unitId).slice(0, 5).map(o => o.unitId)
-                    : [];
-                console.log('[getUnitColor] Map layout units with unitId:', totalWithUnitId, 'sample:', sampleMapUnits);
+        // Detailed diagnostic on first cache build
+        if (unitSignalCache.size === 1) {
+            // Show all unique signal names in loaded data vs what rules need
+            const allSignalNames = new Set<string>();
+            const deviceIds = new Set<string>();
+            for (const key of latestSignalValues.value.keys()) {
+                const [did, sn] = key.split('::');
+                allSignalNames.add(sn);
+                deviceIds.add(did);
             }
+            const ruleSignalNames = [...new Set(sortedRules.map(r => r.signal))];
+            const matchingNames = ruleSignalNames.filter(s => allSignalNames.has(s));
+            const missingNames = ruleSignalNames.filter(s => !allSignalNames.has(s));
+
+            console.log('[getUnitColor] Signal data: %d values, %d devices, %d unique signals',
+                latestSignalValues.value.size, deviceIds.size, allSignalNames.size);
+            console.log('[getUnitColor] Devices in data:', [...deviceIds]);
+            console.log('[getUnitColor] Signal names in data:', [...allSignalNames]);
+            console.log('[getUnitColor] Rule signals needed:', ruleSignalNames,
+                'Matching:', matchingNames, 'Missing:', missingNames);
+
+            if (missingNames.length > 0) {
+                console.warn('[getUnitColor] Rule signals NOT found in loaded data:', missingNames,
+                    '— coloring will not work for these rules');
+            }
+
+            // Show which devices have rule-matching signals (these units WILL be colored)
+            const colorableUnits: string[] = [];
+            for (const key of latestSignalValues.value.keys()) {
+                const [did, sn] = key.split('::');
+                if (matchingNames.includes(sn)) {
+                    const mapped = applyDeviceMapping(did);
+                    if (mapped && !colorableUnits.includes(mapped)) {
+                        colorableUnits.push(mapped);
+                    }
+                }
+            }
+            const totalWithUnitId = mapLayout.value
+                ? Object.values(mapLayout.value.objects).filter(o => o.unitId).length
+                : 0;
+            console.log('[getUnitColor] Units that CAN be colored: %d out of %d map units:',
+                colorableUnits.length, totalWithUnitId, colorableUnits);
         }
     }
 
