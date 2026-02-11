@@ -316,7 +316,7 @@
     letter-spacing: 0.5px;
 }
 
-.jump-field select {
+.jump-field input {
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
@@ -325,23 +325,26 @@
     font-size: 12px;
     font-family: var(--font-mono);
     outline: none;
-    cursor: pointer;
     transition: border-color var(--transition-fast);
     width: 100%;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 6px center;
-    padding-right: 22px;
+    box-sizing: border-box;
 }
 
-.jump-field select:focus {
+.jump-field input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.6;
+}
+
+.jump-field input:focus {
     border-color: var(--primary-accent);
 }
 
-.jump-field select:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+.jump-field-date {
+    flex: 2;
+}
+
+.jump-field-time {
+    flex: 1;
 }
 
 .jump-go-btn {
