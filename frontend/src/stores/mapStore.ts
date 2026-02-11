@@ -340,6 +340,23 @@ export function getUnitColor(unitId: string): { color?: string, text?: string } 
             }
         }
         unitSignalCache.set(unitId, signalMap);
+
+        // Debug: log cache building results for first few units
+        if (unitSignalCache.size <= 3) {
+            console.log('[getUnitColor] Cache built for unit:', unitId,
+                'signalMap size:', signalMap.size,
+                'latestSignalValues size:', latestSignalValues.value.size,
+                'mapped entries:', [...signalMap.entries()]);
+            // Log a sample of device->unit mappings to check if heuristic works
+            if (unitSignalCache.size === 1) {
+                const sampleKeys = [...latestSignalValues.value.keys()].slice(0, 5);
+                const sampleMapUnits = mapLayout.value ? Object.values(mapLayout.value.objects).slice(0, 5).map(o => o.unitId) : [];
+                console.log('[getUnitColor] Sample device keys:', sampleKeys);
+                console.log('[getUnitColor] Sample mapped unitIds:', sampleKeys.map(k => applyDeviceMapping(k.split('::')[0])));
+                console.log('[getUnitColor] Sample map layout unitIds:', sampleMapUnits);
+                console.log('[getUnitColor] Rule signals:', sortedRules.map(r => r.signal));
+            }
+        }
     }
 
     // Evaluate rules using cached mapping
@@ -454,9 +471,15 @@ export function updateSignalValues(entries: { deviceId: string, signalName: stri
     const shouldUpdateHistory = !mapUseServerSide.value;
     const newHistory = shouldUpdateHistory ? new Map(signalHistory.value) : signalHistory.value;
     let changed = false;
+    let newKeysAdded = false;
 
     for (const entry of entries) {
         const key = `${entry.deviceId}::${entry.signalName}`;
+
+        // Track if this is a brand-new key (affects device-to-unit mapping cache)
+        if (!newValues.has(key)) {
+            newKeysAdded = true;
+        }
 
         // Update latest value
         if (newValues.get(key) !== entry.value) {
@@ -483,6 +506,11 @@ export function updateSignalValues(entries: { deviceId: string, signalName: stri
 
     if (changed) {
         latestSignalValues.value = newValues;
+        // Only invalidate device-to-unit mapping cache when new keys appear
+        // (new device/signal combos may map to different units)
+        if (newKeysAdded) {
+            unitSignalCache.clear();
+        }
     }
     signalHistory.value = newHistory;
 }
