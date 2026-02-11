@@ -3,11 +3,23 @@ import { useSignal } from '@preact/signals';
 import { uploadFile, uploadFileWebSocket, uploadFileOptimized } from '../../api/client';
 import type { FileInfo } from '../../models/types';
 
+export interface UploadQueueItem {
+    id: string;
+    file: File;
+    status: 'pending' | 'uploading' | 'processing' | 'complete' | 'error';
+    progress: number;
+    error?: string;
+    result?: FileInfo;
+}
+
 interface FileUploadProps {
     onUploadSuccess: (file: FileInfo) => void;
+    onMultiUploadSuccess?: (files: FileInfo[]) => void;
     uploadFn?: (file: File) => Promise<FileInfo>;
     accept?: string;
     maxSize?: number; // in bytes
+    multiple?: boolean;
+    maxFiles?: number;
 }
 
 interface UploadStats {
@@ -21,9 +33,12 @@ interface UploadStats {
 
 export function FileUpload({
     onUploadSuccess,
+    onMultiUploadSuccess,
     uploadFn = uploadFile,
     accept,
-    maxSize = 2 * 1024 * 1024 * 1024 // 2GB default
+    maxSize = 2 * 1024 * 1024 * 1024, // 2GB default
+    multiple = false,
+    maxFiles = 10
 }: FileUploadProps) {
     const isDragging = useSignal(false);
     const isUploading = useSignal(false);
@@ -34,6 +49,10 @@ export function FileUpload({
     const pasteContent = useSignal('');
     const showDebug = useSignal(false);
     const uploadStats = useSignal<UploadStats | null>(null);
+    
+    // Multi-file upload state
+    const uploadQueue = useSignal<UploadQueueItem[]>([]);
+    const overallProgress = useSignal(0);
 
     const handleFile = async (file: File) => {
         if (file.size > maxSize) {
@@ -129,6 +148,95 @@ export function FileUpload({
         handleFile(newFile);
     };
 
+    const processMultipleFiles = async (files: globalThis.FileList | null) => {
+        if (!files || files.length === 0) return;
+        
+        if (files.length === 1 && !multiple) {
+            // Single file mode - use existing flow
+            processFile(files[0]);
+            return;
+        }
+
+        // Multi-file mode
+        if (files.length > maxFiles) {
+            error.value = `Too many files. Maximum ${maxFiles} files allowed.`;
+            return;
+        }
+
+        // Create queue items
+        const queue: UploadQueueItem[] = Array.from(files).map((file, index) => ({
+            id: `upload-${Date.now()}-${index}`,
+            file: new File([file], file.name, { type: 'text/plain' }),
+            status: 'pending',
+            progress: 0
+        }));
+
+        uploadQueue.value = queue;
+        isUploading.value = true;
+        error.value = null;
+        overallProgress.value = 0;
+
+        const uploadedFiles: FileInfo[] = [];
+        const totalFiles = queue.length;
+
+        // Process files sequentially to avoid overwhelming the server
+        for (let i = 0; i < queue.length; i++) {
+            const item = queue[i];
+            item.status = 'uploading';
+            uploadQueue.value = [...queue]; // Trigger re-render
+
+            try {
+                const CHUNK_THRESHOLD = 5 * 1024 * 1024;
+                let info: FileInfo;
+
+                if (item.file.size > CHUNK_THRESHOLD) {
+                    // Use WebSocket for large files (server mode default)
+                    info = await uploadFileWebSocket(item.file, (p, _stage) => {
+                        item.progress = p;
+                        uploadQueue.value = [...queue];
+                        
+                        // Update overall progress
+                        const completedProgress = uploadedFiles.length * 100;
+                        const currentProgress = p;
+                        overallProgress.value = Math.floor((completedProgress + currentProgress) / totalFiles);
+                    });
+                } else {
+                    // Small file - use HTTP
+                    info = await uploadFile(item.file);
+                    item.progress = 100;
+                }
+
+                item.status = 'complete';
+                item.result = info;
+                uploadedFiles.push(info);
+                uploadQueue.value = [...queue];
+                
+                // Notify for each file completion
+                onUploadSuccess(info);
+            } catch (err) {
+                item.status = 'error';
+                item.error = err instanceof Error ? err.message : 'Upload failed';
+                uploadQueue.value = [...queue];
+            }
+        }
+
+        isUploading.value = false;
+        
+        // Notify with all uploaded files for merge
+        if (uploadedFiles.length > 0 && onMultiUploadSuccess) {
+            onMultiUploadSuccess(uploadedFiles);
+        }
+
+        // Clear queue after a delay if all successful
+        const allSuccess = queue.every(item => item.status === 'complete');
+        if (allSuccess) {
+            setTimeout(() => {
+                uploadQueue.value = [];
+                overallProgress.value = 0;
+            }, 2000);
+        }
+    };
+
     const handlePaste = (e: ClipboardEvent) => {
         // If we are currently in the showPaste textarea mode, let the default paste happen
         if (showPaste.value) return;
@@ -136,35 +244,42 @@ export function FileUpload({
         const items = e.clipboardData?.items;
         if (!items) return;
 
-        let fileFound = false;
+        const files: File[] = [];
 
         // 1. Check for files in clipboard (copied from OS)
         for (let i = 0; i < items.length; i++) {
             if (items[i].kind === 'file') {
                 const file = items[i].getAsFile();
                 if (file) {
-                    e.preventDefault();
-                    processFile(file);
-                    fileFound = true;
-                    break;
+                    files.push(file);
                 }
             }
         }
 
-        // 2. If no file, check for text (copied content)
-        if (!fileFound) {
-            const text = e.clipboardData.getData('text');
-            if (text && text.length > 0) {
-                e.preventDefault();
-
-                // If it's a "large" paste, convert to file immediately
-                // Small pastes can still be handled by the textarea if it's open, 
-                // but here we are on the drop zone, so we treat it as a file upload.
-                const blob = new Blob([text], { type: 'text/plain' });
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-                const pastedFile = new File([blob], `pasted_content_${timestamp}.log`, { type: 'text/plain' });
-                handleFile(pastedFile);
+        if (files.length > 0) {
+            e.preventDefault();
+            if (multiple && files.length > 1) {
+                const dt = new DataTransfer();
+                files.forEach(f => dt.items.add(f));
+                processMultipleFiles(dt.files);
+            } else {
+                processFile(files[0]);
             }
+            return;
+        }
+
+        // 2. If no file, check for text (copied content)
+        const text = e.clipboardData.getData('text');
+        if (text && text.length > 0) {
+            e.preventDefault();
+
+            // If it's a "large" paste, convert to file immediately
+            // Small pastes can still be handled by the textarea if it's open, 
+            // but here we are on the drop zone, so we treat it as a file upload.
+            const blob = new Blob([text], { type: 'text/plain' });
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const pastedFile = new File([blob], `pasted_content_${timestamp}.log`, { type: 'text/plain' });
+            handleFile(pastedFile);
         }
     };
 
@@ -191,14 +306,24 @@ export function FileUpload({
     const onDrop = (e: DragEvent) => {
         e.preventDefault();
         isDragging.value = false;
-        const file = e.dataTransfer?.files[0];
-        if (file) processFile(file);
+        
+        if (multiple) {
+            processMultipleFiles(e.dataTransfer?.files ?? null);
+        } else {
+            const file = e.dataTransfer?.files[0];
+            if (file) processFile(file);
+        }
     };
 
     const onFileSelect = (e: Event) => {
         const target = e.target as HTMLInputElement;
-        const file = target.files?.[0];
-        if (file) processFile(file);
+        
+        if (multiple) {
+            processMultipleFiles(target.files);
+        } else {
+            const file = target.files?.[0];
+            if (file) processFile(file);
+        }
     };
 
     return (
@@ -222,10 +347,63 @@ export function FileUpload({
                 onChange={onFileSelect}
                 disabled={isUploading.value}
                 accept={accept}
+                multiple={multiple}
             />
 
             <div class="drop-zone-content">
-                {isUploading.value ? (
+                {isUploading.value && multiple && uploadQueue.value.length > 0 ? (
+                    // Multi-file upload progress UI
+                    <div class="multi-upload-progress">
+                        <div class="multi-upload-header">
+                            <div class="upload-spinner"></div>
+                            <span class="multi-upload-title">
+                                Uploading {uploadQueue.value.length} files...
+                            </span>
+                        </div>
+                        <div class="multi-upload-bar">
+                            <div 
+                                class="multi-progress-fill"
+                                style={{ width: `${overallProgress.value}%` }}
+                            ></div>
+                        </div>
+                        <span class="multi-progress-text">{overallProgress.value}%</span>
+                        
+                        <div class="upload-queue">
+                            {uploadQueue.value.map((item) => (
+                                <div key={item.id} class={`queue-item ${item.status}`}>
+                                    <div class="queue-status-icon">
+                                        {item.status === 'pending' && <span class="status-dot pending"></span>}
+                                        {item.status === 'uploading' && <span class="status-spinner"></span>}
+                                        {item.status === 'complete' && (
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3fb950" strokeWidth="2">
+                                                <polyline points="20 6 9 17 4 12" />
+                                            </svg>
+                                        )}
+                                        {item.status === 'error' && (
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f85149" strokeWidth="2">
+                                                <circle cx="12" cy="12" r="10" />
+                                                <line x1="12" y1="8" x2="12" y2="12" />
+                                                <line x1="12" y1="16" x2="12.01" y2="16" />
+                                            </svg>
+                                        )}
+                                    </div>
+                                    <span class="queue-filename">{item.file.name}</span>
+                                    <span class="queue-filesize">{(item.file.size / 1024 / 1024).toFixed(1)} MB</span>
+                                    {item.status === 'uploading' && (
+                                        <span class="queue-percent">{item.progress}%</span>
+                                    )}
+                                    {item.status === 'complete' && (
+                                        <span class="queue-status-text success">Done</span>
+                                    )}
+                                    {item.status === 'error' && (
+                                        <span class="queue-status-text error" title={item.error}>Failed</span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ) : isUploading.value ? (
+                    // Single file upload UI (original)
                     <>
                         <div class={`upload-spinner ${uploadProgress.value >= 75 ? 'processing' : ''}`}></div>
                         <p class="drop-text">
@@ -275,19 +453,27 @@ export function FileUpload({
                                 <line x1="12" y1="3" x2="12" y2="15" />
                             </svg>
                         </div>
-                        <p class="drop-text">Drag & drop or Paste content here</p>
+                        <p class="drop-text">
+                            {multiple 
+                                ? 'Drag & drop multiple files here' 
+                                : 'Drag & drop or Paste content here'
+                            }
+                        </p>
                         <p class="drop-hint">or click to browse</p>
                         <div class="drop-formats">
                             {accept ? `Supports ${accept.split(',').join(', ')}` : 'Supports .log, .txt, .csv files'}
                             {maxSize ? ` · up to ${Math.floor(maxSize / (1024 * 1024 * 1024))}GB` : ''}
+                            {multiple && ` · max ${maxFiles} files`}
                         </div>
-                        <div class="paste-option" onClick={(e) => {
-                            e.stopPropagation();
-                            showPaste.value = true;
-                            error.value = null;
-                        }}>
-                            or paste text content
-                        </div>
+                        {!multiple && (
+                            <div class="paste-option" onClick={(e) => {
+                                e.stopPropagation();
+                                showPaste.value = true;
+                                error.value = null;
+                            }}>
+                                or paste text content
+                            </div>
+                        )}
                         <div class="paste-option" style={{ marginTop: '8px', opacity: 0.6 }} onClick={(e) => {
                             e.stopPropagation();
                             showDebug.value = !showDebug.value;
@@ -622,6 +808,155 @@ export function FileUpload({
 
                 .debug-copy-btn:hover {
                     background: var(--bg-tertiary);
+                }
+
+                /* Multi-file Upload Styles */
+                .multi-upload-progress {
+                    width: 100%;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: var(--spacing-md);
+                }
+
+                .multi-upload-header {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                }
+
+                .multi-upload-title {
+                    font-size: 14px;
+                    font-weight: 500;
+                    color: var(--text-primary);
+                }
+
+                .multi-upload-bar {
+                    width: 100%;
+                    height: 6px;
+                    background: var(--bg-primary);
+                    border-radius: 3px;
+                    overflow: hidden;
+                }
+
+                .multi-progress-fill {
+                    height: 100%;
+                    background: linear-gradient(90deg, var(--primary-accent), #5cadff);
+                    transition: width 0.3s ease;
+                    border-radius: 3px;
+                }
+
+                .multi-progress-text {
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: var(--primary-accent);
+                }
+
+                .upload-queue {
+                    width: 100%;
+                    max-height: 150px;
+                    overflow-y: auto;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                    margin-top: var(--spacing-sm);
+                    padding: var(--spacing-sm);
+                    background: var(--bg-primary);
+                    border-radius: var(--border-radius);
+                }
+
+                .queue-item {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                    padding: 6px 8px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    background: var(--bg-secondary);
+                }
+
+                .queue-item.uploading {
+                    background: rgba(77, 182, 226, 0.1);
+                }
+
+                .queue-item.complete {
+                    background: rgba(63, 185, 80, 0.1);
+                }
+
+                .queue-item.error {
+                    background: rgba(248, 81, 73, 0.1);
+                }
+
+                .queue-status-icon {
+                    width: 16px;
+                    height: 16px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-shrink: 0;
+                }
+
+                .status-dot {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    background: var(--text-muted);
+                }
+
+                .status-dot.pending {
+                    opacity: 0.5;
+                }
+
+                .status-spinner {
+                    width: 12px;
+                    height: 12px;
+                    border: 2px solid var(--border-color);
+                    border-top-color: var(--primary-accent);
+                    border-radius: 50%;
+                    animation: spin 0.8s linear infinite;
+                }
+
+                .queue-filename {
+                    flex: 1;
+                    min-width: 0;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    color: var(--text-primary);
+                    text-align: left;
+                }
+
+                .queue-filesize {
+                    color: var(--text-muted);
+                    font-size: 10px;
+                    flex-shrink: 0;
+                }
+
+                .queue-percent {
+                    color: var(--primary-accent);
+                    font-weight: 600;
+                    font-size: 11px;
+                    min-width: 32px;
+                    text-align: right;
+                }
+
+                .queue-status-text {
+                    font-size: 10px;
+                    font-weight: 500;
+                    text-transform: uppercase;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    flex-shrink: 0;
+                }
+
+                .queue-status-text.success {
+                    color: var(--accent-success);
+                    background: rgba(63, 185, 80, 0.15);
+                }
+
+                .queue-status-text.error {
+                    color: var(--accent-error);
+                    background: rgba(248, 81, 73, 0.15);
                 }
             `}</style>
 

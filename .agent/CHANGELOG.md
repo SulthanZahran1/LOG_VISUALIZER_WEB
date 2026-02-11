@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased] - 2026-02-11
+
+### Added
+- **Multi-File Upload UX**: Complete redesign of file upload with multi-file support
+  - **Upload Mode Toggle**: Switch between Single and Multi-file modes in the upload card header
+  - **Multi-File Queue UI**: Visual queue showing each file's upload status with progress
+  - **Server Mode Default**: Multi-file mode uses WebSocket/chunked upload by default for reliability
+  - **Overall Progress Bar**: Shows combined progress across all files being uploaded
+  - **Per-File Status**: Individual status indicators (pending → uploading → complete/error)
+  - **Auto-Merge Flow**: After multi-file upload completes, files are automatically merged
+
+### Changed
+- **FileUpload Component**: Added `multiple`, `maxFiles`, and `onMultiUploadSuccess` props
+- **HomeView**: Added upload mode toggle in the Log File card header
+- Upload card now shows different hint text based on selected mode
+
 ## [Unreleased] - 2026-02-06
 
 ### Added

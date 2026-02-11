@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import { FileUpload } from '../components/file/FileUpload'
 import { RecentFiles } from '../components/file/RecentFiles'
 import { LoadedFileCard } from '../components/file/LoadedFileCard'
@@ -18,6 +19,7 @@ interface HomeViewProps {
 }
 
 type FileTabType = 'loaded' | 'recent';
+type UploadMode = 'single' | 'multi';
 
 export function HomeView({
     recentFiles,
@@ -33,6 +35,10 @@ export function HomeView({
     const [activeFileTab, setActiveFileTab] = useState<FileTabType>(
         currentSession.value ? 'loaded' : 'recent'
     );
+    
+    // Upload mode: single or multi-file
+    const uploadMode = useSignal<UploadMode>('single');
+    const isMerging = useSignal(false);
 
     const handleNavigation = (view: ViewType) => {
         onOpenView(view);
@@ -57,6 +63,33 @@ export function HomeView({
         setActiveFileTab('loaded');
     };
 
+    // Handle multi-file upload completion - auto merge
+    const handleMultiUploadSuccess = async (files: FileInfo[]) => {
+        if (files.length === 0) return;
+        
+        if (files.length === 1) {
+            // Single file - normal flow
+            handleUploadSuccess(files[0]);
+            return;
+        }
+
+        // Multiple files - use merge through onFileMerge (server mode)
+        isMerging.value = true;
+        try {
+            if (onFileMerge) {
+                await onFileMerge(files);
+            } else {
+                // Fallback: just load the first file
+                handleUploadSuccess(files[0]);
+            }
+            setActiveFileTab('loaded');
+        } catch (err) {
+            console.error('Failed to merge files', err);
+        } finally {
+            isMerging.value = false;
+        }
+    };
+
     return (
         <div class="home-layout">
             <div class="home-container">
@@ -69,9 +102,49 @@ export function HomeView({
                                     <polyline points="14,2 14,8 20,8" />
                                 </svg>
                                 Log File
+                                
+                                {/* Upload Mode Toggle */}
+                                <div class="upload-mode-toggle">
+                                    <button 
+                                        class={`mode-btn ${uploadMode.value === 'single' ? 'active' : ''}`}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            uploadMode.value = 'single';
+                                        }}
+                                        title="Single file mode"
+                                    >
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                            <polyline points="14,2 14,8 20,8" />
+                                        </svg>
+                                        Single
+                                    </button>
+                                    <button 
+                                        class={`mode-btn ${uploadMode.value === 'multi' ? 'active' : ''}`}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            uploadMode.value = 'multi';
+                                        }}
+                                        title="Multi-file mode (auto-merge)"
+                                    >
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M18 10h-4V6" />
+                                            <path d="M14 10l6-6" />
+                                            <path d="M8 14H4v4" />
+                                            <path d="M4 14l6 6" />
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                        </svg>
+                                        Multi
+                                    </button>
+                                </div>
                             </div>
                             <div class="card-content">
-                                <FileUpload onUploadSuccess={handleUploadSuccess} />
+                                <FileUpload 
+                                    onUploadSuccess={handleUploadSuccess}
+                                    onMultiUploadSuccess={handleMultiUploadSuccess}
+                                    multiple={uploadMode.value === 'multi'}
+                                    maxFiles={10}
+                                />
                             </div>
                         </div>
                     </div>
@@ -333,6 +406,46 @@ export function HomeView({
                     padding: var(--spacing-lg);
                     border: 1px solid var(--border-color);
                     border-radius: var(--card-radius);
+                }
+
+                /* Upload Mode Toggle */
+                .upload-mode-toggle {
+                    margin-left: auto;
+                    display: flex;
+                    background: var(--bg-primary);
+                    border-radius: 6px;
+                    padding: 2px;
+                    gap: 2px;
+                    border: 1px solid var(--border-color);
+                }
+
+                .mode-btn {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    padding: 4px 8px;
+                    border: none;
+                    background: transparent;
+                    color: var(--text-muted);
+                    font-size: 11px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    border-radius: 4px;
+                    transition: all var(--transition-fast);
+                }
+
+                .mode-btn:hover {
+                    color: var(--text-secondary);
+                    background: var(--bg-tertiary);
+                }
+
+                .mode-btn.active {
+                    background: var(--primary-accent);
+                    color: white;
+                }
+
+                .mode-btn svg {
+                    flex-shrink: 0;
                 }
             `}</style>
         </div>

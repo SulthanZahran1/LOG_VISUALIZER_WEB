@@ -4,7 +4,29 @@
 
 ---
 
+## ✅ Completed: Multi-File UX Improvements (2026-02-11)
+
+### Multi-File Upload Enhancement
+- [x] **Multi-File Upload Component** — Support drag-drop multiple files
+- [x] **Default Server Mode** — Use WebSocket/chunked upload by default for multi-file
+- [x] **Batch Progress Tracking** — Show overall + per-file progress
+- [x] **Upload Queue UI** — Visual queue with status for each file
+- [x] **Auto-Merge Flow** — After upload, auto-start merge session
+
+### UX Improvements
+- [x] **Upload Mode Toggle** — Single vs Multi-file mode selection
+- [x] **Better Visual Feedback** — Clearer states for upload/parse/merge
+- [x] **Drag-Drop Zone Enhancement** — Support multiple files, better visuals
+
+---
+
 ## 🚧 Active: Phase 3 — Map Viewer + Carrier Tracking
+
+---
+
+## 📋 Backlog: Future Phases
+
+### Phase 3 — Map Viewer + Carrier Tracking (Completed)
 
 ### Map Configuration Files
 - [x] **XML Layout File** — Upload, select, recent list
