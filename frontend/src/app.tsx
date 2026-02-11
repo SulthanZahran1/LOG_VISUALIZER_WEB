@@ -3,7 +3,7 @@ import { useEffect } from 'preact/hooks'
 import { checkHealth, getRecentFiles, deleteFile, renameFile, startParseMerge } from './api/client'
 import { LogTable } from './components/log/LogTable'
 import { WaveformView } from './components/waveform/WaveformView'
-import { currentSession, startParsing, logError, initLogStore, activeTab, openViews, openView, closeView, type ViewType } from './stores/logStore'
+import { currentSession, startParsing, startSessionPolling, logError, initLogStore, activeTab, openViews, openView, closeView, type ViewType } from './stores/logStore'
 import { HomeView } from './views/HomeView'
 import { MapViewer } from './views/MapViewer'
 import { TransitionView } from './components/transition/TransitionView'
@@ -111,7 +111,8 @@ export function App() {
     try {
       const fileIds = files.map(f => f.id);
       const session = await startParseMerge(fileIds);
-      currentSession.value = session;
+      // Set up session and start polling for status updates
+      startSessionPolling(session);
       // Don't auto-navigate - user can choose which view from the Loaded tab
     } catch (err) {
       console.error('Failed to start merge session', err);

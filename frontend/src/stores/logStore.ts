@@ -273,31 +273,49 @@ export async function initLogStore() {
     }
 }
 
+/**
+ * Sets up a session and starts polling if needed.
+ * Used both for single-file parsing and multi-file merge sessions.
+ */
+function setupSessionWithPolling(session: ParseSession) {
+    // Abort any existing polling before starting new session
+    if (currentPollAbortController) {
+        currentPollAbortController.abort();
+    }
+    // Create new abort controller for this session
+    currentPollAbortController = new AbortController();
+
+    currentSession.value = session;
+
+    if (session.status === 'complete') {
+        handleSessionComplete(session);
+    } else {
+        // Start polling for status (reliable, works with all setups)
+        pollStatus(session.id, currentPollAbortController.signal);
+    }
+}
+
 export async function startParsing(fileId: string) {
     try {
-        // Abort any existing polling before starting new session
-        if (currentPollAbortController) {
-            currentPollAbortController.abort();
-        }
-        // Create new abort controller for this session
-        currentPollAbortController = new AbortController();
-
         logError.value = null;
         isLoadingLog.value = true;
 
         const session = await startParse(fileId);
-        currentSession.value = session;
-
-        if (session.status === 'complete') {
-            handleSessionComplete(session);
-        } else {
-            // Start polling for status (reliable, works with all setups)
-            pollStatus(session.id, currentPollAbortController.signal);
-        }
+        setupSessionWithPolling(session);
     } catch (err) {
         logError.value = (err as Error).message;
         isLoadingLog.value = false;
     }
+}
+
+/**
+ * Starts polling for an existing session (e.g., after merging files).
+ * This handles session setup and polling for sessions created outside startParsing.
+ */
+export function startSessionPolling(session: ParseSession) {
+    logError.value = null;
+    isLoadingLog.value = true;
+    setupSessionWithPolling(session);
 }
 
 async function pollStatus(sessionId: string, abortSignal: AbortSignal) {
