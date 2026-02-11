@@ -120,6 +120,7 @@ func (cs *CompactLogStore) GetEntry(i int) models.LogEntry {
 				entry.Value = val.Int != 0
 			}
 			entry.SignalType = models.SignalTypeBoolean
+			return entry
 		case models.SignalTypeInteger:
 			if val.Type == ValueTypeBool {
 				// Convert bool to 0/1 for integer signals
@@ -132,10 +133,10 @@ func (cs *CompactLogStore) GetEntry(i int) models.LogEntry {
 				entry.Value = int(val.Int)
 			}
 			entry.SignalType = models.SignalTypeInteger
+			return entry
 		default:
-			// Fall through to value-based type
+			// Fall through to value-based type for strings
 		}
-		return entry
 	}
 	
 	// Default: use value-based type detection
