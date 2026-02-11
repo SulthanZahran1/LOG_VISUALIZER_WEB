@@ -793,6 +793,7 @@ func (m *Manager) StartMultiSession(fileIDs []string, filePaths []string) (*mode
 
 	// Use first file ID as primary, but indicate merged
 	session := models.NewParseSession(sessionID, fileIDs[0])
+	session.FileIDs = fileIDs // Store all file IDs for merged sessions
 	session.Status = models.SessionStatusParsing
 
 	state := &SessionState{

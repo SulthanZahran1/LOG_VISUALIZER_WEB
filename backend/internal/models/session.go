@@ -14,6 +14,7 @@ const (
 type ParseSession struct {
 	ID               string        `json:"id"`
 	FileID           string        `json:"fileId"`
+	FileIDs          []string      `json:"fileIds,omitempty"` // All file IDs for merged sessions
 	Status           SessionStatus `json:"status"`
 	Progress         float64       `json:"progress"` // 0-100
 	EntryCount       int           `json:"entryCount,omitempty"`

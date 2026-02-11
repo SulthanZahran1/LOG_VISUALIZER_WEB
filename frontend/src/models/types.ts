@@ -31,6 +31,7 @@ export type SessionStatus = 'pending' | 'parsing' | 'complete' | 'error';
 export interface ParseSession {
     id: string;
     fileId: string;
+    fileIds?: string[]; // All file IDs for merged sessions
     status: SessionStatus;
     progress: number; // 0-100
     entryCount?: number;

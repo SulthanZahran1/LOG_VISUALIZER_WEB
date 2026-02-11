@@ -71,6 +71,10 @@ export function LoadedFileCard({ recentFiles, onOpenView, onUnload }: LoadedFile
 
     // Look up file info from recentFiles using session's fileId
     const fileInfo = session ? recentFiles.find(f => f.id === session.fileId) : null;
+    
+    // Check if this is a merged session (multiple files)
+    const isMergedSession = session?.fileIds && session.fileIds.length > 1;
+    const mergedFileCount = session?.fileIds?.length || 1;
 
     if (!session) {
         return (
@@ -124,9 +128,13 @@ export function LoadedFileCard({ recentFiles, onOpenView, onUnload }: LoadedFile
                     </svg>
                 </div>
                 <div class="loaded-info">
-                    <span class="loaded-name">{fileInfo?.name || session.fileId || 'Untitled'}</span>
+                    <span class="loaded-name">
+                        {isMergedSession 
+                            ? `Merged (${mergedFileCount} files)` 
+                            : (fileInfo?.name || session.fileId || 'Untitled')}
+                    </span>
                     <span class="loaded-meta">
-                        {fileInfo ? formatSize(fileInfo.size) : ''}
+                        {fileInfo && !isMergedSession ? formatSize(fileInfo.size) : ''}
                         {entries > 0 && ` • ${entries.toLocaleString()} entries`}
                     </span>
                 </div>
