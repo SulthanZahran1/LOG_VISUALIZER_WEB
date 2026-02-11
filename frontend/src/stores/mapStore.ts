@@ -617,7 +617,7 @@ export async function linkSignalLogSession(
     // This ensures the map has current data even before playback starts
     if (mapUseServerSide.value && effectiveStartTime !== undefined) {
         try {
-            const initialEntries = await getValuesAtTime(sessionId, effectiveStartTime);
+            const initialEntries = await getValuesAtTime(sessionId, Math.round(effectiveStartTime));
             const signalEntries = initialEntries.map(e => ({
                 deviceId: e.deviceId,
                 signalName: e.signalName,
@@ -789,15 +789,25 @@ effect(() => {
         if (isFetchingState) return;
         isFetchingState = true;
         try {
-            // OPTIMIZATION: Only fetch signals used in map rules/tracking to reduce backend load
+            // Build signal filter in deviceId::signalName format (what the backend expects)
             const rules = mapRules.value?.rules || [];
-            const ruleSignals = [...new Set(rules.map(r => r.signal))];
-            if (carrierTrackingEnabled.value) ruleSignals.push('CurrentLocation');
+            const ruleSignalNames = new Set(rules.map(r => r.signal));
+            if (carrierTrackingEnabled.value) ruleSignalNames.add('CurrentLocation');
 
-            // If no rules, fetch everything (backend rn=1 logic handles this)
-            const signalsToFetch = ruleSignals.length > 0 ? ruleSignals : undefined;
-            console.log('[MapEffect] Fetching values at time:', time, 'signals:', signalsToFetch?.length ?? 'all');
-            const entries = await getValuesAtTime(linkedSessionId!, time!, signalsToFetch);
+            // Match rule signal names against known keys from latestSignalValues
+            let signalsToFetch: string[] | undefined;
+            if (ruleSignalNames.size > 0 && latestSignalValues.value.size > 0) {
+                signalsToFetch = [...latestSignalValues.value.keys()].filter(key => {
+                    const signalName = key.split('::')[1];
+                    return ruleSignalNames.has(signalName);
+                });
+                // If no matches yet (first fetch), fetch everything
+                if (signalsToFetch.length === 0) signalsToFetch = undefined;
+            }
+
+            const tsInt = Math.round(time!);
+            console.log('[MapEffect] Fetching values at time:', tsInt, 'signals:', signalsToFetch?.length ?? 'all');
+            const entries = await getValuesAtTime(linkedSessionId!, tsInt, signalsToFetch);
 
             const signalEntries = entries.map(e => ({
                 deviceId: e.deviceId,
