@@ -675,11 +675,15 @@ export async function linkSignalLogSession(
         setPlaybackRange(effectiveStartTime, effectiveEndTime);
     }
 
-    // For large files (server-side mode), fetch initial signal state at start time
-    // This ensures the map has current data even before playback starts
+    // For large files (server-side mode), fetch initial signal state at start time.
+    // Use signal-name-only filter to get ALL devices with rule-relevant signals,
+    // not just the few devices from the initial page load.
     if (mapUseServerSide.value && effectiveStartTime !== undefined) {
         try {
-            const initialEntries = await getValuesAtTime(sessionId, Math.round(effectiveStartTime));
+            const rules = mapRules.value?.rules || [];
+            const ruleSignalNames = [...new Set(rules.map(r => r.signal))];
+            const signalFilter = ruleSignalNames.length > 0 ? ruleSignalNames : undefined;
+            const initialEntries = await getValuesAtTime(sessionId, Math.round(effectiveStartTime), signalFilter);
             const signalEntries = initialEntries.map(e => ({
                 deviceId: e.deviceId,
                 signalName: e.signalName,
@@ -851,20 +855,17 @@ effect(() => {
         if (isFetchingState) return;
         isFetchingState = true;
         try {
-            // Build signal filter in deviceId::signalName format (what the backend expects)
+            // Build signal filter using signal NAMES only (not device-specific keys).
+            // The backend supports signal-name-only filters which return ALL devices
+            // with that signal. This ensures we discover all devices, not just the ones
+            // already in latestSignalValues from the initial page load.
             const rules = mapRules.value?.rules || [];
             const ruleSignalNames = new Set(rules.map(r => r.signal));
             if (carrierTrackingEnabled.value) ruleSignalNames.add('CurrentLocation');
 
-            // Match rule signal names against known keys from latestSignalValues
             let signalsToFetch: string[] | undefined;
-            if (ruleSignalNames.size > 0 && latestSignalValues.value.size > 0) {
-                signalsToFetch = [...latestSignalValues.value.keys()].filter(key => {
-                    const signalName = key.split('::')[1];
-                    return ruleSignalNames.has(signalName);
-                });
-                // If no matches yet (first fetch), fetch everything
-                if (signalsToFetch.length === 0) signalsToFetch = undefined;
+            if (ruleSignalNames.size > 0) {
+                signalsToFetch = [...ruleSignalNames];
             }
 
             const tsInt = Math.round(time!);

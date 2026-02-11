@@ -867,16 +867,27 @@ func (ds *DuckStore) GetValuesAtTime(ctx context.Context, ts time.Time, signals 
 	args = append(args, tsMs)
 
 	if len(signals) > 0 {
-		var signalClauses []string
+		var deviceSignalClauses []string
+		var signalNameParams []string
 		for _, s := range signals {
 			parts := strings.Split(s, "::")
 			if len(parts) == 2 {
-				signalClauses = append(signalClauses, "(device_id = ? AND signal = ?)")
+				// Exact device::signal filter
+				deviceSignalClauses = append(deviceSignalClauses, "(device_id = ? AND signal = ?)")
 				args = append(args, parts[0], parts[1])
+			} else {
+				// Signal-name-only filter: match ALL devices with this signal
+				signalNameParams = append(signalNameParams, "?")
+				args = append(args, s)
 			}
 		}
-		if len(signalClauses) > 0 {
-			query += " AND (" + strings.Join(signalClauses, " OR ") + ")"
+		var allClauses []string
+		allClauses = append(allClauses, deviceSignalClauses...)
+		if len(signalNameParams) > 0 {
+			allClauses = append(allClauses, "signal IN ("+strings.Join(signalNameParams, ", ")+")")
+		}
+		if len(allClauses) > 0 {
+			query += " AND (" + strings.Join(allClauses, " OR ") + ")"
 		}
 	}
 
