@@ -578,9 +578,9 @@ func (ds *DuckStore) queryWithKeysetPagination(ctx context.Context, params Query
 
 func getComparisonOp(dir string) string {
 	if dir == "DESC" {
-		return "<"
+		return "<="
 	}
-	return ">"
+	return ">="
 }
 
 func scanEntries(rows *sql.Rows, capacity int) ([]models.LogEntry, error) {

@@ -7,6 +7,7 @@ import { selectedSignals } from './selectionStore';
 export const currentSession = signal<ParseSession | null>(null);
 export const logEntries = signal<LogEntry[]>([]);
 export const totalEntries = signal(0);
+export const serverPageOffset = signal(0);
 export const isLoadingLog = signal(false);
 export const logError = signal<string | null>(null);
 
@@ -16,6 +17,9 @@ export const isStreaming = signal(false);
 
 // Polling control - to cancel ongoing polling when session changes
 let currentPollAbortController: AbortController | null = null;
+
+// Fetch cancellation - abort stale page fetches during rapid scrolling
+let currentFetchAbortController: AbortController | null = null;
 
 // Server-side caching to prevent jumps during scrolling
 interface PageCache {
@@ -87,6 +91,7 @@ export function clearSession() {
     currentSession.value = null;
     logEntries.value = [];
     totalEntries.value = 0;
+    serverPageOffset.value = 0;
     isLoadingLog.value = false;
     logError.value = null;
     // Note: waveformStore and others might have their own cleanup triggered by currentSession change
@@ -371,7 +376,7 @@ async function handleSessionComplete(session: ParseSession) {
     // 1. Initial Data Load
     if (useServerSide.value) {
         // Large file: Fetch first page (server-side pagination mode)
-        await fetchEntries(1, 100);
+        await fetchEntries(1, SERVER_PAGE_SIZE);
     } else {
         // Client-side mode: Use streaming to load ALL entries
         // Streaming has no 1000 entry limit, unlike the paginated API
@@ -460,10 +465,17 @@ export async function fetchEntries(page: number, pageSize: number) {
         if (cached && Date.now() - cached.timestamp < 30000) { // 30s cache
             console.log('[fetchEntries] Using cached data for key:', cacheKey);
             logEntries.value = cached.entries;
-            // Still update total from server response
+            serverPageOffset.value = (page - 1) * pageSize;
             return;
         }
     }
+
+    // Abort any in-flight fetch before starting a new one
+    if (currentFetchAbortController) {
+        currentFetchAbortController.abort();
+    }
+    currentFetchAbortController = new AbortController();
+    const fetchAbortSignal = currentFetchAbortController;
 
     try {
         // Always show loading for initial fetch or when entries are empty
@@ -474,6 +486,10 @@ export async function fetchEntries(page: number, pageSize: number) {
 
         console.log('[fetchEntries] Fetching from server - page:', page, 'filters:', filters);
         const res = await getParseEntries(currentSession.value.id, page, pageSize, filters);
+
+        // If this fetch was aborted while in flight, discard results
+        if (fetchAbortSignal !== currentFetchAbortController) return;
+
         console.log('[fetchEntries] Server returned:', res.entries.length, 'entries, total:', res.total);
 
         // In server-side mode, update cache
@@ -495,11 +511,14 @@ export async function fetchEntries(page: number, pageSize: number) {
 
         logEntries.value = res.entries as LogEntry[];
         totalEntries.value = res.total;
+        serverPageOffset.value = (page - 1) * pageSize;
 
         // Update map store with latest values (debounced in mapStore)
         const mapStore = await import('./mapStore');
         mapStore.updateSignalValues(logEntries.value);
     } catch (err: any) {
+        // Ignore aborted fetches (superseded by newer request)
+        if (err?.name === 'AbortError' || fetchAbortSignal !== currentFetchAbortController) return;
         if (err.status === 404) {
             console.warn('Session not found on server during fetchEntries, clearing local state');
             clearSession();

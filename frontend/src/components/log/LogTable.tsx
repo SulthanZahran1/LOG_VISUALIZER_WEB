@@ -14,6 +14,7 @@ import {
     totalEntries,
     fetchEntries,
     useServerSide,
+    serverPageOffset,
     openView,
     selectedLogTime,
     isStreaming,
@@ -371,7 +372,8 @@ export function LogTable() {
         if (indices.length > 0) {
             // Use the last selected row's timestamp
             const lastIdx = indices[indices.length - 1];
-            const entry = filteredEntries.value[lastIdx];
+            const offset = useServerSide.value ? serverPageOffset.value : 0;
+            const entry = filteredEntries.value[lastIdx - offset];
             if (entry?.timestamp) {
                 selectedLogTime.value = new Date(entry.timestamp).getTime();
             }
@@ -385,9 +387,6 @@ export function LogTable() {
     const scrollTimeoutRef = useRef<number | null>(null);
     const isScrollingRef = useRef(false);
 
-    // Track loaded page range for server-side mode
-    const loadedRangeRef = useRef({ start: 1, end: 1 });
-    const pendingFetchRef = useRef<Promise<void> | null>(null);
     const [isFetchingPage, setIsFetchingPage] = useState(false);
 
     // Force re-render when entries change (for server-side virtual scrolling)
@@ -398,16 +397,15 @@ export function LogTable() {
             forceRender({});
         }, 50); // 50ms debounce
         return () => clearTimeout(timer);
-    }, [filteredEntries.value, totalEntries.value]);
+    }, [filteredEntries.value, totalEntries.value, serverPageOffset.value]);
 
-    // Reset scroll and page when session or filters change
+    // Reset scroll when session or filters change
     useEffect(() => {
         if (tableRef.current) {
             tableRef.current.scrollTop = 0;
             scrollTopRef.current = 0;
             scrollSignal.value = 0;
         }
-        loadedRangeRef.current = { start: 1, end: 1 };
     }, [currentSession.value?.id, searchQuery.value, categoryFilter.value, sortColumn.value, sortDirection.value]);
 
     // Separate ref for fetch debouncing
@@ -436,25 +434,16 @@ export function LogTable() {
         // Server-side: Debounced page fetching
         if (useServerSide.value) {
             const targetPage = Math.floor(scrollTop / (SERVER_PAGE_SIZE * ROW_HEIGHT)) + 1;
-            const bufferPages = 2; // Preload 2 pages ahead
+            const currentLoadedPage = Math.floor(serverPageOffset.value / SERVER_PAGE_SIZE) + 1;
 
-            // Check if we need to fetch (with buffer for prefetching)
-            if (targetPage + bufferPages > loadedRangeRef.current.end ||
-                targetPage < loadedRangeRef.current.start) {
-
+            if (targetPage !== currentLoadedPage) {
                 fetchTimeoutRef.current = window.setTimeout(() => {
                     const fetchPage = Math.max(1, targetPage);
-
-                    // Avoid duplicate fetches
-                    if (!pendingFetchRef.current) {
-                        setIsFetchingPage(true);
-                        pendingFetchRef.current = fetchEntries(fetchPage, SERVER_PAGE_SIZE).finally(() => {
-                            pendingFetchRef.current = null;
-                            setIsFetchingPage(false);
-                        });
-                        loadedRangeRef.current = { start: fetchPage, end: fetchPage + 2 };
-                    }
-                }, 150); // Slightly longer debounce for smoother scrolling
+                    setIsFetchingPage(true);
+                    fetchEntries(fetchPage, SERVER_PAGE_SIZE).finally(() => {
+                        setIsFetchingPage(false);
+                    });
+                }, 100);
             }
         }
 
@@ -495,7 +484,7 @@ export function LogTable() {
             if (dragStartIndex.value !== null) curr = dragStartIndex.value;
         }
 
-        const total = filteredEntries.value.length;
+        const total = useServerSide.value ? totalEntries.value : filteredEntries.value.length;
         let next = curr;
         let handled = true;
 
@@ -508,11 +497,19 @@ export function LogTable() {
             case 'End': next = total - 1; break;
             case 'a':
                 if (e.ctrlKey || e.metaKey) {
-                    // Select All Visible
                     e.preventDefault();
-                    const newSet = new Set<number>();
-                    for (let i = 0; i < total; i++) newSet.add(i);
-                    selectedRows.value = newSet;
+                    if (useServerSide.value) {
+                        // In server-side mode, select only the current page
+                        const offset = serverPageOffset.value;
+                        const pageLen = filteredEntries.value.length;
+                        const newSet = new Set<number>();
+                        for (let i = offset; i < offset + pageLen; i++) newSet.add(i);
+                        selectedRows.value = newSet;
+                    } else {
+                        const newSet = new Set<number>();
+                        for (let i = 0; i < total; i++) newSet.add(i);
+                        selectedRows.value = newSet;
+                    }
                     return;
                 }
                 handled = false;
@@ -520,7 +517,7 @@ export function LogTable() {
             case 'c':
                 if (e.ctrlKey || e.metaKey) {
                     handleCopy();
-                    return; // Default copy handler will fire too, but we interrupt
+                    return;
                 }
                 handled = false;
                 break;
@@ -529,6 +526,17 @@ export function LogTable() {
 
         if (handled) {
             e.preventDefault();
+
+            // In server-side mode, fetch the target page if navigating outside loaded range
+            if (useServerSide.value) {
+                const offset = serverPageOffset.value;
+                const pageLen = filteredEntries.value.length;
+                if (next < offset || next >= offset + pageLen) {
+                    const targetPage = Math.floor(next / SERVER_PAGE_SIZE) + 1;
+                    fetchEntries(targetPage, SERVER_PAGE_SIZE);
+                }
+            }
+
             // Scroll into view
             const rowTop = next * ROW_HEIGHT;
             const rowBottom = rowTop + ROW_HEIGHT;
@@ -540,7 +548,6 @@ export function LogTable() {
 
             // Selection Logic
             if (e.shiftKey) {
-                // Range select from dragStartIndex or original curr
                 const anchor = dragStartIndex.value ?? curr;
                 const newSet = new Set<number>();
                 const start = Math.min(anchor, next);
@@ -549,7 +556,7 @@ export function LogTable() {
                 selectedRows.value = newSet;
             } else {
                 selectedRows.value = new Set([next]);
-                dragStartIndex.value = next; // Reset anchor
+                dragStartIndex.value = next;
             }
         }
     };
@@ -698,12 +705,14 @@ export function LogTable() {
 
     const handleCopy = () => {
         const entries = filteredEntries.value;
+        const offset = useServerSide.value ? serverPageOffset.value : 0;
         const text = Array.from(selectedRows.value)
             .sort((a, b) => a - b)
             .map(idx => {
-                const e = entries[idx];
+                const e = entries[idx - offset];
                 return e ? `${formatDateTime(e.timestamp)}\t${e.deviceId}\t${e.signalName}\t${e.value}` : '';
             })
+            .filter(line => line !== '')
             .join('\n');
 
         navigator.clipboard.writeText(text);
@@ -712,10 +721,11 @@ export function LogTable() {
 
     const handleAddToWaveform = () => {
         const entries = filteredEntries.value;
+        const offset = useServerSide.value ? serverPageOffset.value : 0;
         const processed = new Set<string>();
 
         Array.from(selectedRows.value).forEach(idx => {
-            const e = entries[idx];
+            const e = entries[idx - offset];
             if (e) {
                 const key = `${e.deviceId}::${e.signalName}`;
                 if (!processed.has(key)) {
@@ -780,18 +790,19 @@ export function LogTable() {
     const currentScroll = scrollSignal.value;
 
     const startIdx = useServerSide.value
-        ? 0
+        ? serverPageOffset.value
         : Math.max(0, Math.floor(currentScroll / ROW_HEIGHT) - BUFFER);
 
     const endIdx = useServerSide.value
-        ? filteredEntries.value.length
+        ? serverPageOffset.value + filteredEntries.value.length
         : Math.min(totalCount, Math.ceil((currentScroll + viewportHeight) / ROW_HEIGHT) + BUFFER);
 
-    const visibleEntries = filteredEntries.value.slice(startIdx, endIdx);
+    const visibleEntries = useServerSide.value
+        ? filteredEntries.value
+        : filteredEntries.value.slice(startIdx, endIdx);
 
-    // For server-side, calculate offset based on current page position
     const offsetTop = useServerSide.value
-        ? Math.floor(currentScroll / (SERVER_PAGE_SIZE * ROW_HEIGHT)) * SERVER_PAGE_SIZE * ROW_HEIGHT
+        ? serverPageOffset.value * ROW_HEIGHT
         : startIdx * ROW_HEIGHT;
 
     return (
@@ -865,7 +876,14 @@ export function LogTable() {
                     <div className="toolbar-separator"></div>
                     <button className="btn-icon" onClick={() => openView('waveform')} title="Open Timing Diagram"><ChartIcon /></button>
                     <button className="btn-icon" onClick={handleCopy} title="Copy selected (Ctrl+C)"><CopyIcon /></button>
-                    <button className="btn-icon" onClick={() => fetchEntries(1, 1000)} title="Reload data"><RefreshIcon /></button>
+                    <button className="btn-icon" onClick={() => {
+                        if (useServerSide.value) {
+                            const currentPage = Math.floor(serverPageOffset.value / SERVER_PAGE_SIZE) + 1;
+                            fetchEntries(currentPage, SERVER_PAGE_SIZE);
+                        } else {
+                            fetchEntries(1, 1000);
+                        }
+                    }} title="Reload data"><RefreshIcon /></button>
                 </div>
             </div>
 
