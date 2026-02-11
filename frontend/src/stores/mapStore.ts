@@ -826,6 +826,7 @@ effect(() => {
  * for the current playback time. Decoupled from logStore's currentSession —
  * the map only needs signalLogSessionId and signalLogEntryCount.
  */
+let fetchGeneration = 0;
 let isFetchingState = false;
 let lastFetchCompleteTime = 0;
 
@@ -835,30 +836,21 @@ effect(() => {
     const large = mapUseServerSide.value;
     const linkedSessionId = signalLogSessionId.value;
 
-    // Debug: log which conditions are met/failing
-    console.log('[MapEffect] time:', time, 'large:', large, 'linkedSessionId:', linkedSessionId,
-        'entryCount:', signalLogEntryCount.value);
-
-    if (!large || !time || !linkedSessionId) {
-        console.log('[MapEffect] Skipping — large:', large, 'time:', !!time, 'linked:', !!linkedSessionId);
-        return;
-    }
+    if (!large || !time || !linkedSessionId) return;
 
     const now = Date.now();
-    // Throttle: 500ms during playback, 50ms debounce when scrubbing for responsiveness
     const minInterval = playing ? 500 : 50;
 
-    // If we are currently fetching or fetched too recently, wait for next time tick
-    if (isFetchingState || (now - lastFetchCompleteTime < minInterval)) return;
+    // During playback: throttle and skip if fetch in progress
+    if (playing && (isFetchingState || (now - lastFetchCompleteTime < minInterval))) return;
+
+    // Increment generation — any in-flight fetch with an older generation
+    // will discard its results instead of applying stale data.
+    const gen = ++fetchGeneration;
 
     async function fetchValues() {
-        if (isFetchingState) return;
         isFetchingState = true;
         try {
-            // Build signal filter using signal NAMES only (not device-specific keys).
-            // The backend supports signal-name-only filters which return ALL devices
-            // with that signal. This ensures we discover all devices, not just the ones
-            // already in latestSignalValues from the initial page load.
             const rules = mapRules.value?.rules || [];
             const ruleSignalNames = new Set(rules.map(r => r.signal));
             if (carrierTrackingEnabled.value) ruleSignalNames.add('CurrentLocation');
@@ -869,8 +861,10 @@ effect(() => {
             }
 
             const tsInt = Math.round(time!);
-            console.log('[MapEffect] Fetching values at time:', tsInt, 'signals:', signalsToFetch?.length ?? 'all');
             const entries = await getValuesAtTime(linkedSessionId!, tsInt, signalsToFetch);
+
+            // Only apply if this is still the latest fetch
+            if (gen !== fetchGeneration) return;
 
             const signalEntries = entries.map(e => ({
                 deviceId: e.deviceId,
@@ -881,18 +875,22 @@ effect(() => {
 
             updateSignalValues(signalEntries);
         } catch (err) {
+            if (gen !== fetchGeneration) return;
             console.error('Failed to fetch signal state for Map Viewer (server-side):', err);
         } finally {
-            isFetchingState = false;
-            lastFetchCompleteTime = Date.now();
+            if (gen === fetchGeneration) {
+                isFetchingState = false;
+                lastFetchCompleteTime = Date.now();
+            }
         }
     }
 
     if (playing) {
-        // During playback, trigger immediately if interval is met
         fetchValues();
     } else {
-        // When scrubbing, use a small debounce
+        // Debounce when scrubbing — each new scrub position cancels the previous timer.
+        // No isFetchingState guard here: if an old fetch is in flight, the generation
+        // counter ensures its stale results are discarded.
         const timer = setTimeout(fetchValues, minInterval);
         return () => clearTimeout(timer);
     }
