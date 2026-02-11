@@ -35,6 +35,15 @@ import './LogTable.css';
 const ROW_HEIGHT = 28;
 const BUFFER = 15; // Increased buffer for smoother scrolling
 const SERVER_PAGE_SIZE = 200; // Larger pages = fewer requests
+const MAX_SCROLL_HEIGHT = 15_000_000; // Safe limit below browser max (~18M Firefox, ~33M Chrome)
+
+/** Compute scroll scale factor when virtual height exceeds browser max */
+function getScrollScale(): number {
+    if (!useServerSide.value) return 1;
+    const realTotal = totalEntries.value * ROW_HEIGHT;
+    if (realTotal <= MAX_SCROLL_HEIGHT) return 1;
+    return realTotal / MAX_SCROLL_HEIGHT;
+}
 
 /**
  * Category Filter Popover Component
@@ -433,7 +442,9 @@ export function LogTable() {
 
         // Server-side: Debounced page fetching
         if (useServerSide.value) {
-            const targetPage = Math.floor(scrollTop / (SERVER_PAGE_SIZE * ROW_HEIGHT)) + 1;
+            const scale = getScrollScale();
+            const realScrollTop = scrollTop * scale;
+            const targetPage = Math.floor(realScrollTop / (SERVER_PAGE_SIZE * ROW_HEIGHT)) + 1;
             const currentLoadedPage = Math.floor(serverPageOffset.value / SERVER_PAGE_SIZE) + 1;
 
             if (targetPage !== currentLoadedPage) {
@@ -537,9 +548,10 @@ export function LogTable() {
                 }
             }
 
-            // Scroll into view
-            const rowTop = next * ROW_HEIGHT;
-            const rowBottom = rowTop + ROW_HEIGHT;
+            // Scroll into view (scale for capped scroll height)
+            const kbScale = getScrollScale();
+            const rowTop = (next * ROW_HEIGHT) / kbScale;
+            const rowBottom = rowTop + ROW_HEIGHT / kbScale;
             const viewport = tableRef.current;
             if (viewport) {
                 if (rowTop < viewport.scrollTop) viewport.scrollTop = rowTop;
@@ -784,7 +796,8 @@ export function LogTable() {
     // Viewport calculations - ALWAYS use scrollSignal to ensure re-renders on scroll
     const viewportHeight = tableRef.current?.clientHeight || 600;
     const totalCount = useServerSide.value ? totalEntries.value : filteredEntries.value.length;
-    const totalHeight = totalCount * ROW_HEIGHT;
+    const scrollScale = getScrollScale();
+    const totalHeight = (totalCount * ROW_HEIGHT) / scrollScale;
 
     // Use scrollSignal to ensure component re-renders when scroll position changes
     const currentScroll = scrollSignal.value;
@@ -802,7 +815,7 @@ export function LogTable() {
         : filteredEntries.value.slice(startIdx, endIdx);
 
     const offsetTop = useServerSide.value
-        ? serverPageOffset.value * ROW_HEIGHT
+        ? (serverPageOffset.value * ROW_HEIGHT) / scrollScale
         : startIdx * ROW_HEIGHT;
 
     return (
@@ -865,8 +878,7 @@ export function LogTable() {
                                 onJump={async (ts) => {
                                     const index = await jumpToTime(ts);
                                     if (index !== null && tableRef.current) {
-                                        tableRef.current.scrollTop = index * ROW_HEIGHT;
-                                        // Brief highlight or selection
+                                        tableRef.current.scrollTop = (index * ROW_HEIGHT) / getScrollScale();
                                         selectedRows.value = new Set([index]);
                                     }
                                 }}
