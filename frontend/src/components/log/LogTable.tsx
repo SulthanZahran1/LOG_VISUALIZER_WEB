@@ -30,7 +30,16 @@ import type { TimeTreeEntry } from '../../api/client';
 import { toggleSignal } from '../../stores/waveformStore';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
 import type { LogEntry } from '../../models/types';
+import {
+    colorSettings,
+    getCategoryColor,
+    getSignalPatternColor,
+    getValueSeverity,
+    getDeviceColor,
+    getSeverityColor,
+} from '../../stores/colorCodingStore';
 import { SignalSidebar } from '../waveform/SignalSidebar';
+import { ColorCodingSettings } from '../settings/ColorCodingSettings';
 import { SearchIcon, ChartIcon, CopyIcon, RefreshIcon, ChevronUpIcon, ChevronDownIcon, FilterIcon, ClockIcon } from '../icons';
 import './LogTable.css';
 
@@ -896,6 +905,8 @@ export function LogTable() {
                         )}
                     </div>
                     <div className="toolbar-separator"></div>
+                    <ColorCodingSettings />
+                    <div className="toolbar-separator"></div>
                     <button className="btn-icon" onClick={() => openView('waveform')} title="Open Timing Diagram"><ChartIcon /></button>
                     <button className="btn-icon" onClick={handleCopy} title="Copy selected (Ctrl+C)"><CopyIcon /></button>
                     <button className="btn-icon" onClick={() => {
@@ -984,10 +995,91 @@ export function LogTable() {
                                     const actualIdx = startIdx + i;
                                     const isSelected = selectedRows.value.has(actualIdx);
                                     const isHighlightMatch = searchHighlightMode.value && searchQuery.value && entryMatchesSearch(entry);
+                                    
+                                    // Compute color coding classes and styles
+                                    const colorClasses: string[] = [];
+                                    const rowStyles: Record<string, string> = {};
+                                    const valueClassMods: string[] = [];
+                                    
+                                    if (colorSettings.value.enabled) {
+                                        const settings = colorSettings.value;
+                                        
+                                        switch (settings.mode) {
+                                            case 'category': {
+                                                const catColor = getCategoryColor(entry.category);
+                                                if (catColor && settings.applyToRow) {
+                                                    const categoryClass = (entry.category || 'uncategorized').toLowerCase().replace(/[^a-z0-9]/g, '-');
+                                                    colorClasses.push(`category-${categoryClass}`);
+                                                    rowStyles['--row-opacity'] = String(settings.rowOpacity);
+                                                }
+                                                break;
+                                            }
+                                            case 'signalPattern': {
+                                                const patternColor = getSignalPatternColor(entry.signalName);
+                                                if (patternColor && settings.applyToRow) {
+                                                    // Find which pattern matched to determine the class
+                                                    const matchedPattern = settings.signalPatterns.find(p => {
+                                                        if (!p.enabled) return false;
+                                                        try {
+                                                            const regex = p.isRegex
+                                                                ? new RegExp(p.pattern, 'i')
+                                                                : new RegExp(p.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+                                                            return regex.test(entry.signalName);
+                                                        } catch { return false; }
+                                                    });
+                                                    if (matchedPattern) {
+                                                        const patternClass = matchedPattern.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+                                                        colorClasses.push(`pattern-${patternClass}`);
+                                                        rowStyles['--row-opacity'] = String(settings.rowOpacity);
+                                                    }
+                                                }
+                                                break;
+                                            }
+                                            case 'valueSeverity': {
+                                                const valueStr = String(entry.value);
+                                                const severity = getValueSeverity(valueStr);
+                                                if (severity) {
+                                                    if (settings.applyToRow) {
+                                                        colorClasses.push(`severity-${severity}`);
+                                                        rowStyles['--row-opacity'] = String(settings.rowOpacity);
+                                                    }
+                                                    if (settings.applyToValue) {
+                                                        valueClassMods.push(`val-severity-${severity}`);
+                                                    }
+                                                }
+                                                break;
+                                            }
+                                            case 'signalType': {
+                                                // Use CSS variables for signal type colors
+                                                rowStyles['--color-bool-true'] = settings.booleanTrueColor;
+                                                rowStyles['--color-bool-false'] = settings.booleanFalseColor;
+                                                rowStyles['--color-integer'] = settings.integerColor;
+                                                rowStyles['--color-string'] = settings.stringColor;
+                                                break;
+                                            }
+                                            case 'device': {
+                                                if (settings.applyToRow) {
+                                                    const deviceColor = getDeviceColor(entry.deviceId);
+                                                    colorClasses.push('device-colored', 'custom-color');
+                                                    rowStyles['--device-color'] = deviceColor;
+                                                    rowStyles['--custom-bg-color'] = `rgba(${parseInt(deviceColor.slice(1, 3), 16)}, ${parseInt(deviceColor.slice(3, 5), 16)}, ${parseInt(deviceColor.slice(5, 7), 16)}, ${settings.rowOpacity})`;
+                                                    rowStyles['--custom-border-color'] = deviceColor;
+                                                }
+                                                break;
+                                            }
+                                        }
+                                        
+                                        if (settings.alternatingRows) {
+                                            colorClasses.push('alternating');
+                                            rowStyles['--alternating-opacity'] = String(settings.alternatingRowOpacity);
+                                        }
+                                    }
+                                    
                                     return (
                                         <div
                                             key={actualIdx}
-                                            className={`log-table-row ${isSelected ? 'selected' : ''} ${isHighlightMatch ? 'search-highlight' : ''}`}
+                                            className={`log-table-row ${isSelected ? 'selected' : ''} ${isHighlightMatch ? 'search-highlight' : ''} ${colorClasses.join(' ')}`}
+                                            style={rowStyles}
                                             onMouseDown={(e) => handleMouseDown(actualIdx, e)}
                                             onMouseEnter={() => handleMouseEnter(actualIdx)}
                                             onContextMenu={handleContextMenu}
@@ -1008,7 +1100,8 @@ export function LogTable() {
                                                     case 'value': {
                                                         const valueStr = String(entry.value);
                                                         const dataAttr = entry.signalType === 'boolean' ? { 'data-value': valueStr.toLowerCase() } : {};
-                                                        return <div key={col.key} className={`log-col val-${entry.signalType}`} style={{ width }} {...dataAttr}><HighlightText text={valueStr} /></div>;
+                                                        const valueClass = `log-col val-${entry.signalType} ${valueClassMods.join(' ')}`;
+                                                        return <div key={col.key} className={valueClass} style={{ width }} {...dataAttr}><HighlightText text={valueStr} /></div>;
                                                     }
                                                     case 'type':
                                                         return <div key={col.key} className="log-col" style={{ width }}>{entry.signalType}</div>;

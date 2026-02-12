@@ -494,19 +494,134 @@
 }
 
 .log-col.val-boolean[data-value="true"] {
-    color: #4caf50;
+    color: var(--color-bool-true, #4caf50);
 }
 
 .log-col.val-boolean[data-value="false"] {
-    color: #f44336;
+    color: var(--color-bool-false, #f44336);
 }
 
 .log-col.val-integer {
-    color: #82aaff;
+    color: var(--color-integer, #82aaff);
 }
 
 .log-col.val-string {
-    color: #c3e88d;
+    color: var(--color-string, #c3e88d);
+}
+
+/* === Color Coding Row Styles === */
+.log-table-row.color-coded {
+    border-left: 3px solid transparent;
+}
+
+/* Category-based colors */
+.log-table-row.category-alarm,
+.log-table-row.category-error {
+    background: rgba(248, 81, 73, var(--row-opacity, 0.08)) !important;
+    border-left-color: #f85149;
+}
+
+.log-table-row.category-warning {
+    background: rgba(210, 153, 34, var(--row-opacity, 0.08)) !important;
+    border-left-color: #d29922;
+}
+
+.log-table-row.category-status {
+    background: rgba(63, 185, 80, var(--row-opacity, 0.08)) !important;
+    border-left-color: #3fb950;
+}
+
+.log-table-row.category-command {
+    background: rgba(88, 166, 255, var(--row-opacity, 0.08)) !important;
+    border-left-color: #58a6ff;
+}
+
+.log-table-row.category-info {
+    background: rgba(163, 113, 247, var(--row-opacity, 0.08)) !important;
+    border-left-color: #a371f7;
+}
+
+/* Severity-based colors for value mode */
+.log-table-row.severity-error {
+    background: rgba(248, 81, 73, var(--row-opacity, 0.08)) !important;
+    border-left-color: #f85149;
+}
+
+.log-table-row.severity-warning {
+    background: rgba(210, 153, 34, var(--row-opacity, 0.08)) !important;
+    border-left-color: #d29922;
+}
+
+.log-table-row.severity-success {
+    background: rgba(63, 185, 80, var(--row-opacity, 0.08)) !important;
+    border-left-color: #3fb950;
+}
+
+.log-table-row.severity-info {
+    background: rgba(88, 166, 255, var(--row-opacity, 0.08)) !important;
+    border-left-color: #58a6ff;
+}
+
+/* Device-based coloring */
+.log-table-row.device-colored {
+    border-left: 3px solid var(--device-color, transparent);
+}
+
+/* Signal pattern-based colors */
+.log-table-row.pattern-error {
+    background: rgba(248, 81, 73, var(--row-opacity, 0.08)) !important;
+    border-left-color: #f85149;
+}
+
+.log-table-row.pattern-warning {
+    background: rgba(210, 153, 34, var(--row-opacity, 0.08)) !important;
+    border-left-color: #d29922;
+}
+
+.log-table-row.pattern-success {
+    background: rgba(63, 185, 80, var(--row-opacity, 0.08)) !important;
+    border-left-color: #3fb950;
+}
+
+.log-table-row.pattern-command {
+    background: rgba(88, 166, 255, var(--row-opacity, 0.08)) !important;
+    border-left-color: #58a6ff;
+}
+
+.log-table-row.pattern-heartbeat {
+    background: rgba(163, 113, 247, var(--row-opacity, 0.08)) !important;
+    border-left-color: #a371f7;
+}
+
+/* Custom color coding with CSS variables */
+.log-table-row.custom-color {
+    background: var(--custom-bg-color, transparent) !important;
+    border-left: 3px solid var(--custom-border-color, transparent);
+}
+
+/* Value cell severity coloring */
+.log-col.val-severity-error {
+    color: #f85149 !important;
+    font-weight: 600;
+}
+
+.log-col.val-severity-warning {
+    color: #d29922 !important;
+    font-weight: 500;
+}
+
+.log-col.val-severity-success {
+    color: #3fb950 !important;
+    font-weight: 500;
+}
+
+.log-col.val-severity-info {
+    color: #58a6ff !important;
+}
+
+/* Alternating rows - enhanced */
+.log-table-row.alternating:nth-child(even) {
+    background: rgba(255, 255, 255, var(--alternating-opacity, 0.04));
 }
 
 /* === Loading & Empty Overlay === */
