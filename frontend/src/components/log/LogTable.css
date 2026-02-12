@@ -472,9 +472,33 @@
     background: rgba(77, 182, 226, 0.25) !important;
 }
 
+/* Search highlight mode - highlight matching rows */
+.log-table-row.search-highlight {
+    background: rgba(255, 215, 0, 0.15) !important;
+    border-left: 3px solid #ffd700;
+}
+
+.log-table-row.search-highlight:hover {
+    background: rgba(255, 215, 0, 0.25) !important;
+}
+
+.log-table-row.search-highlight.selected {
+    background: rgba(77, 182, 226, 0.2) !important;
+    border-left: 3px solid var(--primary-accent);
+}
+
 /* Data Type Coloring inside cells */
+/* Boolean values: green for true, red for false */
 .log-col.val-boolean {
-    color: #f78c6c;
+    font-weight: 600;
+}
+
+.log-col.val-boolean[data-value="true"] {
+    color: #4caf50;
+}
+
+.log-col.val-boolean[data-value="false"] {
+    color: #f44336;
 }
 
 .log-col.val-integer {

@@ -47,6 +47,7 @@ export const searchQuery = signal('');
 export const searchRegex = signal(false);
 export const searchCaseSensitive = signal(false);
 export const showChangedOnly = signal(false);
+export const searchHighlightMode = signal(false); // When true, search highlights instead of filters
 
 // Category filter - Set of selected categories (empty = show all)
 // NOTE: Initialized with all categories, will be cleared after categories are loaded
@@ -172,8 +173,8 @@ export const filteredEntries = computed(() => {
         });
     }
 
-    // 5. Search Filter
-    if (searchQuery.value) {
+    // 5. Search Filter (skip when in highlight mode - we highlight instead of filter)
+    if (searchQuery.value && !searchHighlightMode.value) {
         let matcher: (text: string) => boolean;
 
         if (searchRegex.value) {
@@ -215,6 +216,34 @@ export const filteredEntries = computed(() => {
 
     return entries;
 });
+
+// Helper function to check if an entry matches the current search query
+// Used for highlighting rows when in highlight mode
+export function entryMatchesSearch(entry: LogEntry): boolean {
+    if (!searchQuery.value) return false;
+
+    let matcher: (text: string) => boolean;
+
+    if (searchRegex.value) {
+        try {
+            const flags = searchCaseSensitive.value ? '' : 'i';
+            const regex = new RegExp(searchQuery.value, flags);
+            matcher = (text) => regex.test(text);
+        } catch {
+            matcher = (text) => text.toLowerCase().includes(searchQuery.value.toLowerCase());
+        }
+    } else {
+        const query = searchCaseSensitive.value ? searchQuery.value : searchQuery.value.toLowerCase();
+        matcher = (text) => {
+            const target = searchCaseSensitive.value ? text : text.toLowerCase();
+            return target.includes(query);
+        };
+    }
+
+    return matcher(entry.signalName) ||
+        matcher(entry.deviceId) ||
+        matcher(entry.value.toString());
+}
 
 // Automatic persistence whenever session changes
 effect(() => {

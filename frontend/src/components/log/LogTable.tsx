@@ -11,6 +11,7 @@ import {
     searchRegex,
     searchCaseSensitive,
     showChangedOnly,
+    searchHighlightMode,
     totalEntries,
     fetchEntries,
     useServerSide,
@@ -21,7 +22,8 @@ import {
     streamProgress,
     categoryFilter,
     availableCategories,
-    jumpToTime
+    jumpToTime,
+    entryMatchesSearch
 } from '../../stores/logStore';
 import { getTimeTree } from '../../api/client';
 import type { TimeTreeEntry } from '../../api/client';
@@ -860,6 +862,14 @@ export function LogTable() {
                             />
                             <span className="toggle-label">Changes Only</span>
                         </label>
+                        <label className={`filter-toggle ${searchHighlightMode.value ? 'active' : ''}`} title="Highlight matching rows instead of filtering">
+                            <input
+                                type="checkbox"
+                                checked={searchHighlightMode.value}
+                                onChange={(e) => searchHighlightMode.value = (e.currentTarget as HTMLInputElement).checked}
+                            />
+                            <span className="toggle-label">Highlight</span>
+                        </label>
                     </div>
                 </div>
                 <div className="toolbar-actions">
@@ -973,10 +983,11 @@ export function LogTable() {
                                 {visibleEntries.map((entry, i) => {
                                     const actualIdx = startIdx + i;
                                     const isSelected = selectedRows.value.has(actualIdx);
+                                    const isHighlightMatch = searchHighlightMode.value && searchQuery.value && entryMatchesSearch(entry);
                                     return (
                                         <div
                                             key={actualIdx}
-                                            className={`log-table-row ${isSelected ? 'selected' : ''}`}
+                                            className={`log-table-row ${isSelected ? 'selected' : ''} ${isHighlightMatch ? 'search-highlight' : ''}`}
                                             onMouseDown={(e) => handleMouseDown(actualIdx, e)}
                                             onMouseEnter={() => handleMouseEnter(actualIdx)}
                                             onContextMenu={handleContextMenu}
@@ -994,8 +1005,11 @@ export function LogTable() {
                                                         return <div key={col.key} className="log-col" style={{ width }}><HighlightText text={entry.signalName} /></div>;
                                                     case 'category':
                                                         return <div key={col.key} className="log-col" style={{ width }}><HighlightText text={entry.category || ''} /></div>;
-                                                    case 'value':
-                                                        return <div key={col.key} className={`log-col val-${entry.signalType}`} style={{ width }}><HighlightText text={String(entry.value)} /></div>;
+                                                    case 'value': {
+                                                        const valueStr = String(entry.value);
+                                                        const dataAttr = entry.signalType === 'boolean' ? { 'data-value': valueStr.toLowerCase() } : {};
+                                                        return <div key={col.key} className={`log-col val-${entry.signalType}`} style={{ width }} {...dataAttr}><HighlightText text={valueStr} /></div>;
+                                                    }
                                                     case 'type':
                                                         return <div key={col.key} className="log-col" style={{ width }}>{entry.signalType}</div>;
                                                     default:
