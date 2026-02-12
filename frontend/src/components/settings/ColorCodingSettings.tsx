@@ -20,7 +20,7 @@ import {
     type ValueSeverityRule,
 } from '../../stores/colorCodingStore';
 import { availableCategories } from '../../stores/logStore';
-import { PaletteIcon, PlusIcon, TrashIcon, RefreshIcon, CheckIcon, XIcon, SettingsIcon, ChevronDownIcon, ChevronRightIcon } from '../icons';
+import { PaletteIcon, PlusIcon, TrashIcon, RefreshIcon, CheckIcon, XIcon } from '../icons';
 import './ColorCodingSettings.css';
 
 const MODE_OPTIONS: { value: ColorCodingMode; label: string; description: string }[] = [
@@ -40,14 +40,11 @@ const SEVERITY_OPTIONS = [
 ];
 
 export function ColorCodingSettings() {
-    const [activeTab, setActiveTab] = useState<ColorCodingMode>('category');
     const isOpen = useSignal(false);
-
     const settings = colorSettings.value;
 
     const handleModeChange = (mode: ColorCodingMode) => {
         setColorMode(mode);
-        setActiveTab(mode);
     };
 
     const togglePanel = useCallback(() => {
