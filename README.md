@@ -22,12 +22,13 @@ Industrial PLCs generate massive log files (often 1GB+) containing thousands of 
 | Feature | Description |
 |---------|-------------|
 | **Multi-Format Parsing** | Supports PLC debug logs, MCS/AMHS logs, CSV, and tab-separated formats |
-| **Log Table** | Virtual scrolling table with sorting, filtering, and multi-selection |
-| **Waveform View** | Canvas-based signal visualization with zoom, pan, and time selection |
+| **Log Table** | Virtual scrolling table with sorting, filtering, multi-selection, and color coding |
+| **Waveform View** | Canvas-based signal visualization with zoom, pan, time selection, and viewport virtualization |
 | **Map Viewer** | SVG-based factory layout with carrier tracking and playback |
 | **Multi-File Merge** | Select and merge multiple log files with 1s fuzzy deduplication |
+| **Color Coding** | Customizable row/value colors by category, signal pattern, value severity, device |
 | **Bookmarks** | Cross-view time bookmarks with keyboard shortcuts |
-| **Large File Support** | Handles files up to 1GB+ with optimized streaming |
+| **Large File Support** | Handles files up to 1GB+ with DuckDB-backed storage (<100MB memory) |
 
 ## Quick Start
 
@@ -204,18 +205,24 @@ Track material carriers (wafer cassettes, FOUPs) as they move through the factor
 | POST | `/api/files/upload` | Upload log file |
 | POST | `/api/files/upload/chunk` | Upload chunk (5MB) |
 | POST | `/api/files/upload/complete` | Complete chunked upload |
+| WS | `/api/ws/uploads` | WebSocket upload endpoint |
 | GET | `/api/files/recent` | List recent files |
+| GET | `/api/files/:id` | Get file info |
 | DELETE | `/api/files/:id` | Delete file |
+| PUT | `/api/files/:id` | Rename file |
 
 ### Parse Management
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/parse` | Start parsing |
+| POST | `/api/parse` | Start parsing (single or merged) |
 | GET | `/api/parse/:sessionId/status` | Parse progress |
 | GET | `/api/parse/:sessionId/entries` | Paginated entries |
 | GET | `/api/parse/:sessionId/chunk` | Time-window chunk |
 | GET | `/api/parse/:sessionId/signals` | List signals |
+| GET | `/api/parse/:sessionId/categories` | List categories |
+| GET | `/api/parse/:sessionId/stream` | SSE stream entries |
+| POST | `/api/parse/:sessionId/keepalive` | Keep session alive |
 
 ### Map & Rules
 
@@ -224,7 +231,11 @@ Track material carriers (wafer cassettes, FOUPs) as they move through the factor
 | GET | `/api/map/layout` | Get map layout |
 | POST | `/api/map/upload` | Upload map XML |
 | GET/POST | `/api/map/rules` | Map rules (YAML) |
+| GET | `/api/map/files/recent` | Recent map files |
+| GET | `/api/map/defaults` | List default maps |
+| POST | `/api/map/defaults/load` | Load default map |
 | POST | `/api/map/carrier-log` | Upload carrier log |
+| GET | `/api/map/carrier-log` | Get carrier log info |
 | GET | `/api/map/carrier-log/entries` | Carrier positions |
 
 ## Keyboard Shortcuts

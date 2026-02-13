@@ -1,7 +1,7 @@
 # CIM Visualizer — Developer Guide
 
 > Documentation for developers and AI coding agents working on the CIM Visualizer project.
-> Last updated: 2026-02-04
+> Last updated: 2026-02-13
 
 ---
 
@@ -21,10 +21,11 @@ Industrial PLCs generate massive log files (often 1GB+) containing thousands of 
 ### Key Features
 
 - **Multi-format Log Parsing**: PLC debug logs, MCS/AMHS logs, CSV, tab-separated
-- **Log Table**: Virtual scrolling with sorting, filtering, multi-selection
-- **Waveform/Timing Diagram**: Canvas-based with zoom, pan, time selection
+- **Log Table**: Virtual scrolling with sorting, filtering, multi-selection, color coding
+- **Waveform/Timing Diagram**: Canvas-based with zoom, pan, time selection, viewport virtualization
 - **Map Viewer**: SVG-based layout with carrier tracking and playback
 - **Multi-file Merge**: Select and merge with fuzzy deduplication
+- **Color Coding**: Customizable row/value colors by category, signal pattern, value severity, device
 - **Bookmarks**: Cross-view time bookmarks with keyboard shortcuts
 
 ### Technology Stack
@@ -87,6 +88,7 @@ Industrial PLCs generate massive log files (often 1GB+) containing thousands of 
 │   │   │   ├── waveform/  ← Waveform canvas, sidebar
 │   │   │   ├── map/       ← Map canvas, controls
 │   │   │   ├── layout/    ← Nav buttons, split pane
+│   │   │   ├── settings/  ← Settings panels (ColorCodingSettings)
 │   │   │   └── transition/← Transition analysis
 │   │   ├── views/         ← Main views (Home, Map)
 │   │   ├── utils/         ← Utilities (TimeAxis, etc.)
@@ -291,6 +293,7 @@ Key rules from `frontend/eslint.config.js`:
 | GET | `/api/parse/:sessionId/chunk` | Time-window chunk |
 | GET | `/api/parse/:sessionId/signals` | List signals |
 | GET | `/api/parse/:sessionId/stream` | SSE stream entries |
+| POST | `/api/parse/:sessionId/keepalive` | Keep session alive while actively viewing |
 
 ### Map Configuration
 
@@ -394,6 +397,7 @@ Uses Preact Signals for reactive state:
 | `bookmarkStore` | Bookmarks | `bookmarks`, `syncEnabled` |
 | `selectionStore` | Cross-view selection | `selectedSignal` |
 | `transitionStore` | Transition analysis | `rules`, `stats` |
+| `colorCodingStore` | Color coding settings | `colorMode`, `customColors` |
 
 ---
 

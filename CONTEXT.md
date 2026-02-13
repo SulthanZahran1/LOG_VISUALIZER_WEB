@@ -1,6 +1,6 @@
 # CONTEXT.md — Session Context
 
-> Paste this into each AI session. Last updated: 2026-01-16
+> Paste this into each AI session. Last updated: 2026-02-13
 
 ---
 
@@ -64,7 +64,7 @@ When starting a session:
 │   └── config/            ← YAML configs
 └── frontend/
     ├── src/
-    │   ├── components/    ← UI components
+    │   ├── components/    ← UI components (file, log, waveform, map, layout, settings, transition)
     │   ├── stores/        ← Signal stores
     │   ├── api/           ← API client
     │   └── models/        ← TypeScript types
@@ -76,7 +76,7 @@ When starting a session:
 
 ## Project Status
 
-**Active Development** — Core features implemented: upload, parsing, log table, waveform visualization, map viewer, multi-file merge.
+**Active Development** — Core features implemented: upload, parsing, log table, waveform visualization with virtualization, map viewer with carrier tracking, multi-file merge, customizable color coding, DuckDB storage for large files.
 
 See [TODO.md](.agent/TODO.md) for current tasks and [CHANGELOG.md](.agent/CHANGELOG.md) for recent changes.
 
@@ -113,16 +113,27 @@ Detailed architecture diagrams are in [.agent/architecture/](.agent/architecture
 | POST | `/api/files/upload` | Upload log file |
 | POST | `/api/files/upload/chunk` | Upload chunk (5MB) |
 | POST | `/api/files/upload/complete` | Complete chunked upload |
+| WS | `/api/ws/uploads` | WebSocket upload endpoint |
 | GET | `/api/files/recent` | List recent files |
-| POST | `/api/parse` | Start parsing |
+| GET | `/api/files/:id` | Get file info |
+| DELETE | `/api/files/:id` | Delete file |
+| PUT | `/api/files/:id` | Rename file |
+| POST | `/api/parse` | Start parsing (single or merged) |
 | GET | `/api/parse/:sessionId/status` | Parse progress |
 | GET | `/api/parse/:sessionId/entries` | Paginated entries |
 | GET | `/api/parse/:sessionId/chunk` | Time-window chunk |
 | GET | `/api/parse/:sessionId/signals` | List signals |
+| GET | `/api/parse/:sessionId/categories` | List categories |
+| GET | `/api/parse/:sessionId/stream` | SSE stream entries |
+| POST | `/api/parse/:sessionId/keepalive` | Keep session alive |
 | GET | `/api/map/layout` | Get map layout |
 | POST | `/api/map/upload` | Upload map layout |
 | GET/POST | `/api/map/rules` | Map rules (YAML) |
+| GET | `/api/map/files/recent` | Recent map files |
+| GET | `/api/map/defaults` | List default maps |
+| POST | `/api/map/defaults/load` | Load default map |
 | POST | `/api/map/carrier-log` | Upload carrier log |
+| GET | `/api/map/carrier-log` | Get carrier log info |
 | GET | `/api/map/carrier-log/entries` | Carrier positions |
 
 ---

@@ -1,6 +1,6 @@
 # Air-Gapped Build Guide
 
-This guide explains how to build the PLC Log Visualizer into a single executable that works completely offline without any internet access.
+This guide explains how to build the CIM Visualizer into a single executable that works completely offline without any internet access.
 
 ## Overview
 
@@ -265,10 +265,12 @@ Typical build sizes:
 <Processing>
   <MaxConcurrentParses>3</MaxConcurrentParses>
   <SessionTimeoutMinutes>30</SessionTimeoutMinutes>
+  <SessionKeepAliveWindowMinutes>5</SessionKeepAliveWindowMinutes>
   <CleanupIntervalMinutes>5</CleanupIntervalMinutes>
   <EnableCompression>true</EnableCompression>
   <CompressionLevel>5</CompressionLevel>      <!-- 1-9 (1=fast, 9=best) -->
   <MaxMemoryPerSession>1GB</MaxMemoryPerSession>
+  <EnableDuckDB>true</EnableDuckDB>          <!-- Memory-efficient large file parsing -->
 </Processing>
 ```
 

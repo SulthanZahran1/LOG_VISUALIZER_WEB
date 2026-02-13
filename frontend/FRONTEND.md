@@ -63,6 +63,7 @@ frontend/src/
 │   ├── map/              # MapViewer components
 │   ├── transition/       # TransitionView components
 │   ├── layout/           # NavButton, panel components
+│   ├── settings/         # Settings panels (ColorCodingSettings)
 │   └── icons.tsx         # SVG icon components
 │
 ├── stores/                # Global state (Preact Signals)
@@ -71,7 +72,8 @@ frontend/src/
 │   ├── mapStore.ts       # Map layout, playback, carrier tracking
 │   ├── bookmarkStore.ts  # Bookmarks, sync between views
 │   ├── transitionStore.ts# Transition rules and calculations
-│   └── selectionStore.ts # Signal selection state
+│   ├── selectionStore.ts # Signal selection state
+│   └── colorCodingStore.ts # Color coding settings
 │
 ├── views/                 # Page-level components
 │   ├── HomeView.tsx      # Landing page with upload + navigation
@@ -107,6 +109,7 @@ The frontend uses **Preact Signals** for reactive, fine-grained state management
 | `bookmarkStore.ts` | Time bookmarks, view sync | `bookmarks`, `isSyncEnabled` |
 | `transitionStore.ts` | Transition rules, statistics | `transitionRules`, `transitionResults` |
 | `selectionStore.ts` | Signal selection state | `selectedSignals`, `focusedSignal` |
+| `colorCodingStore.ts` | Color coding settings | `colorMode`, `customColors` |
 
 ### Reactive Patterns
 
@@ -156,6 +159,7 @@ All API calls go through `/api/*` which is proxied to the backend server.
 | POST | `/parse/:sessionId/chunk` | Get entries in time range |
 | POST | `/parse/:sessionId/at-time` | Get values at specific time |
 | GET | `/parse/:sessionId/stream` | Server-Sent Events stream |
+| POST | `/parse/:sessionId/keepalive` | Keep session alive while actively viewing |
 
 ### Map & Rules
 
@@ -434,6 +438,45 @@ npm run lint        # ESLint
 ---
 
 ## Recent Changes
+
+### v0.8.0 (February 2026)
+
+- **Color Coding**: Customizable log table row/value colors
+  - Multiple color modes: category, signal pattern, value severity, device, signal type
+  - ColorCodingSettings component with full UI for customization
+  - Settings persist via localStorage
+- **Multi-File Upload UX**: Complete redesign with mode toggle and auto-merge
+  - Upload mode toggle (Single/Multi-file)
+  - Multi-file queue UI with per-file status
+  - Overall progress bar
+  - Auto-merge after multi-file upload completes
+
+### v0.7.0 (February 2026)
+
+- **Waveform Virtualization**: Viewport-based rendering for 100+ signals
+  - Only visible signal rows drawn (+ 2-row buffer)
+  - Scroll-based virtualization
+  - Smooth pan/zoom regardless of signal count
+- **Session Keep-Alive**: Sessions stay alive while actively viewing
+  - 5-minute keep-alive window
+  - `POST /api/parse/:sessionId/keepalive` endpoint
+  - TouchSession() called on all session API access
+
+### v0.6.0 (January 2026)
+
+- **Category Column Filter**: Filter popover on Category header
+- **Loaded/Recent Tabs**: Tabbed interface for file management
+- **Multi-File Merge**: Select multiple files, fuzzy deduplication
+
+### v0.5.0 (January 2026)
+
+- **Bookmarks**: Ctrl+B to add, Ctrl+Shift+B for panel
+- **Bidirectional Time Sync**: Sync between Waveform and Map views
+
+### v0.4.0 (January 2026)
+
+- **Map Media Player**: Play/pause, speed control, time scrubber
+- **Signal-Based Map Coloring**: Units change color based on signal values
 
 ### v0.2.0 (Phase 3: Map Viewer)
 

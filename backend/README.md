@@ -81,15 +81,29 @@ API handlers for all HTTP endpoints. Main responsibilities:
 | POST | `/api/files/upload/complete` | Complete chunked upload |
 | GET | `/api/files/upload/:jobId/status` | SSE progress stream |
 | GET | `/api/files/recent` | List recent files |
-| POST | `/api/parse` | Start parsing session |
+| GET | `/api/files/:id` | Get file info |
+| DELETE | `/api/files/:id` | Delete file |
+| PUT | `/api/files/:id` | Rename file |
+| POST | `/api/parse` | Start parsing session (single or merged) |
+| GET | `/api/parse/:sessionId/status` | Parse session status |
 | GET | `/api/parse/:sessionId/progress` | SSE parse progress |
 | GET | `/api/parse/:sessionId/entries` | Paginated entries |
+| GET | `/api/parse/:sessionId/signals` | List signals |
+| GET | `/api/parse/:sessionId/categories` | List categories |
 | GET | `/api/parse/:sessionId/stream` | SSE entry streaming |
 | POST | `/api/parse/:sessionId/chunk` | Time-windowed entries |
+| POST | `/api/parse/:sessionId/at-time` | Values at specific timestamp |
+| POST | `/api/parse/:sessionId/keepalive` | Keep session alive |
 | GET | `/api/map/layout` | Get active map layout |
 | POST | `/api/map/upload` | Upload map XML |
 | GET | `/api/map/rules` | Get active rules |
 | POST | `/api/map/rules` | Upload rules YAML |
+| GET | `/api/map/files/recent` | Recent map files |
+| GET | `/api/map/defaults` | List default maps |
+| POST | `/api/map/defaults/load` | Load default map |
+| POST | `/api/map/carrier-log` | Upload carrier log |
+| GET | `/api/map/carrier-log` | Get carrier log status |
+| GET | `/api/map/carrier-log/entries` | Carrier entries |
 
 ### `internal/upload/manager.go`
 
@@ -157,8 +171,9 @@ Session management orchestrating parsing workflows.
 
 - **MaxSessions**: 10 concurrent sessions (prevents memory exhaustion)
 - **SessionMaxAge**: 30 minutes for completed sessions
+- **SessionKeepAliveWindow**: 5 minutes - sessions accessed within this window won't be cleaned up
 - **Dual Storage**:
-  - DuckDB for large files (>100K entries)
+  - DuckDB for large files (>100K entries) - memory footprint stays <100MB
   - In-memory for small files
 
 #### Parsing Flow

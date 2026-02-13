@@ -59,6 +59,7 @@ interface HealthResponse {
 | POST | `/api/parse/:sessionId/chunk` | Get entry range (large requests) |
 | POST | `/api/parse/:sessionId/at-time` | Values at specific timestamp |
 | GET | `/api/parse/:sessionId/stream` | SSE event stream |
+| POST | `/api/parse/:sessionId/keepalive` | Keep session alive while actively viewing |
 
 ### Map & Rules
 
@@ -136,14 +137,6 @@ const compressed = await new Response(
     file.stream().pipeThrough(new CompressionStream('gzip'))
 ).blob();
 ```
-
-### Planned: zstd
-
-**Roadmap:**
-- `CompressionStream` supports `zstd` in modern browsers
-- Better compression ratio than gzip (10-20% smaller)
-- Faster decompression
-- Implementation: Replace `'gzip'` with `'zstd'` in `CompressionStream`
 
 ### Compression Configuration
 
@@ -463,10 +456,10 @@ ws.onmessage = (event) => {
 | Stage | Progress Range | Description |
 |-------|---------------|-------------|
 | `preparing` | 0-5% | Initial compression |
-| `uploading chunks` | 10-90% | Chunk transfer |
-| `starting server processing` | 90-92% | Awaiting job start |
-| `assembling chunks` | 92-94% | Reconstructing compressed file |
-| `decompressing file` | 94-100% | Inflating gzip |
+| `uploading` | 5-75% | Chunk transfer |
+| `verifying` | 75-85% | Server processing starts |
+| `processing` | 85-98% | Assemble, decompress, parse |
+| `finalizing` | 98-100% | Indexing, completing |
 | `complete` | 100% | Upload done |
 
 ---
@@ -532,9 +525,9 @@ interface LogEntry {
 
 | Date | Change |
 |------|--------|
-| 2025-02-04 | Initial documentation |
-| 2025-02-04 | Added WebSocket protocol details |
-| 2025-02-04 | Documented gzip → zstd roadmap |
+| 2026-02-13 | Added session keep-alive endpoint, updated progress stages, removed zstd roadmap |
+| 2026-02-04 | Added WebSocket protocol details |
+| 2026-02-04 | Initial documentation |
 
 ## Documentation Index
 
