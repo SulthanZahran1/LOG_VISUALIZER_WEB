@@ -257,6 +257,16 @@ let hasFetchedForCurrentSignals = false;
 let activeRequestId = 0;
 
 /**
+ * Cancel any ongoing waveform data fetch.
+ * This increments the request ID, causing any in-flight request to be ignored when it completes.
+ */
+export function cancelWaveformLoading(): void {
+    activeRequestId++;
+    isWaveformLoading.value = false;
+    waveformLoadingProgress.value = 0;
+}
+
+/**
  * Fetch entries for selected signals.
  * LARGE FILE OPTIMIZATION: 
  * - If in server-side mode, fetch ONLY for the current viewport (viewRange).

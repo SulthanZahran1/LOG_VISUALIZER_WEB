@@ -16,7 +16,8 @@ import {
     isWaveformLoading,
     waveformLoadingProgress,
     hoverX,
-    hoverRow
+    hoverRow,
+    cancelWaveformLoading
 } from '../../stores/waveformStore';
 import { sortedBookmarks, type Bookmark } from '../../stores/bookmarkStore';
 import type { LogEntry } from '../../models/types';
@@ -494,15 +495,28 @@ export function WaveformCanvas() {
                     onClick={handleClick}
                 />
                 {isLoading && (
-                    <div class="waveform-loading-overlay">
-                        <div class="waveform-loading-spinner" />
-                        <span class="waveform-loading-text">Loading signal data...</span>
-                        <div class="waveform-loading-progress">
+                    <div class="waveform-loading-indicator">
+                        <div class="waveform-loading-spinner-small" />
+                        <span class="waveform-loading-text-small">Loading...</span>
+                        <div class="waveform-loading-progress-mini">
                             <div
-                                class="waveform-loading-progress-bar"
+                                class="waveform-loading-progress-bar-mini"
                                 style={{ width: `${waveformLoadingProgress.value}%` }}
                             />
                         </div>
+                        <button 
+                            class="waveform-loading-cancel"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                cancelWaveformLoading();
+                            }}
+                            title="Cancel loading"
+                        >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                        </button>
                     </div>
                 )}
             </div>
@@ -537,45 +551,65 @@ export function WaveformCanvas() {
                     position: relative;
                     min-height: 100%;
                 }
-                .waveform-loading-overlay {
+                /* Non-blocking loading indicator - positioned in corner */
+                .waveform-loading-indicator {
                     position: absolute;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    background: rgba(13, 17, 23, 0.75);
+                    top: 12px;
+                    right: 12px;
+                    background: rgba(22, 27, 34, 0.95);
+                    border: 1px solid var(--border-color);
+                    border-radius: 6px;
                     display: flex;
-                    flex-direction: column;
                     align-items: center;
-                    justify-content: center;
-                    gap: 12px;
+                    gap: 8px;
+                    padding: 8px 12px;
                     z-index: 10;
-                    backdrop-filter: blur(2px);
+                    box-shadow: var(--shadow-lg);
+                    pointer-events: auto;
                 }
-                .waveform-loading-spinner {
-                    width: 32px;
-                    height: 32px;
-                    border: 3px solid rgba(77, 182, 226, 0.2);
+                .waveform-loading-spinner-small {
+                    width: 16px;
+                    height: 16px;
+                    border: 2px solid rgba(77, 182, 226, 0.2);
                     border-top-color: var(--primary-accent);
                     border-radius: 50%;
                     animation: spin 0.8s linear infinite;
+                    flex-shrink: 0;
                 }
-                .waveform-loading-text {
-                    font-size: 14px;
+                .waveform-loading-text-small {
+                    font-size: 12px;
                     font-weight: 500;
-                    color: var(--text-primary);
+                    color: var(--text-secondary);
+                    white-space: nowrap;
                 }
-                .waveform-loading-progress {
-                    width: 160px;
-                    height: 4px;
+                .waveform-loading-progress-mini {
+                    width: 60px;
+                    height: 3px;
                     background: rgba(255, 255, 255, 0.1);
                     border-radius: 2px;
                     overflow: hidden;
+                    flex-shrink: 0;
                 }
-                .waveform-loading-progress-bar {
+                .waveform-loading-progress-bar-mini {
                     height: 100%;
                     background: var(--primary-accent);
                     transition: width 0.2s ease;
+                }
+                .waveform-loading-cancel {
+                    background: transparent;
+                    border: none;
+                    color: var(--text-muted);
+                    cursor: pointer;
+                    padding: 2px;
+                    border-radius: 3px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin-left: 4px;
+                }
+                .waveform-loading-cancel:hover {
+                    background: rgba(248, 81, 73, 0.15);
+                    color: var(--accent-error);
                 }
                 @keyframes spin {
                     from { transform: rotate(0deg); }
