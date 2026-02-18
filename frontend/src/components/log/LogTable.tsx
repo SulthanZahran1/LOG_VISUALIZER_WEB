@@ -36,7 +36,6 @@ import {
     getSignalPatternColor,
     getValueSeverity,
     getDeviceColor,
-    getSeverityColor,
 } from '../../stores/colorCodingStore';
 import { SignalSidebar } from '../waveform/SignalSidebar';
 import { ColorCodingSettings } from '../settings/ColorCodingSettings';
