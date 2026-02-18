@@ -408,20 +408,14 @@ export function LogTable() {
 
     const [isFetchingPage, setIsFetchingPage] = useState(false);
 
-    // Track the "visual" scroll position separately from actual scroll position
-    // This prevents jumps while waiting for server data
-    const visualScrollTopRef = useRef(0);
-    const targetScrollTopRef = useRef(0);
-    
-    // Smooth interpolation for server-side scrolling
-    const rafRef = useRef<number | null>(null);
-
-    // Force re-render when entries change - NO debounce for smoother updates
-    // The interpolation above handles the visual smoothness
+    // Force re-render when entries change (for server-side virtual scrolling)
+    // Debounced to prevent excessive re-renders during rapid scrolling
     const [, forceRender] = useState({});
     useEffect(() => {
-        // Immediate re-render when data changes
-        forceRender({});
+        const timer = setTimeout(() => {
+            forceRender({});
+        }, 50); // 50ms debounce
+        return () => clearTimeout(timer);
     }, [filteredEntries.value, totalEntries.value, serverPageOffset.value]);
 
     // Reset scroll when session or filters change
@@ -437,30 +431,6 @@ export function LogTable() {
     const fetchTimeoutRef = useRef<number | null>(null);
     const scrollDebounceRef = useRef<number | null>(null);
 
-    // Smooth scroll interpolation for server-side mode
-    // This prevents jarring jumps while waiting for data to load
-    const interpolateScroll = useCallback(() => {
-        if (!useServerSide.value) return;
-        
-        const current = visualScrollTopRef.current;
-        const target = targetScrollTopRef.current;
-        const diff = target - current;
-        
-        // If difference is small, snap to target
-        if (Math.abs(diff) < 1) {
-            visualScrollTopRef.current = target;
-            scrollSignal.value = target;
-            rafRef.current = null;
-            return;
-        }
-        
-        // Smooth interpolation (lerp with ease-out)
-        visualScrollTopRef.current = current + diff * 0.3;
-        scrollSignal.value = visualScrollTopRef.current;
-        
-        rafRef.current = requestAnimationFrame(interpolateScroll);
-    }, []);
-
     // Optimized scroll handler with debouncing
     const onScroll = useCallback((e: Event) => {
         const scrollTop = (e.target as HTMLDivElement).scrollTop;
@@ -473,42 +443,14 @@ export function LogTable() {
         if (fetchTimeoutRef.current) {
             window.clearTimeout(fetchTimeoutRef.current);
         }
-        if (rafRef.current) {
-            cancelAnimationFrame(rafRef.current);
-        }
 
         // Mark as actively scrolling
         isScrollingRef.current = true;
 
-        // Client-side: Update immediately
-        if (!useServerSide.value) {
-            scrollSignal.value = scrollTop;
-            visualScrollTopRef.current = scrollTop;
-        } else {
-            // Server-side: Set target and start interpolation
-            targetScrollTopRef.current = scrollTop;
-            
-            // If we're already on the correct page, just update immediately
-            const scale = getScrollScale();
-            const realScrollTop = scrollTop * scale;
-            const targetPage = Math.floor(realScrollTop / (SERVER_PAGE_SIZE * ROW_HEIGHT)) + 1;
-            const currentLoadedPage = Math.floor(serverPageOffset.value / SERVER_PAGE_SIZE) + 1;
-            
-            if (targetPage === currentLoadedPage) {
-                // Same page - update immediately, no jump risk
-                visualScrollTopRef.current = scrollTop;
-                scrollSignal.value = scrollTop;
-            } else {
-                // Different page - use smooth interpolation to prevent jump
-                // Start from current visual position
-                if (visualScrollTopRef.current === 0) {
-                    visualScrollTopRef.current = serverPageOffset.value * ROW_HEIGHT / scale;
-                }
-                rafRef.current = requestAnimationFrame(interpolateScroll);
-            }
-        }
+        // Update scroll signal immediately for rigid scrolling
+        scrollSignal.value = scrollTop;
 
-        // Server-side: Debounced page fetching (reduced debounce for faster response)
+        // Server-side: Debounced page fetching
         if (useServerSide.value) {
             const scale = getScrollScale();
             const realScrollTop = scrollTop * scale;
@@ -521,22 +463,13 @@ export function LogTable() {
                     setIsFetchingPage(true);
                     fetchEntries(fetchPage, SERVER_PAGE_SIZE).finally(() => {
                         setIsFetchingPage(false);
-                        // Reset visual scroll to actual after data loads
-                        visualScrollTopRef.current = scrollTop;
-                        targetScrollTopRef.current = scrollTop;
-                        scrollSignal.value = scrollTop;
                     });
-                }, 50); // Reduced from 100ms for faster response
+                }, 100);
             }
         }
 
-        // Clear scrolling flag after scroll settles
-        scrollDebounceRef.current = window.setTimeout(() => {
-            isScrollingRef.current = false;
-        }, 150);
-
         if (contextMenu.value.visible) contextMenu.value = { ...contextMenu.value, visible: false };
-    }, [interpolateScroll]);
+    }, []);
 
     // Cleanup timeout on unmount
     useEffect(() => {
@@ -549,9 +482,6 @@ export function LogTable() {
             }
             if (scrollDebounceRef.current) {
                 window.clearTimeout(scrollDebounceRef.current);
-            }
-            if (rafRef.current) {
-                cancelAnimationFrame(rafRef.current);
             }
         };
     }, []);
