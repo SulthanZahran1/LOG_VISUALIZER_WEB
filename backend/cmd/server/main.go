@@ -75,11 +75,24 @@ func main() {
 	// Initialize upload processing manager
 	uploadMgr := upload.NewManager(cfg.GetUploadDir(), fileStore)
 
-	// Initialize API handler
+	// Initialize handler dependencies
+	deps := &api.Dependencies{
+		Store:      fileStore,
+		SessionMgr: sessionMgr,
+		UploadMgr:  uploadMgr,
+		DataDir:    cfg.GetDataDir(),
+		Version:    Version,
+	}
+
+	// Create all handlers using the new modular structure
+	handlers := api.NewHandlers(deps)
+
+	// Legacy handler for WebSocket compatibility during migration
+	// TODO: Update WebSocket to use new handlers directly
 	h := api.NewHandler(fileStore, sessionMgr, uploadMgr, cfg.GetDataDir())
 
-	// Initialize WebSocket handler
-	wsHandler := api.NewWebSocketHandler(h)
+	// Initialize WebSocket handler (using legacy handler for now)
+	wsHandler := api.NewWebSocketHandlerFromOld(h)
 
 	// Load default rules on startup
 	if err := h.LoadDefaultRules(); err != nil {
@@ -165,67 +178,67 @@ func main() {
 		}
 	}
 
-	// API Routes
+	// API Routes - using the new modular handler structure
 	apiGroup := e.Group("/api")
 
 	// Health check
-	apiGroup.GET("/health", h.HandleHealth)
+	apiGroup.GET("/health", handlers.Health.HandleHealth)
 
-	// WebSocket endpoint
+	// WebSocket endpoint (uses legacy handler)
 	apiGroup.GET("/ws/uploads", wsHandler.HandleWebSocket)
 
-	// File management
-	apiGroup.POST("/files/upload", h.HandleUploadFile)
-	apiGroup.POST("/files/upload/binary", h.HandleUploadBinary)
-	apiGroup.POST("/files/upload/chunk", h.HandleUploadChunk)
-	apiGroup.POST("/files/upload/complete", h.HandleCompleteUpload)
-	apiGroup.GET("/files/upload/:jobId/status", h.HandleUploadJobStream)
-	apiGroup.GET("/files/recent", h.HandleRecentFiles)
-	apiGroup.GET("/files/:id", h.HandleGetFile)
+	// File management routes (new handlers)
+	apiGroup.POST("/files/upload", handlers.Upload.HandleUploadFile)
+	apiGroup.POST("/files/upload/binary", handlers.Upload.HandleUploadBinary)
+	apiGroup.POST("/files/upload/chunk", handlers.Upload.HandleUploadChunk)
+	apiGroup.POST("/files/upload/complete", handlers.Upload.HandleCompleteUpload)
+	apiGroup.GET("/files/upload/:jobId/status", h.HandleUploadJobStream) // Legacy - not in new handlers yet
+	apiGroup.GET("/files/recent", handlers.Upload.HandleGetRecentFiles)
+	apiGroup.GET("/files/:id", handlers.Upload.HandleGetFile)
 
 	// Conditional delete based on config
 	if cfg.Security.AllowFileDeletion {
-		apiGroup.DELETE("/files/:id", h.HandleDeleteFile)
+		apiGroup.DELETE("/files/:id", handlers.Upload.HandleDeleteFile)
 	}
+	apiGroup.PUT("/files/:id", handlers.Upload.HandleRenameFile)
 
-	apiGroup.PUT("/files/:id", h.HandleRenameFile)
+	// Parse management routes (new handlers)
+	apiGroup.POST("/parse", handlers.Parse.HandleStartParse)
+	apiGroup.GET("/parse/:sessionId/status", handlers.Parse.HandleParseStatus)
+	apiGroup.GET("/parse/:sessionId/progress", handlers.Parse.HandleParseProgressStream)
+	apiGroup.GET("/parse/:sessionId/entries", handlers.Parse.HandleParseEntries)
+	apiGroup.GET("/parse/:sessionId/entries/msgpack", handlers.Parse.HandleParseEntriesMsgpack)
+	apiGroup.GET("/parse/:sessionId/stream", handlers.Parse.HandleParseStream)
+	apiGroup.POST("/parse/:sessionId/chunk", handlers.Parse.HandleParseChunk)
+	apiGroup.POST("/parse/:sessionId/chunk-boundaries", handlers.Parse.HandleParseChunkBoundaries)
+	apiGroup.GET("/parse/:sessionId/signals", handlers.Parse.HandleGetSignals)
+	apiGroup.GET("/parse/:sessionId/signal-types", handlers.Parse.HandleGetSignalTypes)
+	apiGroup.GET("/parse/:sessionId/categories", handlers.Parse.HandleGetCategories)
+	apiGroup.GET("/parse/:sessionId/at-time", handlers.Parse.HandleGetValuesAtTime)
+	apiGroup.GET("/parse/:sessionId/index-of-time", handlers.Parse.HandleGetIndexByTime)
+	apiGroup.GET("/parse/:sessionId/time-tree", handlers.Parse.HandleGetTimeTree)
+	apiGroup.POST("/parse/:sessionId/keepalive", handlers.Parse.HandleSessionKeepAlive)
 
-	// Parse management
-	apiGroup.POST("/parse", h.HandleStartParse)
-	apiGroup.GET("/parse/:sessionId/status", h.HandleParseStatus)
-	apiGroup.GET("/parse/:sessionId/progress", h.HandleParseProgressStream)
-	apiGroup.GET("/parse/:sessionId/entries", h.HandleParseEntries)
-	apiGroup.GET("/parse/:sessionId/entries/msgpack", h.HandleParseEntriesMsgpack)
-	apiGroup.GET("/parse/:sessionId/stream", h.HandleParseStream)
-	apiGroup.POST("/parse/:sessionId/chunk", h.HandleParseChunk)
-	apiGroup.POST("/parse/:sessionId/chunk-boundaries", h.HandleParseChunkBoundaries)
-	apiGroup.GET("/parse/:sessionId/signals", h.HandleGetSignals)
-	apiGroup.GET("/parse/:sessionId/signal-types", h.HandleGetSignalTypes)
-	apiGroup.GET("/parse/:sessionId/categories", h.HandleGetCategories)
-	apiGroup.GET("/parse/:sessionId/at-time", h.HandleGetValuesAtTime)
-	apiGroup.GET("/parse/:sessionId/index-of-time", h.HandleGetIndexByTime)
-	apiGroup.GET("/parse/:sessionId/time-tree", h.HandleGetTimeTree)
-	apiGroup.POST("/parse/:sessionId/keepalive", h.HandleSessionKeepAlive)
+	// Map Layout routes (new handlers)
+	apiGroup.GET("/map/layout", handlers.Map.HandleGetMapLayout)
+	apiGroup.POST("/map/upload", handlers.Map.HandleUploadMapLayout)
+	apiGroup.POST("/map/active", handlers.Map.HandleSetActiveMap)
+	apiGroup.GET("/map/rules", handlers.Map.HandleGetMapRules)
+	apiGroup.POST("/map/rules", handlers.Map.HandleUploadMapRules)
+	apiGroup.GET("/map/files/recent", handlers.Map.HandleRecentMapFiles)
 
-	// Map Layout
-	apiGroup.GET("/map/layout", h.HandleGetMapLayout)
-	apiGroup.POST("/map/upload", h.HandleUploadMapLayout)
-	apiGroup.POST("/map/active", h.HandleSetActiveMap)
-	apiGroup.GET("/map/rules", h.HandleGetMapRules)
-	apiGroup.POST("/map/rules", h.HandleUploadMapRules)
-	apiGroup.GET("/map/files/recent", h.HandleRecentMapFiles)
+	// Default maps (new handlers)
+	apiGroup.GET("/map/defaults", handlers.Map.HandleGetDefaultMaps)
+	apiGroup.POST("/map/defaults/load", handlers.Map.HandleLoadDefaultMap)
 
-	// Default maps
-	apiGroup.GET("/map/defaults", h.HandleGetDefaultMaps)
-	apiGroup.POST("/map/defaults/load", h.HandleLoadDefaultMap)
+	// Carrier log routes (new handlers)
+	apiGroup.POST("/map/carrier-log", handlers.Carrier.HandleUploadCarrierLog)
+	apiGroup.GET("/map/carrier-log", handlers.Carrier.HandleGetCarrierLog)
+	apiGroup.GET("/map/carrier-log/entries", handlers.Carrier.HandleGetCarrierEntries)
 
-	// Carrier log
-	apiGroup.POST("/map/carrier-log", h.HandleUploadCarrierLog)
-	apiGroup.GET("/map/carrier-log", h.HandleGetCarrierLog)
-	apiGroup.GET("/map/carrier-log/entries", h.HandleGetCarrierEntries)
-
-	apiGroup.GET("/config/validation-rules", h.HandleGetValidationRules)
-	apiGroup.PUT("/config/validation-rules", h.HandleUpdateValidationRules)
+	// Validation rules (new handlers)
+	apiGroup.GET("/config/validation-rules", handlers.Map.HandleGetValidationRules)
+	apiGroup.PUT("/config/validation-rules", handlers.Map.HandleUpdateValidationRules)
 
 	// Register embedded frontend if available
 	if embeddedMode {
@@ -262,6 +275,8 @@ func main() {
 	fmt.Printf("║  Listen:    http://%-38s║\n", cfg.GetServerAddr())
 	fmt.Printf("║  Data Dir:  %-46s║\n", cfg.GetDataDir())
 	fmt.Printf("╚═══════════════════════════════════════════════════════════╝\n")
+	fmt.Printf("\n")
+	fmt.Printf("✅ Week 1 Handlers: Integrated (modular handler structure)\n")
 	fmt.Printf("\n")
 
 	if embeddedMode {

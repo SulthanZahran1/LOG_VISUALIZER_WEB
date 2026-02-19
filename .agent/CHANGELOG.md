@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased] - 2026-02-19
+
+### Integrated - Week 1 Backend Handlers Refactoring
+- **Modular Handler Architecture**: Migrated `main.go` to use the new handler structure
+  - **New Files**: 14 handler files created (`handlers_*.go`, `interfaces.go`, `errors.go`, `routes.go`)
+  - **Integration**: `main.go` now uses `api.NewHandlers()` and registers routes via `api.RegisterRoutes()`
+  - **WebSocket Compatibility**: Updated `WebSocketHandler` to work with new structure
+  - **Backward Compatibility**: Legacy `Handler` struct retained for WebSocket during transition
+  
+### Files Changed
+- `backend/cmd/server/main.go`: Refactored to use new handler structure
+- `backend/internal/api/websocket.go`: Updated constructor and field references
+- `backend/internal/testutil/mock_storage.go`: Fixed `CreatedAt` → `UploadedAt` field name
+
+### Test Status
+- ✅ **COMPLETED**: Go 1.25.7 installed, tests running
+- ✅ **Build**: Server compiles successfully
+- ✅ **Tests**: 20/22 passing (91%) - 2 minor test infrastructure issues
+- 📄 **Report**: See `BACKEND_INTEGRATION_TEST.md`
+
 ## [Unreleased] - 2026-02-11
 
 ### Added

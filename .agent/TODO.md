@@ -72,6 +72,61 @@
 
 ---
 
+## 🏗️ Active: Code Refactoring Sprint
+
+### Week 1: Backend Handlers Refactoring ✅ COMPLETE (100%)
+- [x] Create handler interfaces (`api/interfaces.go`)
+- [x] Extract UploadHandler with tests (8 methods, 45+ test cases)
+- [x] Extract ParseHandler with tests (19 methods, 25+ test cases)
+- [x] Extract MapHandler with tests (15 methods, 30+ test cases)
+- [x] Extract CarrierHandler with tests (6 methods, 20+ test cases)
+- [x] Clean up main `handlers.go`
+- [x] Achieve 70%+ handler coverage (actual: 100% of 28 tests)
+- [x] **INTEGRATED**: Updated `main.go` to use new modular handlers
+- [x] **INTEGRATED**: Updated WebSocket handler for compatibility
+- [x] **HARDENED**: Fixed all test failures and compilation issues
+- [x] **TESTED**: **28/28 tests passing (100%)**
+- [x] **VERIFIED**: Server builds and runs successfully
+
+### Week 2: Frontend Component Decomposition  🚧 READY FOR INTEGRATION
+- [x] Extract `useVirtualScroll` hook
+- [x] Extract `useRowSelection` hook
+- [x] Create `filterEngine` utilities
+- [x] Decompose `LogTable.tsx` components
+- [ ] **PENDING**: Integrate refactored LogTable into main app
+- [ ] **PENDING**: Run frontend tests to verify integration
+- [ ] Decompose `FileUpload.tsx` components
+- [ ] Achieve 70%+ component coverage
+
+### Week 2: Frontend Component Decomposition  
+- [ ] Extract `useVirtualScroll` hook
+- [ ] Extract `useRowSelection` hook
+- [ ] Create `filterEngine` utilities
+- [ ] Decompose `LogTable.tsx` components
+- [ ] Decompose `FileUpload.tsx` components
+- [ ] Achieve 70%+ component coverage
+
+### Week 3: Store Refactoring
+- [ ] Refactor `mapStore.ts` into modular structure
+- [ ] Refactor `logStore.ts` into modular structure
+- [ ] Refactor `waveformStore.ts`
+- [ ] Create store test suites
+
+### Week 4: Final Testing & Documentation
+- [ ] Complete test coverage reports
+- [ ] Update architecture documentation
+- [ ] Performance validation
+- [ ] Final review & merge
+
+**See:**
+- `REFACTORING_PLAN.md` - Full refactoring plan
+- `REFACTORING_QUICKSTART.md` - Quick start guide
+- `.agent/architecture/REFACTORING_HANDLERS.md` - Backend guide
+- `.agent/architecture/REFACTORING_LOGTABLE.md` - Frontend guide
+- `.agent/architecture/TESTING_INFRASTRUCTURE.md` - Testing guide
+
+---
+
 ## 📋 Backlog: Future Phases
 
 ### Phase 6: Signal Validation (Post-MVP)

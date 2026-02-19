@@ -16,6 +16,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/plc-visualizer/backend/internal/models"
 	"github.com/plc-visualizer/backend/internal/parser"
+	"github.com/plc-visualizer/backend/internal/session"
+	"github.com/plc-visualizer/backend/internal/storage"
 )
 
 // WebSocket message types for upload protocol
@@ -89,10 +91,10 @@ type WSProgressResponse struct {
 
 // WebSocket completion response
 type WSCompleteResponse struct {
-	Type     string          `json:"type"`
-	UploadID string          `json:"uploadId,omitempty"`
+	Type     string           `json:"type"`
+	UploadID string           `json:"uploadId,omitempty"`
 	FileInfo *models.FileInfo `json:"fileInfo,omitempty"`
-	Result   interface{}     `json:"result,omitempty"` // For map/rules responses
+	Result   interface{}      `json:"result,omitempty"` // For map/rules responses
 }
 
 // WebSocket error response
@@ -117,23 +119,46 @@ type UploadSession struct {
 
 // WebSocketHandler manages WebSocket connections for file uploads
 type WebSocketHandler struct {
-	handler       *Handler
-	upgrader      websocket.Upgrader
-	sessions      map[string]*UploadSession
-	sessionsMu    sync.RWMutex
+	store          storage.Store
+	sessionMgr     *session.Manager
+	mapHandler     MapHandler
+	carrierHandler CarrierHandler
+	upgrader       websocket.Upgrader
+	sessions       map[string]*UploadSession
+	sessionsMu     sync.RWMutex
 }
 
-// NewWebSocketHandler creates a new WebSocket upload handler
-func NewWebSocketHandler(h *Handler) *WebSocketHandler {
+// NewWebSocketHandler creates a new WebSocket upload handler using the new handler structure
+func NewWebSocketHandler(deps *Dependencies, handlers *Handlers) *WebSocketHandler {
 	return &WebSocketHandler{
-		handler: h,
+		store:          deps.Store,
+		sessionMgr:     deps.SessionMgr,
+		mapHandler:     handlers.Map,
+		carrierHandler: handlers.Carrier,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				// Allow connections from dev server
 				return true
 			},
-			ReadBufferSize:  64 * 1024,  // 64KB read buffer
-			WriteBufferSize: 64 * 1024,  // 64KB write buffer
+			ReadBufferSize:  64 * 1024, // 64KB read buffer
+			WriteBufferSize: 64 * 1024, // 64KB write buffer
+		},
+		sessions: make(map[string]*UploadSession),
+	}
+}
+
+// Legacy compatibility: Create WebSocket handler from old Handler struct
+// TODO: Remove this once migration is complete
+func NewWebSocketHandlerFromOld(h *Handler) *WebSocketHandler {
+	return &WebSocketHandler{
+		store:      h.store,
+		sessionMgr: h.session,
+		upgrader: websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool {
+				return true
+			},
+			ReadBufferSize:  64 * 1024,
+			WriteBufferSize: 64 * 1024,
 		},
 		sessions: make(map[string]*UploadSession),
 	}
@@ -201,14 +226,14 @@ func (wsh *WebSocketHandler) handleUploadInit(ws *websocket.Conn, msg WSMessage)
 	}
 
 	sessionID := generateUploadID()
-	
+
 	// Create temp directory for chunks (disk storage to minimize memory)
 	tempDir := filepath.Join("./data/uploads", ".ws_temp", sessionID)
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		wsh.sendError(ws, "Failed to create temp directory: "+err.Error(), "INTERNAL_ERROR")
 		return
 	}
-	
+
 	session := &UploadSession{
 		ID:             sessionID,
 		FileName:       payload.FileName,
@@ -231,7 +256,7 @@ func (wsh *WebSocketHandler) handleUploadInit(ws *websocket.Conn, msg WSMessage)
 		Timestamp: time.Now().UnixMilli(),
 	})
 
-	fmt.Printf("[WebSocket] Upload initialized: %s (%d chunks, %d bytes, temp: %s)\n", 
+	fmt.Printf("[WebSocket] Upload initialized: %s (%d chunks, %d bytes, temp: %s)\n",
 		sessionID, payload.TotalChunks, payload.TotalSize, tempDir)
 }
 
@@ -278,7 +303,7 @@ func (wsh *WebSocketHandler) handleUploadChunk(ws *websocket.Conn, msg WSMessage
 		Type:      MsgTypeProgress,
 		ID:        payload.UploadID,
 		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustJSON(WSProgressResponse{
+		Payload: mustJSON(WSProgressResponse{
 			Type:     MsgTypeProgress,
 			UploadID: payload.UploadID,
 			Progress: progress,
@@ -309,7 +334,7 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 
 	// Verify all chunks received
 	if len(session.ReceivedChunks) != session.TotalChunks {
-		wsh.sendError(ws, fmt.Sprintf("Missing chunks: got %d, expected %d", 
+		wsh.sendError(ws, fmt.Sprintf("Missing chunks: got %d, expected %d",
 			len(session.ReceivedChunks), session.TotalChunks), "INCOMPLETE_UPLOAD")
 		return
 	}
@@ -319,14 +344,14 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 
 	// Create assembled file path
 	assembledPath := filepath.Join(session.TempDir, "assembled")
-	
+
 	// Stream concatenate chunks to disk (low memory usage)
 	assembledFile, err := os.Create(assembledPath)
 	if err != nil {
 		wsh.sendError(ws, "Failed to create assembled file: "+err.Error(), "WRITE_ERROR")
 		return
 	}
-	
+
 	// Progress reporting interval (report every ~10% or every 50 chunks, whichever is smaller)
 	reportInterval := session.TotalChunks / 10
 	if reportInterval < 1 {
@@ -335,7 +360,7 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 	if reportInterval > 50 {
 		reportInterval = 50
 	}
-	
+
 	for i := 0; i < session.TotalChunks; i++ {
 		chunkPath := filepath.Join(session.TempDir, fmt.Sprintf("chunk_%d", i))
 		chunkData, err := os.ReadFile(chunkPath)
@@ -349,11 +374,11 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 			wsh.sendError(ws, fmt.Sprintf("Failed to write chunk %d: %v", i, err), "WRITE_ERROR")
 			return
 		}
-		
+
 		// Send progress update at intervals
 		if (i+1)%reportInterval == 0 || i == session.TotalChunks-1 {
 			progress := float64(i+1) / float64(session.TotalChunks) * 100
-			wsh.sendProcessingProgress(ws, payload.UploadID, progress, "assembling", 
+			wsh.sendProcessingProgress(ws, payload.UploadID, progress, "assembling",
 				fmt.Sprintf("Assembling chunk %d/%d...", i+1, session.TotalChunks))
 		}
 	}
@@ -388,7 +413,7 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 
 	// Clean up temp directory
 	os.RemoveAll(session.TempDir)
-	
+
 	// Clean up session
 	wsh.sessionsMu.Lock()
 	delete(wsh.sessions, payload.UploadID)
@@ -399,7 +424,7 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 		Type:      MsgTypeComplete,
 		ID:        payload.UploadID,
 		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustJSON(WSCompleteResponse{
+		Payload: mustJSON(WSCompleteResponse{
 			Type:     MsgTypeComplete,
 			UploadID: payload.UploadID,
 			FileInfo: info,
@@ -415,7 +440,7 @@ func (wsh *WebSocketHandler) sendProcessingProgress(ws *websocket.Conn, uploadID
 		Type:      MsgTypeProcessing,
 		ID:        uploadID,
 		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustJSON(WSProgressResponse{
+		Payload: mustJSON(WSProgressResponse{
 			Type:     MsgTypeProcessing,
 			UploadID: uploadID,
 			Progress: progress,
@@ -441,20 +466,22 @@ func (wsh *WebSocketHandler) handleMapUpload(ws *websocket.Conn, msg WSMessage) 
 	}
 
 	// Save file
-	info, err := wsh.handler.store.SaveBytes(payload.Name, decoded)
+	info, err := wsh.store.SaveBytes(payload.Name, decoded)
 	if err != nil {
 		wsh.sendError(ws, "Failed to save map file: "+err.Error(), "SAVE_ERROR")
 		return
 	}
 
-	// Set as active map
-	wsh.handler.currentMapID = info.ID
+	// Set as active map via map handler
+	if h, ok := wsh.mapHandler.(*MapHandlerImpl); ok {
+		h.SetCurrentMap(info.ID)
+	}
 
 	// Send completion
 	wsh.sendMessage(ws, WSMessage{
 		Type:      MsgTypeComplete,
 		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustJSON(WSCompleteResponse{
+		Payload: mustJSON(WSCompleteResponse{
 			Type:     MsgTypeComplete,
 			FileInfo: info,
 			Result: map[string]string{
@@ -490,21 +517,22 @@ func (wsh *WebSocketHandler) handleRulesUpload(ws *websocket.Conn, msg WSMessage
 	}
 
 	// Save file
-	info, err := wsh.handler.store.SaveBytes(payload.Name, decoded)
+	info, err := wsh.store.SaveBytes(payload.Name, decoded)
 	if err != nil {
 		wsh.sendError(ws, "Failed to save rules file: "+err.Error(), "SAVE_ERROR")
 		return
 	}
 
-	// Set as active rules
-	wsh.handler.currentRulesID = info.ID
-	wsh.handler.currentRules = rules
+	// Set as active rules via map handler
+	if h, ok := wsh.mapHandler.(*MapHandlerImpl); ok {
+		h.SetCurrentRules(info.ID, rules)
+	}
 
 	// Send completion with rules info
 	wsh.sendMessage(ws, WSMessage{
 		Type:      MsgTypeComplete,
 		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustJSON(WSCompleteResponse{
+		Payload: mustJSON(WSCompleteResponse{
 			Type:     MsgTypeComplete,
 			FileInfo: info,
 			Result: models.RulesInfo{
@@ -536,14 +564,14 @@ func (wsh *WebSocketHandler) handleCarrierUpload(ws *websocket.Conn, msg WSMessa
 	}
 
 	// Save file
-	info, err := wsh.handler.store.SaveBytes(payload.Name, decoded)
+	info, err := wsh.store.SaveBytes(payload.Name, decoded)
 	if err != nil {
 		wsh.sendError(ws, "Failed to save carrier log: "+err.Error(), "SAVE_ERROR")
 		return
 	}
 
 	// Get file path
-	path, err := wsh.handler.store.GetFilePath(info.ID)
+	path, err := wsh.store.GetFilePath(info.ID)
 	if err != nil {
 		wsh.sendError(ws, "Failed to get file path: "+err.Error(), "FILE_ERROR")
 		return
@@ -553,7 +581,7 @@ func (wsh *WebSocketHandler) handleCarrierUpload(ws *websocket.Conn, msg WSMessa
 	wsh.sendMessage(ws, WSMessage{
 		Type:      MsgTypeProcessing,
 		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustJSON(WSProgressResponse{
+		Payload: mustJSON(WSProgressResponse{
 			Type:     MsgTypeProcessing,
 			Progress: 50,
 			Stage:    "parsing",
@@ -562,7 +590,7 @@ func (wsh *WebSocketHandler) handleCarrierUpload(ws *websocket.Conn, msg WSMessa
 	})
 
 	// Start parsing session
-	sess, err := wsh.handler.session.StartSession(info.ID, path)
+	sess, err := wsh.sessionMgr.StartSession(info.ID, path)
 	if err != nil {
 		wsh.sendError(ws, "Failed to start parsing: "+err.Error(), "PARSE_ERROR")
 		return
@@ -570,7 +598,7 @@ func (wsh *WebSocketHandler) handleCarrierUpload(ws *websocket.Conn, msg WSMessa
 
 	// Wait briefly for parsing (carrier logs are small)
 	for i := 0; i < 50; i++ {
-		currentSess, ok := wsh.handler.session.GetSession(sess.ID)
+		currentSess, ok := wsh.sessionMgr.GetSession(sess.ID)
 		if !ok {
 			break
 		}
@@ -584,13 +612,16 @@ func (wsh *WebSocketHandler) handleCarrierUpload(ws *websocket.Conn, msg WSMessa
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	wsh.handler.carrierSessionID = sess.ID
+	// Set carrier session via carrier handler
+	if h, ok := wsh.carrierHandler.(*CarrierHandlerImpl); ok {
+		h.SetCarrierSessionID(sess.ID)
+	}
 
 	// Send completion
 	wsh.sendMessage(ws, WSMessage{
 		Type:      MsgTypeComplete,
 		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustJSON(WSCompleteResponse{
+		Payload: mustJSON(WSCompleteResponse{
 			Type: MsgTypeComplete,
 			Result: map[string]interface{}{
 				"sessionId": sess.ID,
@@ -615,7 +646,7 @@ func (wsh *WebSocketHandler) sendError(ws *websocket.Conn, message, code string)
 	wsh.sendMessage(ws, WSMessage{
 		Type:      MsgTypeError,
 		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustJSON(WSErrorResponse{
+		Payload: mustJSON(WSErrorResponse{
 			Type:    MsgTypeError,
 			Message: message,
 			Code:    code,
@@ -733,7 +764,7 @@ func (wsh *WebSocketHandler) streamDecompressGzipWithProgress(ws *websocket.Conn
 	buf := make([]byte, 256*1024) // 256KB buffer
 	var written int64
 	var lastProgress float64 = -1
-	
+
 	for {
 		n, err := reader.Read(buf)
 		if n > 0 {
@@ -741,17 +772,17 @@ func (wsh *WebSocketHandler) streamDecompressGzipWithProgress(ws *websocket.Conn
 				return werr
 			}
 			written += int64(n)
-			
+
 			// Report progress based on compressed bytes read (approximation)
 			// Since gzip compression ratio varies, we use a smoothed progress
 			progress := float64(written) / float64(srcSize*3) * 100 // Assume ~3:1 ratio
 			if progress > 99 {
 				progress = 99
 			}
-			
+
 			// Send progress update every 5% change
-			if progress - lastProgress >= 5 {
-				wsh.sendProcessingProgress(ws, uploadID, progress, "decompressing", 
+			if progress-lastProgress >= 5 {
+				wsh.sendProcessingProgress(ws, uploadID, progress, "decompressing",
 					fmt.Sprintf("Decompressing... %d MB processed", written/1024/1024))
 				lastProgress = progress
 			}
@@ -763,7 +794,7 @@ func (wsh *WebSocketHandler) streamDecompressGzipWithProgress(ws *websocket.Conn
 			return err
 		}
 	}
-	
+
 	// Send final progress
 	wsh.sendProcessingProgress(ws, uploadID, 100, "decompressing", "Decompression complete")
 	return nil
@@ -779,7 +810,7 @@ func (wsh *WebSocketHandler) saveFileToStorage(filename, srcPath string) (*model
 	defer srcFile.Close()
 
 	// Use storage manager's Save method which handles everything
-	return wsh.handler.store.Save(filename, srcFile)
+	return wsh.store.Save(filename, srcFile)
 }
 
 func generateFileID() string {
