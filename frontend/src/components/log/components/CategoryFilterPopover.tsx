@@ -5,7 +5,7 @@
  * Shows a searchable list of categories with checkboxes.
  */
 import { useState, useRef, useEffect } from 'preact/hooks';
-import { SearchIcon, CloseIcon } from '../../icons';
+import { SearchIcon, XIcon } from '../../icons';
 
 export interface CategoryFilterPopoverProps {
   /** Available categories */
@@ -106,7 +106,7 @@ export function CategoryFilterPopover({
           onClick={onClose}
           aria-label="Close filter"
         >
-          <CloseIcon />
+          <XIcon />
         </button>
       </div>
 

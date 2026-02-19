@@ -23,8 +23,9 @@ describe('useVirtualScroll', () => {
       const { result } = renderHook(() => useVirtualScroll(defaultConfig));
 
       // With containerHeight=300 and rowHeight=28, visible count is ~11
-      // Plus buffer of 5 on each side
-      expect(result.current.state.endIndex).toBe(21);
+      // Plus buffer of 5 at end (but not at start since startIndex is 0)
+      // So endIndex = 0 + 11 + 5 = 16
+      expect(result.current.state.endIndex).toBe(16);
     });
 
     it('should calculate correct scroll height', () => {

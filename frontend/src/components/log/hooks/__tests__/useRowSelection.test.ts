@@ -82,8 +82,13 @@ describe('useRowSelection', () => {
     it('should select range from last clicked', () => {
       const { result } = renderHook(() => useRowSelection());
 
+      // Set anchor point
       act(() => {
-        result.current.actions.selectRow(2); // Set anchor
+        result.current.actions.selectRow(2);
+      });
+      
+      // Range select to 5
+      act(() => {
         result.current.actions.selectRange(5);
       });
 
@@ -97,8 +102,13 @@ describe('useRowSelection', () => {
     it('should work backwards', () => {
       const { result } = renderHook(() => useRowSelection());
 
+      // Set anchor point
       act(() => {
-        result.current.actions.selectRow(5); // Set anchor
+        result.current.actions.selectRow(5);
+      });
+      
+      // Range select backwards to 2
+      act(() => {
         result.current.actions.selectRange(2);
       });
 
@@ -119,17 +129,30 @@ describe('useRowSelection', () => {
       expect(result.current.state.selectionCount).toBe(1);
     });
 
-    it('should add to existing selection', () => {
+    it('should add range to current selection', () => {
       const { result } = renderHook(() => useRowSelection());
 
+      // Use toggleRow to add row 10 to selection (doesn't clear)
       act(() => {
         result.current.actions.toggleRow(10);
-        result.current.actions.selectRow(2);
+      });
+      
+      // Use toggleRow for row 2 as well to preserve selection
+      act(() => {
+        result.current.actions.toggleRow(2);
+      });
+      
+      // Range select from 2 to 5 (adds 2,3,4,5)
+      act(() => {
         result.current.actions.selectRange(5);
       });
 
+      // Row 10 should still be selected (from toggle)
+      // Rows 2,3,4,5 should be selected (from range)
       expect(result.current.state.selectedRows.has(10)).toBe(true);
       expect(result.current.state.selectedRows.has(2)).toBe(true);
+      expect(result.current.state.selectedRows.has(3)).toBe(true);
+      expect(result.current.state.selectedRows.has(4)).toBe(true);
       expect(result.current.state.selectedRows.has(5)).toBe(true);
     });
   });
@@ -248,11 +271,17 @@ describe('useRowSelection', () => {
       const plainEvent = { shiftKey: false, ctrlKey: false, metaKey: false } as MouseEvent;
       const shiftEvent = { shiftKey: true, ctrlKey: false, metaKey: false } as MouseEvent;
 
+      // First click to set anchor point
       act(() => {
         result.current.actions.handleRowClick(plainEvent, 2);
+      });
+      
+      // Shift+click to select range
+      act(() => {
         result.current.actions.handleRowClick(shiftEvent, 5);
       });
 
+      // Should select rows 2, 3, 4, 5 (4 rows total)
       expect(result.current.state.selectionCount).toBe(4);
     });
   });

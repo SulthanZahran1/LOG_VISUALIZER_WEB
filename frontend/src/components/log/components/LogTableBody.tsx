@@ -6,7 +6,7 @@
 import { useCallback, forwardRef } from 'preact/compat';
 import { LogTableRow } from './LogTableRow';
 import type { LogEntry } from '../../../models/types';
-import type { VirtualScrollState } from '../hooks/useVirtualScroll';
+
 
 export interface LogTableBodyProps {
   /** Entries to display */
@@ -27,10 +27,6 @@ export interface LogTableBodyProps {
   onScroll: (scrollTop: number) => void;
   /** Search query for highlighting */
   searchQuery?: string;
-  /** Whether search uses regex */
-  searchRegex?: boolean;
-  /** Whether search is case sensitive */
-  searchCaseSensitive?: boolean;
   /** Loading state */
   isLoading?: boolean;
 }
@@ -49,8 +45,6 @@ export const LogTableBody = forwardRef<HTMLDivElement, LogTableBodyProps>(
     onRowClick,
     onScroll,
     searchQuery,
-    searchRegex,
-    searchCaseSensitive,
     isLoading
   }, ref) {
     // Handle scroll events
@@ -113,8 +107,6 @@ export const LogTableBody = forwardRef<HTMLDivElement, LogTableBodyProps>(
                   rowHeight={rowHeight}
                   onClick={onRowClick}
                   searchQuery={searchQuery}
-                  searchRegex={searchRegex}
-                  searchCaseSensitive={searchCaseSensitive}
                 />
               );
             })}

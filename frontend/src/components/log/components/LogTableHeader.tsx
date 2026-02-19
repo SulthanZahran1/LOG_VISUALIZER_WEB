@@ -3,7 +3,7 @@
  * 
  * Renders the table header with sortable columns and filter buttons.
  */
-import { useState, useCallback } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import { FilterIcon, ChevronUpIcon, ChevronDownIcon } from '../../icons';
 import type { SortConfig } from '../utils/filterEngine';
 
@@ -35,10 +35,6 @@ export function LogTableHeader({
 }: LogTableHeaderProps) {
   const [showFilterPopover, setShowFilterPopover] = useState(false);
   const [filterButtonRect, setFilterButtonRect] = useState<DOMRect | null>(null);
-
-  const handleSort = useCallback((column: SortConfig['column']) => {
-    onSort(column);
-  }, [onSort]);
 
   const toggleSort = (column: SortConfig['column']) => {
     if (sort.column === column) {

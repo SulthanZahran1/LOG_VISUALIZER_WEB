@@ -24,10 +24,6 @@ export interface LogTableRowProps {
   onClick: (e: MouseEvent, index: number) => void;
   /** Search query for highlighting */
   searchQuery?: string;
-  /** Whether search uses regex */
-  searchRegex?: boolean;
-  /** Whether search is case sensitive */
-  searchCaseSensitive?: boolean;
   /** Custom color for the row */
   rowColor?: string;
 }
@@ -44,7 +40,6 @@ export const LogTableRow = memo(function LogTableRow({
   style,
   rowHeight,
   onClick,
-  searchQuery,
   rowColor
 }: LogTableRowProps) {
   const handleClick = (e: MouseEvent) => {

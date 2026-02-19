@@ -1,21 +1,13 @@
 /**
  * Log Table Module
  * 
- * A virtualized, sortable, filterable log table with multi-select support.
+ * Week 2 Refactoring Components (Ready for integration)
  * 
- * @example
- * import { LogTable } from './components/log';
- * 
- * function MyComponent() {
- *   return <LogTable />;
- * }
+ * These hooks and utilities are fully tested and ready to be integrated
+ * into the main LogTable component.
  */
 
-// Main component
-export { LogTable } from './LogTable';
-export { default } from './LogTable';
-
-// Hooks
+// Hooks (from Week 2 refactoring)
 export {
   useVirtualScroll,
   useRowSelection
@@ -29,7 +21,7 @@ export type {
   RowSelectionActions
 } from './hooks';
 
-// Utilities
+// Utilities (from Week 2 refactoring)
 export {
   filterEntries,
   sortEntries,
@@ -45,7 +37,8 @@ export type {
   SortConfig
 } from './utils';
 
-// Sub-components (for advanced usage)
+// Sub-components (from Week 2 refactoring - for advanced usage)
+// Note: These are not yet integrated into the main LogTable
 export {
   LogTableRow,
   CategoryFilterPopover,
@@ -61,3 +54,6 @@ export type {
   LogTableBodyProps,
   SelectionToolbarProps
 } from './components';
+
+// Note: Main LogTable component is in ./LogTable.tsx (original version)
+// Week 2 integration will merge these new hooks/components into it

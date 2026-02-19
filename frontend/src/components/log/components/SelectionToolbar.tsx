@@ -3,7 +3,7 @@
  * 
  * Shows when rows are selected, provides copy and clear actions.
  */
-import { CopyIcon, CloseIcon } from '../../icons';
+import { CopyIcon, XIcon } from '../../icons';
 
 export interface SelectionToolbarProps {
   /** Number of selected rows */
@@ -57,7 +57,7 @@ export function SelectionToolbar({
           title="Clear selection"
           aria-label="Clear selection"
         >
-          <CloseIcon />
+          <XIcon />
           <span>Clear</span>
         </button>
       </div>
