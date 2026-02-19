@@ -87,15 +87,11 @@ func main() {
 	// Create all handlers using the new modular structure
 	handlers := api.NewHandlers(deps)
 
-	// Legacy handler for WebSocket compatibility during migration
-	// TODO: Update WebSocket to use new handlers directly
-	h := api.NewHandler(fileStore, sessionMgr, uploadMgr, cfg.GetDataDir())
-
-	// Initialize WebSocket handler (using legacy handler for now)
-	wsHandler := api.NewWebSocketHandlerFromOld(h)
+	// Initialize WebSocket handler using new handler structure
+	wsHandler := api.NewWebSocketHandler(deps, handlers)
 
 	// Load default rules on startup
-	if err := h.LoadDefaultRules(); err != nil {
+	if err := handlers.Map.LoadDefaultRules(); err != nil {
 		fmt.Printf("Warning: failed to load default rules: %v\n", err)
 	} else {
 		fmt.Println("Default rules loaded successfully")
@@ -192,7 +188,7 @@ func main() {
 	apiGroup.POST("/files/upload/binary", handlers.Upload.HandleUploadBinary)
 	apiGroup.POST("/files/upload/chunk", handlers.Upload.HandleUploadChunk)
 	apiGroup.POST("/files/upload/complete", handlers.Upload.HandleCompleteUpload)
-	apiGroup.GET("/files/upload/:jobId/status", h.HandleUploadJobStream) // Legacy - not in new handlers yet
+	apiGroup.GET("/files/upload/:jobId/status", handlers.Upload.HandleUploadJobStream)
 	apiGroup.GET("/files/recent", handlers.Upload.HandleGetRecentFiles)
 	apiGroup.GET("/files/:id", handlers.Upload.HandleGetFile)
 

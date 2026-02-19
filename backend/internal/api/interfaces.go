@@ -20,6 +20,7 @@ type UploadHandler interface {
 	HandleGetFile(c echo.Context) error
 	HandleDeleteFile(c echo.Context) error
 	HandleRenameFile(c echo.Context) error
+	HandleUploadJobStream(c echo.Context) error
 }
 
 // ParseHandler handles parsing session operations
@@ -57,6 +58,7 @@ type MapHandler interface {
 	SetCurrentMap(mapID string)
 	GetCurrentRules() (string, *models.MapRules)
 	SetCurrentRules(rulesID string, rules *models.MapRules)
+	LoadDefaultRules() error
 }
 
 // CarrierHandler handles carrier tracking operations

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -50,6 +51,29 @@ func (h *MapHandlerImpl) SetCurrentRules(rulesID string, rules *models.MapRules)
 // GetCurrentRules returns the currently active rules
 func (h *MapHandlerImpl) GetCurrentRules() (string, *models.MapRules) {
 	return h.currentRulesID, h.currentRules
+}
+
+// LoadDefaultRules loads the default rules.yaml file if it exists
+func (h *MapHandlerImpl) LoadDefaultRules() error {
+	rulesPath := filepath.Join(h.dataDir, "defaults", "rules.yaml")
+	if _, err := os.Stat(rulesPath); os.IsNotExist(err) {
+		return nil // No default rules file
+	}
+
+	file, err := os.Open(rulesPath)
+	if err != nil {
+		return fmt.Errorf("failed to open default rules: %w", err)
+	}
+	defer file.Close()
+
+	rules, err := parser.ParseMapRulesFromReader(file)
+	if err != nil {
+		return fmt.Errorf("failed to parse default rules: %w", err)
+	}
+
+	h.currentRulesID = "default:rules.yaml"
+	h.currentRules = rules
+	return nil
 }
 
 // HandleGetMapLayout returns the currently active map layout

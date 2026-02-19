@@ -147,23 +147,6 @@ func NewWebSocketHandler(deps *Dependencies, handlers *Handlers) *WebSocketHandl
 	}
 }
 
-// Legacy compatibility: Create WebSocket handler from old Handler struct
-// TODO: Remove this once migration is complete
-func NewWebSocketHandlerFromOld(h *Handler) *WebSocketHandler {
-	return &WebSocketHandler{
-		store:      h.store,
-		sessionMgr: h.session,
-		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool {
-				return true
-			},
-			ReadBufferSize:  64 * 1024,
-			WriteBufferSize: 64 * 1024,
-		},
-		sessions: make(map[string]*UploadSession),
-	}
-}
-
 // HandleWebSocket upgrades HTTP connection to WebSocket and handles upload protocol
 func (wsh *WebSocketHandler) HandleWebSocket(c echo.Context) error {
 	ws, err := wsh.upgrader.Upgrade(c.Response(), c.Request(), nil)

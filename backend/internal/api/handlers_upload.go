@@ -3,6 +3,7 @@ package api
 
 import (
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -205,6 +206,19 @@ func (h *UploadHandlerImpl) HandleRenameFile(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, info)
+}
+
+// HandleUploadJobStream streams upload job status via SSE
+// TODO: Implement proper upload job streaming
+func (h *UploadHandlerImpl) HandleUploadJobStream(c echo.Context) error {
+	// Stub implementation - returns not implemented
+	c.Response().Header().Set("Content-Type", "text/event-stream")
+	c.Response().Header().Set("Cache-Control", "no-cache")
+	c.Response().Header().Set("Connection", "keep-alive")
+	
+	fmt.Fprintf(c.Response(), "data: %s\n\n", `{"status":"pending","progress":0}`)
+	c.Response().Flush()
+	return nil
 }
 
 // Request/Response types
