@@ -101,13 +101,13 @@
 - [ ] Decompose `FileUpload.tsx` components
 - [ ] Achieve 70%+ component coverage
 
-### Week 2: Frontend Component Decomposition  
-- [ ] Extract `useVirtualScroll` hook
-- [ ] Extract `useRowSelection` hook
-- [ ] Create `filterEngine` utilities
-- [ ] Decompose `LogTable.tsx` components
-- [ ] Decompose `FileUpload.tsx` components
-- [ ] Achieve 70%+ component coverage
+### Week 2: Frontend Component Decomposition  ✅ COMPLETE
+- [x] Extract `useVirtualScroll` hook
+- [x] Extract `useRowSelection` hook
+- [x] Create `filterEngine` utilities
+- [x] Decompose `LogTable.tsx` components
+- [x] Decompose `FileUpload.tsx` components
+- [x] Achieve 70%+ component coverage
 
 ### Week 3: Store Refactoring
 - [ ] Refactor `mapStore.ts` into modular structure

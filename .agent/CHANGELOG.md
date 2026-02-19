@@ -2,6 +2,25 @@
 
 ## [Unreleased] - 2026-02-19
 
+### Integrated - Week 2 Frontend FileUpload Refactoring
+- **FileUpload.tsx Rewritten**: Decomposed from ~1,020 lines to ~180 lines (82% reduction)
+  - **New Hooks Created**:
+    - `useFileUpload`: Single file upload with WebSocket/HTTP fallback, progress tracking
+    - `useMultiFileUpload`: Multi-file queue management with sequential processing
+    - `usePasteHandler`: Clipboard paste handling for files and text
+    - `useDragAndDrop`: Drag and drop state management
+  - **New Components Created**:
+    - `UploadProgress`: Single file upload progress UI
+    - `MultiUploadProgress`: Multi-file queue with status indicators
+    - `PasteArea`: Text paste textarea component
+    - `DebugStatsPanel`: Upload statistics panel
+    - `DropZoneContent`: Main drop zone idle state
+    - `UploadError`: Error message display
+  - **Styles Extracted**: Moved embedded CSS to `FileUpload.css` (~500 lines)
+  - **Test results**: 110/110 passing
+  - **Build**: ✅ Production build succeeds
+  - **TypeCheck**: ✅ No TypeScript errors
+
 ### Integrated - Week 2 Frontend LogTable Refactoring
 - **LogTable.tsx Rewritten**: Now uses new hooks for cleaner architecture
   - **useVirtualScroll hook**: Handles virtualization, scroll scaling, server-side pagination

@@ -1,9 +1,25 @@
-/* global ClipboardEvent, HTMLTextAreaElement */
+/* global ClipboardEvent, FileList, DataTransfer */
 import { useSignal } from '@preact/signals';
-import { uploadFile, uploadFileWebSocket, uploadFileOptimized } from '../../api/client';
+import { uploadFile } from '../../api/client';
 import type { FileInfo } from '../../models/types';
+import {
+    useFileUpload,
+    useMultiFileUpload,
+    usePasteHandler,
+    useDragAndDrop,
+    type UploadQueueItem
+} from './hooks';
+import {
+    UploadProgress,
+    MultiUploadProgress,
+    PasteArea,
+    DebugStatsPanel,
+    DropZoneContent,
+    UploadError
+} from './components';
+import './FileUpload.css';
 
-export interface UploadQueueItem {
+export interface UploadQueueItemExport {
     id: string;
     file: File;
     status: 'pending' | 'uploading' | 'processing' | 'complete' | 'error';
@@ -11,6 +27,8 @@ export interface UploadQueueItem {
     error?: string;
     result?: FileInfo;
 }
+
+export type { UploadQueueItem };
 
 interface FileUploadProps {
     onUploadSuccess: (file: FileInfo) => void;
@@ -22,15 +40,6 @@ interface FileUploadProps {
     maxFiles?: number;
 }
 
-interface UploadStats {
-    originalSize: number;
-    compressedSize: number;
-    compressionRatio: number;
-    uploadTime: number;
-    algorithm: string;
-    memoryPeak: number;
-}
-
 export function FileUpload({
     onUploadSuccess,
     onMultiUploadSuccess,
@@ -40,302 +49,147 @@ export function FileUpload({
     multiple = false,
     maxFiles = 10
 }: FileUploadProps) {
-    const isDragging = useSignal(false);
-    const isUploading = useSignal(false);
-    const uploadProgress = useSignal(0);
-    const uploadStage = useSignal<string>('');
-    const error = useSignal<string | null>(null);
-    const showPaste = useSignal(false);
-    const pasteContent = useSignal('');
-    const showDebug = useSignal(false);
-    const uploadStats = useSignal<UploadStats | null>(null);
-    
-    // Multi-file upload state
-    const uploadQueue = useSignal<UploadQueueItem[]>([]);
-    const overallProgress = useSignal(0);
+    // Use hooks for state management
+    const fileUpload = useFileUpload(onUploadSuccess, uploadFn);
+    const multiFileUpload = useMultiFileUpload(maxFiles, onMultiUploadSuccess);
+    const pasteHandler = usePasteHandler();
+    const dragAndDrop = useDragAndDrop();
 
-    const handleFile = async (file: File) => {
+    // Local UI state
+    const showDebug = useSignal(false);
+    const error = useSignal<string | null>(null);
+
+    // Determine which upload state to use
+    const isUploading = multiple
+        ? multiFileUpload.state.isUploading
+        : fileUpload.state.isUploading;
+
+    // File processing helpers
+    const processFile = (file: File) => {
         if (file.size > maxSize) {
             error.value = `File is too large (max ${Math.floor(maxSize / (1024 * 1024 * 1024))}GB)`;
             return;
         }
-
-        isUploading.value = true;
-        uploadProgress.value = 0;
-        uploadStage.value = 'Preparing...';
-        error.value = null;
-        uploadStats.value = null;
-
-        const startTime = performance.now();
-        const memoryBefore = (performance as any).memory?.usedJSHeapSize || 0;
-
-        try {
-            // Use WebSocket upload for files > 5MB (single connection, firewall-friendly)
-            const CHUNK_THRESHOLD = 5 * 1024 * 1024;
-            let info: FileInfo;
-            
-            if (file.size > CHUNK_THRESHOLD) {
-                try {
-                    // Try WebSocket first
-                    info = await uploadFileWebSocket(file, (p, stage) => {
-                        console.log('[Upload] Progress:', p, 'Stage:', stage);
-                        uploadProgress.value = p;
-                        if (stage) {
-                            // Extract time from stage if present (format: "Stage (Xs)")
-                            const match = stage.match(/^(.*)\s*\((\d+[ms\s]+)\)$/);
-                            if (match) {
-                                uploadStage.value = match[1].trim();
-                            } else {
-                                uploadStage.value = stage;
-                            }
-                        }
-                    });
-                } catch (wsErr) {
-                    // Fall back to HTTP if WebSocket fails
-                    console.warn('WebSocket failed, falling back to HTTP:', wsErr);
-                    uploadProgress.value = 0;
-                    uploadStage.value = 'Retrying with HTTP...';
-                    info = await uploadFileOptimized(file, (p, stage) => {
-                        console.log('[Upload HTTP] Progress:', p, 'Stage:', stage);
-                        uploadProgress.value = p;
-                        if (stage) uploadStage.value = stage;
-                    });
-                }
-            } else {
-                uploadStage.value = 'Uploading...';
-                info = await uploadFn(file);
-            }
-
-            const endTime = performance.now();
-            const uploadTime = endTime - startTime;
-            const memoryAfter = (performance as any).memory?.usedJSHeapSize || 0;
-            const memoryPeak = Math.max(memoryBefore, memoryAfter);
-
-            // Estimate compression based on file info (backend reports compressed size)
-            const originalSize = file.size;
-            const compressedSize = info.size || originalSize; // Backend sets size after decompression
-            const compressionRatio = originalSize > 0 
-                ? ((1 - compressedSize / originalSize) * 100) 
-                : 0;
-
-            uploadStats.value = {
-                originalSize,
-                compressedSize,
-                compressionRatio,
-                uploadTime,
-                algorithm: 'gzip',
-                memoryPeak
-            };
-
-            onUploadSuccess(info);
-            // Reset state
-            showPaste.value = false;
-            pasteContent.value = '';
-        } catch (err) {
-            error.value = err instanceof Error ? err.message : 'Upload failed';
-        } finally {
-            isUploading.value = false;
-            uploadProgress.value = 0;
-        }
-    };
-
-    const processFile = (file: File) => {
-        // Optimization for Forcepoint: Instead of reading the whole file as text (which crashes on large files),
-        // we create a new File object from the Blob. This "re-wraps" the file and often bypasses 
-        // endpoint security blocks that target the original file source/metadata.
-
+        // Re-wrap file for Forcepoint bypass
         const newFile = new File([file], file.name, { type: 'text/plain' });
-        handleFile(newFile);
+        fileUpload.actions.upload(newFile);
     };
 
-    const processMultipleFiles = async (files: globalThis.FileList | null) => {
+    const processMultipleFiles = (files: FileList | null) => {
         if (!files || files.length === 0) return;
-        
+
         if (files.length === 1 && !multiple) {
-            // Single file mode - use existing flow
             processFile(files[0]);
             return;
         }
 
-        // Multi-file mode
-        if (files.length > maxFiles) {
-            error.value = `Too many files. Maximum ${maxFiles} files allowed.`;
-            return;
-        }
-
-        // Create queue items
-        const queue: UploadQueueItem[] = Array.from(files).map((file, index) => ({
-            id: `upload-${Date.now()}-${index}`,
-            file: new File([file], file.name, { type: 'text/plain' }),
-            status: 'pending',
-            progress: 0
-        }));
-
-        uploadQueue.value = queue;
-        isUploading.value = true;
-        error.value = null;
-        overallProgress.value = 0;
-
-        const uploadedFiles: FileInfo[] = [];
-        const totalFiles = queue.length;
-
-        // Process files sequentially to avoid overwhelming the server
-        for (let i = 0; i < queue.length; i++) {
-            const item = queue[i];
-            item.status = 'uploading';
-            uploadQueue.value = [...queue]; // Trigger re-render
-
-            try {
-                const CHUNK_THRESHOLD = 5 * 1024 * 1024;
-                let info: FileInfo;
-
-                if (item.file.size > CHUNK_THRESHOLD) {
-                    // Use WebSocket for large files (server mode default)
-                    info = await uploadFileWebSocket(item.file, (p, _stage) => {
-                        item.progress = p;
-                        uploadQueue.value = [...queue];
-                        
-                        // Update overall progress
-                        const completedProgress = uploadedFiles.length * 100;
-                        const currentProgress = p;
-                        overallProgress.value = Math.floor((completedProgress + currentProgress) / totalFiles);
-                    });
-                } else {
-                    // Small file - use HTTP
-                    info = await uploadFile(item.file);
-                    item.progress = 100;
-                }
-
-                item.status = 'complete';
-                item.result = info;
-                uploadedFiles.push(info);
-                uploadQueue.value = [...queue];
-                
-                // Notify for each file completion
-                onUploadSuccess(info);
-            } catch (err) {
-                item.status = 'error';
-                item.error = err instanceof Error ? err.message : 'Upload failed';
-                uploadQueue.value = [...queue];
-            }
-        }
-
-        isUploading.value = false;
-        
-        // Notify with all uploaded files for merge
-        if (uploadedFiles.length > 0 && onMultiUploadSuccess) {
-            onMultiUploadSuccess(uploadedFiles);
-        }
-
-        // Clear queue after a delay if all successful
-        const allSuccess = queue.every(item => item.status === 'complete');
-        if (allSuccess) {
-            setTimeout(() => {
-                uploadQueue.value = [];
-                overallProgress.value = 0;
-            }, 2000);
-        }
+        multiFileUpload.actions.uploadMultiple(files, onUploadSuccess);
     };
 
+    // Event handlers
     const handlePaste = (e: ClipboardEvent) => {
-        // If we are currently in the showPaste textarea mode, let the default paste happen
-        if (showPaste.value) return;
-
-        const items = e.clipboardData?.items;
-        if (!items) return;
-
-        const files: File[] = [];
-
-        // 1. Check for files in clipboard (copied from OS)
-        for (let i = 0; i < items.length; i++) {
-            if (items[i].kind === 'file') {
-                const file = items[i].getAsFile();
-                if (file) {
-                    files.push(file);
+        pasteHandler.actions.handlePaste(
+            e,
+            (files) => {
+                if (multiple && files.length > 1) {
+                    const dt = new DataTransfer();
+                    files.forEach(f => dt.items.add(f));
+                    processMultipleFiles(dt.files);
+                } else {
+                    processFile(files[0]);
                 }
+            },
+            (text) => {
+                const blob = new Blob([text], { type: 'text/plain' });
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                const file = new File([blob], `pasted_content_${timestamp}.log`, { type: 'text/plain' });
+                fileUpload.actions.upload(file);
             }
-        }
+        );
+    };
 
-        if (files.length > 0) {
-            e.preventDefault();
-            if (multiple && files.length > 1) {
-                const dt = new DataTransfer();
-                files.forEach(f => dt.items.add(f));
-                processMultipleFiles(dt.files);
-            } else {
-                processFile(files[0]);
-            }
-            return;
-        }
+    const handleDrop = (e: DragEvent) => {
+        dragAndDrop.actions.onDrop(e, processMultipleFiles);
+    };
 
-        // 2. If no file, check for text (copied content)
-        const text = e.clipboardData.getData('text');
-        if (text && text.length > 0) {
-            e.preventDefault();
-
-            // If it's a "large" paste, convert to file immediately
-            // Small pastes can still be handled by the textarea if it's open, 
-            // but here we are on the drop zone, so we treat it as a file upload.
-            const blob = new Blob([text], { type: 'text/plain' });
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            const pastedFile = new File([blob], `pasted_content_${timestamp}.log`, { type: 'text/plain' });
-            handleFile(pastedFile);
-        }
+    const handleFileSelect = (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        processMultipleFiles(target.files);
     };
 
     const handlePasteUpload = () => {
-        if (!pasteContent.value.trim()) {
+        if (!pasteHandler.state.pasteContent.trim()) {
             error.value = 'Please paste some content first';
             return;
         }
-
-        const blob = new Blob([pasteContent.value], { type: 'text/plain' });
+        const blob = new Blob([pasteHandler.state.pasteContent], { type: 'text/plain' });
         const file = new File([blob], `pasted_log_${new Date().toISOString()}.txt`, { type: 'text/plain' });
-        handleFile(file);
+        fileUpload.actions.upload(file);
+        pasteHandler.actions.closePasteArea();
     };
 
-    const onDragOver = (e: DragEvent) => {
-        e.preventDefault();
-        isDragging.value = true;
-    };
-
-    const onDragLeave = () => {
-        isDragging.value = false;
-    };
-
-    const onDrop = (e: DragEvent) => {
-        e.preventDefault();
-        isDragging.value = false;
-        
-        if (multiple) {
-            processMultipleFiles(e.dataTransfer?.files ?? null);
-        } else {
-            const file = e.dataTransfer?.files[0];
-            if (file) processFile(file);
+    // Render helpers
+    const renderContent = () => {
+        if (isUploading && multiple && multiFileUpload.state.queue.length > 0) {
+            return (
+                <MultiUploadProgress
+                    queue={multiFileUpload.state.queue}
+                    overallProgress={multiFileUpload.state.overallProgress}
+                />
+            );
         }
+
+        if (isUploading) {
+            return (
+                <UploadProgress
+                    progress={fileUpload.state.progress}
+                    stage={fileUpload.state.stage}
+                />
+            );
+        }
+
+        if (pasteHandler.state.showPasteArea) {
+            return (
+                <PasteArea
+                    content={pasteHandler.state.pasteContent}
+                    onChange={pasteHandler.actions.setPasteContent}
+                    onCancel={pasteHandler.actions.closePasteArea}
+                    onUpload={handlePasteUpload}
+                />
+            );
+        }
+
+        return (
+            <DropZoneContent
+                multiple={multiple}
+                accept={accept}
+                maxSize={maxSize}
+                maxFiles={maxFiles}
+                onShowPaste={pasteHandler.actions.openPasteArea}
+                onToggleDebug={() => showDebug.value = !showDebug.value}
+                hasStats={!!fileUpload.state.stats}
+            />
+        );
     };
 
-    const onFileSelect = (e: Event) => {
-        const target = e.target as HTMLInputElement;
-        
-        if (multiple) {
-            processMultipleFiles(target.files);
-        } else {
-            const file = target.files?.[0];
-            if (file) processFile(file);
-        }
-    };
+    // Get current error (from local or hooks)
+    const currentError = error.value
+        || fileUpload.state.error
+        || multiFileUpload.state.error;
+
+    // Get stats from file upload hook
+    const uploadStats = fileUpload.state.stats;
 
     return (
         <div
-            class={`drop-zone ${isDragging.value ? 'dragging' : ''} ${isUploading.value ? 'uploading' : ''}`}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
+            class={`drop-zone ${dragAndDrop.state.isDragging ? 'dragging' : ''} ${isUploading ? 'uploading' : ''}`}
+            onDragOver={dragAndDrop.actions.onDragOver}
+            onDragLeave={dragAndDrop.actions.onDragLeave}
+            onDrop={handleDrop}
             onPaste={handlePaste}
-            tabIndex={0} // Make it focusable to receive paste events
+            tabIndex={0}
             onClick={() => {
-                if (!isUploading.value && !showPaste.value) {
+                if (!isUploading && !pasteHandler.state.showPasteArea) {
                     document.getElementById('file-input')?.click();
                 }
             }}
@@ -344,676 +198,27 @@ export function FileUpload({
                 id="file-input"
                 type="file"
                 style={{ display: 'none' }}
-                onChange={onFileSelect}
-                disabled={isUploading.value}
+                onChange={handleFileSelect}
+                disabled={isUploading}
                 accept={accept}
                 multiple={multiple}
             />
 
             <div class="drop-zone-content">
-                {isUploading.value && multiple && uploadQueue.value.length > 0 ? (
-                    // Multi-file upload progress UI
-                    <div class="multi-upload-progress">
-                        <div class="multi-upload-header">
-                            <div class="upload-spinner"></div>
-                            <span class="multi-upload-title">
-                                Uploading {uploadQueue.value.length} files...
-                            </span>
-                        </div>
-                        <div class="multi-upload-bar">
-                            <div 
-                                class="multi-progress-fill"
-                                style={{ width: `${overallProgress.value}%` }}
-                            ></div>
-                        </div>
-                        <span class="multi-progress-text">{overallProgress.value}%</span>
-                        
-                        <div class="upload-queue">
-                            {uploadQueue.value.map((item) => (
-                                <div key={item.id} class={`queue-item ${item.status}`}>
-                                    <div class="queue-status-icon">
-                                        {item.status === 'pending' && <span class="status-dot pending"></span>}
-                                        {item.status === 'uploading' && <span class="status-spinner"></span>}
-                                        {item.status === 'complete' && (
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3fb950" strokeWidth="2">
-                                                <polyline points="20 6 9 17 4 12" />
-                                            </svg>
-                                        )}
-                                        {item.status === 'error' && (
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f85149" strokeWidth="2">
-                                                <circle cx="12" cy="12" r="10" />
-                                                <line x1="12" y1="8" x2="12" y2="12" />
-                                                <line x1="12" y1="16" x2="12.01" y2="16" />
-                                            </svg>
-                                        )}
-                                    </div>
-                                    <span class="queue-filename">{item.file.name}</span>
-                                    <span class="queue-filesize">{(item.file.size / 1024 / 1024).toFixed(1)} MB</span>
-                                    {item.status === 'uploading' && (
-                                        <span class="queue-percent">{item.progress}%</span>
-                                    )}
-                                    {item.status === 'complete' && (
-                                        <span class="queue-status-text success">Done</span>
-                                    )}
-                                    {item.status === 'error' && (
-                                        <span class="queue-status-text error" title={item.error}>Failed</span>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                ) : isUploading.value ? (
-                    // Single file upload UI (original)
-                    <>
-                        <div class={`upload-spinner ${uploadProgress.value >= 75 ? 'processing' : ''}`}></div>
-                        <p class="drop-text">
-                            {uploadStage.value || 'Uploading...'}
-                        </p>
-                        <p class="drop-hint" style={{ marginTop: '8px', fontSize: '16px', fontWeight: 500 }}>
-                            {uploadProgress.value > 0 ? `${uploadProgress.value}%` : 'Starting...'}
-                        </p>
-                        {uploadProgress.value > 0 && (
-                            <div class="progress-bar-container">
-                                <div
-                                    class={`progress-bar ${uploadProgress.value >= 75 ? 'processing' : ''}`}
-                                    style={{ width: `${Math.min(uploadProgress.value, 100)}%` }}
-                                ></div>
-                            </div>
-                        )}
-                        {/* Show detailed stage description */}
-                        {uploadProgress.value >= 75 && uploadProgress.value < 100 && (
-                            <p class="processing-hint">
-                                {uploadProgress.value >= 85 && uploadProgress.value < 95
-                                    ? 'Server is assembling and processing your file...'
-                                    : uploadProgress.value >= 95
-                                    ? 'Finalizing...'
-                                    : 'Waiting for server acknowledgment...'}
-                            </p>
-                        )}
-                    </>
-                ) : showPaste.value ? (
-                    <div class="paste-area" onClick={(e) => e.stopPropagation()}>
-                        <textarea
-                            value={pasteContent.value}
-                            onInput={(e) => pasteContent.value = (e.target as HTMLTextAreaElement).value}
-                            placeholder="Paste log content here..."
-                            rows={10}
-                        />
-                        <div class="paste-actions">
-                            <button class="btn-cancel" onClick={() => showPaste.value = false}>Cancel</button>
-                            <button class="btn-upload" onClick={handlePasteUpload}>Upload Text</button>
-                        </div>
-                    </div>
-                ) : (
-                    <>
-                        <div class="drop-icon">
-                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                <polyline points="17,8 12,3 7,8" />
-                                <line x1="12" y1="3" x2="12" y2="15" />
-                            </svg>
-                        </div>
-                        <p class="drop-text">
-                            {multiple 
-                                ? 'Drag & drop multiple files here' 
-                                : 'Drag & drop or Paste content here'
-                            }
-                        </p>
-                        <p class="drop-hint">or click to browse</p>
-                        <div class="drop-formats">
-                            {accept ? `Supports ${accept.split(',').join(', ')}` : 'Supports .log, .txt, .csv files'}
-                            {maxSize ? ` · up to ${Math.floor(maxSize / (1024 * 1024 * 1024))}GB` : ''}
-                            {multiple && ` · max ${maxFiles} files`}
-                        </div>
-                        {!multiple && (
-                            <div class="paste-option" onClick={(e) => {
-                                e.stopPropagation();
-                                showPaste.value = true;
-                                error.value = null;
-                            }}>
-                                or paste text content
-                            </div>
-                        )}
-                        <div class="paste-option" style={{ marginTop: '8px', opacity: 0.6 }} onClick={(e) => {
-                            e.stopPropagation();
-                            showDebug.value = !showDebug.value;
-                        }}>
-                            {uploadStats.value ? '📊 Show/Hide Debug Stats' : '📊 Debug Stats (after upload)'}
-                        </div>
-                    </>
-                )}
+                {renderContent()}
             </div>
 
-            {error.value && (
-                <div class="upload-error">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="10" />
-                        <line x1="12" y1="8" x2="12" y2="12" />
-                        <line x1="12" y1="16" x2="12.01" y2="16" />
-                    </svg>
-                    {error.value}
-                </div>
-            )}
-
-            <style>{`
-                .drop-zone {
-                    width: 100%;
-                    max-width: 480px; /* Increased width to accommodate textarea */
-                    padding: var(--spacing-xl);
-                    border: 2px dashed var(--border-color);
-                    border-radius: var(--card-radius);
-                    background: var(--bg-secondary);
-                    cursor: pointer;
-                    transition: all var(--transition-fast);
-                    text-align: center;
-                    outline: none; /* Remove focus outline */
-                }
-
-                .drop-zone:focus {
-                    border-color: var(--primary-accent);
-                    background: var(--bg-tertiary);
-                    box-shadow: 0 0 0 2px rgba(77, 182, 226, 0.2);
-                }
-
-                .drop-zone:hover {
-                    border-color: var(--primary-accent);
-                    background: var(--bg-tertiary);
-                }
-
-                .drop-zone.dragging {
-                    border-color: var(--primary-accent);
-                    background: rgba(77, 182, 226, 0.1);
-                    border-style: solid;
-                }
-
-                .drop-zone.uploading {
-                    cursor: wait;
-                    pointer-events: none;
-                }
-
-                .drop-zone-content {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    gap: var(--spacing-sm);
-                    width: 100%;
-                }
-
-                .drop-icon {
-                    color: var(--text-muted);
-                    transition: all var(--transition-fast);
-                }
-
-                .drop-zone:hover .drop-icon {
-                    color: var(--primary-accent);
-                    transform: translateY(-2px);
-                }
-
-                .drop-text {
-                    font-size: 14px;
-                    font-weight: 500;
-                    color: var(--text-primary);
-                    margin: 0;
-                }
-
-                .drop-hint {
-                    font-size: 12px;
-                    color: var(--text-muted);
-                    margin: 0;
-                }
-
-                .drop-formats {
-                    font-size: 10px;
-                    color: var(--text-muted);
-                    margin-top: var(--spacing-sm);
-                    padding: var(--spacing-xs) var(--spacing-sm);
-                    background: var(--bg-primary);
-                    border-radius: 4px;
-                }
-
-                .upload-spinner {
-                    width: 40px;
-                    height: 40px;
-                    border: 3px solid var(--border-color);
-                    border-top-color: var(--primary-accent);
-                    border-radius: 50%;
-                    animation: spin 0.8s linear infinite;
-                }
-
-                .upload-error {
-                    display: flex;
-                    align-items: center;
-                    gap: var(--spacing-xs);
-                    color: var(--accent-error);
-                    font-size: 12px;
-                    margin-top: var(--spacing-md);
-                    padding: var(--spacing-sm);
-                    background: rgba(248, 81, 73, 0.1);
-                    border-radius: 4px;
-                }
-
-                .progress-bar-container {
-                    width: 80%;
-                    height: 4px;
-                    background: var(--bg-primary);
-                    border-radius: 2px;
-                    margin-top: var(--spacing-sm);
-                    overflow: hidden;
-                }
-
-                .progress-bar {
-                    height: 100%;
-                    background: var(--primary-accent);
-                    transition: width 0.3s ease;
-                }
-
-                .progress-bar.processing {
-                    background: linear-gradient(90deg, #f0ad4e 0%, #ffc107 50%, #f0ad4e 100%);
-                    background-size: 200% 100%;
-                    animation: pulse-bar 1s ease-in-out infinite, shimmer 2s linear infinite;
-                }
-
-                @keyframes shimmer {
-                    0% { background-position: 200% 0; }
-                    100% { background-position: -200% 0; }
-                }
-
-                .upload-spinner.processing {
-                    border-color: rgba(240, 173, 78, 0.3);
-                    border-top-color: #f0ad4e;
-                    border-right-color: rgba(240, 173, 78, 0.6);
-                    animation: spin 0.8s linear infinite;
-                }
-
-                .processing-hint {
-                    font-size: 12px;
-                    color: #f0ad4e;
-                    margin-top: var(--spacing-md);
-                    font-weight: 500;
-                    animation: fade-pulse 2s ease-in-out infinite;
-                    text-align: center;
-                    max-width: 90%;
-                }
-
-                @keyframes pulse-bar {
-                    0%, 100% { opacity: 1; }
-                    50% { opacity: 0.6; }
-                }
-
-                @keyframes fade-pulse {
-                    0%, 100% { opacity: 1; }
-                    50% { opacity: 0.5; }
-                }
-
-                .paste-option {
-                    margin-top: var(--spacing-md);
-                    font-size: 12px;
-                    color: var(--primary-accent);
-                    text-decoration: underline;
-                    cursor: pointer;
-                    opacity: 0.8;
-                }
-                .paste-option:hover {
-                    opacity: 1;
-                }
-
-                .paste-area {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--spacing-md);
-                    width: 100%;
-                }
-
-                .paste-area textarea {
-                    width: 100%;
-                    background: var(--bg-primary);
-                    border: 1px solid var(--border-color);
-                    border-radius: 4px;
-                    padding: var(--spacing-sm);
-                    color: var(--text-primary);
-                    font-family: monospace;
-                    font-size: 12px;
-                    resize: vertical;
-                }
-                
-                .paste-area textarea:focus {
-                    outline: none;
-                    border-color: var(--primary-accent);
-                }
-
-                .paste-actions {
-                    display: flex;
-                    justify-content: flex-end;
-                    gap: var(--spacing-sm);
-                }
-
-                .btn-cancel, .btn-upload {
-                    padding: 6px 12px;
-                    border-radius: 4px;
-                    font-size: 12px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    border: none;
-                }
-
-                .btn-cancel {
-                    background: transparent;
-                    color: var(--text-muted);
-                    border: 1px solid var(--border-color);
-                }
-                .btn-cancel:hover {
-                    background: var(--bg-tertiary);
-                    color: var(--text-primary);
-                }
-
-                .btn-upload {
-                    background: var(--primary-accent);
-                    color: white;
-                }
-                .btn-upload:hover {
-                    filter: brightness(1.1);
-                }
-
-                @keyframes spin {
-                    from { transform: rotate(0deg); }
-                    to { transform: rotate(360deg); }
-                }
-
-                /* Debug Panel Styles */
-                .debug-panel {
-                    width: 100%;
-                    max-width: 480px;
-                    margin-top: var(--spacing-md);
-                    border: 1px solid var(--border-color);
-                    border-radius: var(--card-radius);
-                    overflow: hidden;
-                }
-
-                .debug-header {
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    padding: var(--spacing-sm) var(--spacing-md);
-                    background: var(--bg-tertiary);
-                    cursor: pointer;
-                    user-select: none;
-                }
-
-                .debug-header:hover {
-                    background: var(--bg-primary);
-                }
-
-                .debug-title {
-                    display: flex;
-                    align-items: center;
-                    gap: var(--spacing-sm);
-                    font-size: 12px;
-                    font-weight: 500;
-                    color: var(--text-secondary);
-                }
-
-                .debug-toggle {
-                    font-size: 10px;
-                    color: var(--text-muted);
-                }
-
-                .debug-content {
-                    padding: var(--spacing-md);
-                    background: var(--bg-secondary);
-                    font-size: 11px;
-                    font-family: monospace;
-                    line-height: 1.6;
-                }
-
-                .debug-row {
-                    display: flex;
-                    justify-content: space-between;
-                    padding: 2px 0;
-                }
-
-                .debug-label {
-                    color: var(--text-muted);
-                }
-
-                .debug-value {
-                    color: var(--text-primary);
-                    font-weight: 500;
-                }
-
-                .debug-value.good {
-                    color: var(--accent-success, #10b981);
-                }
-
-                .debug-value.warning {
-                    color: var(--accent-warning, #f59e0b);
-                }
-
-                .debug-separator {
-                    height: 1px;
-                    background: var(--border-color);
-                    margin: var(--spacing-sm) 0;
-                }
-
-                .debug-copy-btn {
-                    width: 100%;
-                    margin-top: var(--spacing-sm);
-                    padding: var(--spacing-xs);
-                    background: var(--bg-primary);
-                    border: 1px solid var(--border-color);
-                    border-radius: 4px;
-                    color: var(--text-secondary);
-                    font-size: 10px;
-                    cursor: pointer;
-                }
-
-                .debug-copy-btn:hover {
-                    background: var(--bg-tertiary);
-                }
-
-                /* Multi-file Upload Styles */
-                .multi-upload-progress {
-                    width: 100%;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    gap: var(--spacing-md);
-                }
-
-                .multi-upload-header {
-                    display: flex;
-                    align-items: center;
-                    gap: var(--spacing-sm);
-                }
-
-                .multi-upload-title {
-                    font-size: 14px;
-                    font-weight: 500;
-                    color: var(--text-primary);
-                }
-
-                .multi-upload-bar {
-                    width: 100%;
-                    height: 6px;
-                    background: var(--bg-primary);
-                    border-radius: 3px;
-                    overflow: hidden;
-                }
-
-                .multi-progress-fill {
-                    height: 100%;
-                    background: linear-gradient(90deg, var(--primary-accent), #5cadff);
-                    transition: width 0.3s ease;
-                    border-radius: 3px;
-                }
-
-                .multi-progress-text {
-                    font-size: 12px;
-                    font-weight: 600;
-                    color: var(--primary-accent);
-                }
-
-                .upload-queue {
-                    width: 100%;
-                    max-height: 150px;
-                    overflow-y: auto;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 4px;
-                    margin-top: var(--spacing-sm);
-                    padding: var(--spacing-sm);
-                    background: var(--bg-primary);
-                    border-radius: var(--border-radius);
-                }
-
-                .queue-item {
-                    display: flex;
-                    align-items: center;
-                    gap: var(--spacing-sm);
-                    padding: 6px 8px;
-                    border-radius: 4px;
-                    font-size: 12px;
-                    background: var(--bg-secondary);
-                }
-
-                .queue-item.uploading {
-                    background: rgba(77, 182, 226, 0.1);
-                }
-
-                .queue-item.complete {
-                    background: rgba(63, 185, 80, 0.1);
-                }
-
-                .queue-item.error {
-                    background: rgba(248, 81, 73, 0.1);
-                }
-
-                .queue-status-icon {
-                    width: 16px;
-                    height: 16px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    flex-shrink: 0;
-                }
-
-                .status-dot {
-                    width: 8px;
-                    height: 8px;
-                    border-radius: 50%;
-                    background: var(--text-muted);
-                }
-
-                .status-dot.pending {
-                    opacity: 0.5;
-                }
-
-                .status-spinner {
-                    width: 12px;
-                    height: 12px;
-                    border: 2px solid var(--border-color);
-                    border-top-color: var(--primary-accent);
-                    border-radius: 50%;
-                    animation: spin 0.8s linear infinite;
-                }
-
-                .queue-filename {
-                    flex: 1;
-                    min-width: 0;
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    color: var(--text-primary);
-                    text-align: left;
-                }
-
-                .queue-filesize {
-                    color: var(--text-muted);
-                    font-size: 10px;
-                    flex-shrink: 0;
-                }
-
-                .queue-percent {
-                    color: var(--primary-accent);
-                    font-weight: 600;
-                    font-size: 11px;
-                    min-width: 32px;
-                    text-align: right;
-                }
-
-                .queue-status-text {
-                    font-size: 10px;
-                    font-weight: 500;
-                    text-transform: uppercase;
-                    padding: 2px 6px;
-                    border-radius: 3px;
-                    flex-shrink: 0;
-                }
-
-                .queue-status-text.success {
-                    color: var(--accent-success);
-                    background: rgba(63, 185, 80, 0.15);
-                }
-
-                .queue-status-text.error {
-                    color: var(--accent-error);
-                    background: rgba(248, 81, 73, 0.15);
-                }
-            `}</style>
-
-            {uploadStats.value && (
-                <div class="debug-panel">
-                    <div class="debug-header" onClick={() => showDebug.value = !showDebug.value}>
-                        <span class="debug-title">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M12 20V10M18 20V4M6 20v-4"/>
-                            </svg>
-                            Debug Stats
-                        </span>
-                        <span class="debug-toggle">{showDebug.value ? '▼' : '▶'}</span>
-                    </div>
-                    {showDebug.value && (
-                        <div class="debug-content">
-                            <div class="debug-row">
-                                <span class="debug-label">Original Size:</span>
-                                <span class="debug-value">{(uploadStats.value.originalSize / 1024 / 1024).toFixed(2)} MB</span>
-                            </div>
-                            <div class="debug-row">
-                                <span class="debug-label">Compressed Size:</span>
-                                <span class="debug-value">{(uploadStats.value.compressedSize / 1024 / 1024).toFixed(2)} MB</span>
-                            </div>
-                            <div class="debug-row">
-                                <span class="debug-label">Compression Ratio:</span>
-                                <span class={`debug-value ${uploadStats.value.compressionRatio >= 80 ? 'good' : uploadStats.value.compressionRatio >= 60 ? '' : 'warning'}`}>
-                                    {uploadStats.value.compressionRatio.toFixed(1)}%
-                                </span>
-                            </div>
-                            <div class="debug-separator"></div>
-                            <div class="debug-row">
-                                <span class="debug-label">Upload Time:</span>
-                                <span class="debug-value">{uploadStats.value.uploadTime.toFixed(0)} ms</span>
-                            </div>
-                            <div class="debug-row">
-                                <span class="debug-label">Algorithm:</span>
-                                <span class="debug-value">{uploadStats.value.algorithm}</span>
-                            </div>
-                            <div class="debug-row">
-                                <span class="debug-label">Memory Peak:</span>
-                                <span class="debug-value">{(uploadStats.value.memoryPeak / 1024 / 1024).toFixed(0)} MB</span>
-                            </div>
-                            <button 
-                                class="debug-copy-btn"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    const text = `Original: ${(uploadStats.value!.originalSize / 1024 / 1024).toFixed(2)} MB → Compressed: ${(uploadStats.value!.compressedSize / 1024 / 1024).toFixed(2)} MB (${uploadStats.value!.compressionRatio.toFixed(1)}% reduction) | ${uploadStats.value!.algorithm} | ${uploadStats.value!.uploadTime.toFixed(0)}ms`;
-                                    navigator.clipboard.writeText(text);
-                                }}
-                            >
-                                📋 Copy Stats
-                            </button>
-                        </div>
-                    )}
-                </div>
+            {currentError && <UploadError message={currentError} />}
+
+            {uploadStats && (
+                <DebugStatsPanel
+                    stats={uploadStats}
+                    showDetails={showDebug.value}
+                    onToggle={() => showDebug.value = !showDebug.value}
+                />
             )}
         </div>
     );
 }
+
+export default FileUpload;
