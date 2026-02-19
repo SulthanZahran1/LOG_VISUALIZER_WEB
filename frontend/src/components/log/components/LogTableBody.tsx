@@ -94,19 +94,18 @@ export const LogTableBody = forwardRef<HTMLDivElement, LogTableBodyProps>(
             {entries.map((entry, i) => {
               const actualIndex = startIndex + i;
               const isSelected = selectedRows.has(actualIndex);
-              const isEven = actualIndex % 2 === 0;
 
               return (
                 <LogTableRow
                   key={`${entry.timestamp}-${entry.deviceId}-${entry.signalName}-${actualIndex}`}
                   entry={entry}
                   index={actualIndex}
+                  columnOrder={['timestamp', 'deviceId', 'signalName', 'value', 'type', 'category']}
+                  columnWidths={{ ts: 220, dev: 180, sig: 250, cat: 120, val: 150, type: 100 }}
                   isSelected={isSelected}
-                  isEven={isEven}
-                  style={{ position: 'absolute', top: actualIndex * rowHeight }}
-                  rowHeight={rowHeight}
-                  onClick={onRowClick}
                   searchQuery={searchQuery}
+                  rowHeight={rowHeight}
+                  onMouseDown={(index, e) => onRowClick?.(e, index)}
                 />
               );
             })}

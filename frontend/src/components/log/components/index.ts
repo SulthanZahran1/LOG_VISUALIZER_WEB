@@ -18,3 +18,12 @@ export type { LogTableBodyProps } from './LogTableBody';
 
 export { SelectionToolbar } from './SelectionToolbar';
 export type { SelectionToolbarProps } from './SelectionToolbar';
+
+export { HighlightText } from './HighlightText';
+export type { HighlightTextProps } from './HighlightText';
+
+export { LogTableToolbar } from './LogTableToolbar';
+export type { LogTableToolbarProps } from './LogTableToolbar';
+
+export { LogTableViewport } from './LogTableViewport';
+export type { LogTableViewportProps } from './LogTableViewport';

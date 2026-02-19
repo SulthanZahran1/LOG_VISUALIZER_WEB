@@ -2,6 +2,28 @@
 
 ## [Unreleased] - 2026-02-19
 
+### Integrated - Week 2 Frontend LogTable Refactoring
+- **LogTable.tsx Rewritten**: Now uses new hooks for cleaner architecture
+  - **useVirtualScroll hook**: Handles virtualization, scroll scaling, server-side pagination
+  - **useRowSelection hook**: Handles multi-row selection, range select, keyboard nav
+  - **Preserved all features**: Column drag-drop, color coding, context menu, Jump to Time
+  - **Lines reduced**: ~1,160 → ~850 lines (26% reduction)
+  - **Test results**: 110/110 passing
+  - **Build**: ✅ Production build succeeds
+
+### Granular Decomposition (Additional)
+- **New Hooks Created**:
+  - `useColumnManagement`: Handles column drag-drop, resize, ordering
+  - `useSearchFilter`: Manages search query with debouncing, filter toggles
+  - `useKeyboardShortcuts`: Handles keyboard navigation and shortcuts
+- **New Components Created**:
+  - `LogTableToolbar`: Extracted toolbar with search, filters, actions
+  - `LogTableViewport`: Virtualized scrollable viewport
+  - `HighlightText`: Search highlight component with regex support
+- **New Utilities**:
+  - `colorCoding.ts`: Pure functions for row color coding computation
+- **Architecture**: LogTable now composes from 8+ focused hooks/components
+
 ### Integrated - Week 1 Backend Handlers Refactoring
 - **Modular Handler Architecture**: Migrated `main.go` to use the new handler structure
   - **New Files**: 14 handler files created (`handlers_*.go`, `interfaces.go`, `errors.go`, `routes.go`)

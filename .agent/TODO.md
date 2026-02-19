@@ -88,13 +88,16 @@
 - [x] **TESTED**: **28/28 tests passing (100%)**
 - [x] **VERIFIED**: Server builds and runs successfully
 
-### Week 2: Frontend Component Decomposition  🚧 READY FOR INTEGRATION
+### Week 2: Frontend Component Decomposition  ✅ COMPLETE
 - [x] Extract `useVirtualScroll` hook
 - [x] Extract `useRowSelection` hook
 - [x] Create `filterEngine` utilities
 - [x] Decompose `LogTable.tsx` components
-- [ ] **PENDING**: Integrate refactored LogTable into main app
-- [ ] **PENDING**: Run frontend tests to verify integration
+- [x] **INTEGRATED**: Rewrote `LogTable.tsx` to use new hooks
+- [x] **VERIFIED**: All 110 tests passing, build succeeds
+- [x] **GRANULAR**: Created useColumnManagement, useSearchFilter, useKeyboardShortcuts
+- [x] **GRANULAR**: Created LogTableToolbar, LogTableViewport, HighlightText components
+- [x] **GRANULAR**: Extracted colorCoding utilities
 - [ ] Decompose `FileUpload.tsx` components
 - [ ] Achieve 70%+ component coverage
 
