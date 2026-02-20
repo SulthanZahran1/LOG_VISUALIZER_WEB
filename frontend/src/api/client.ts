@@ -142,11 +142,13 @@ export async function getParseStatus(sessionId: string): Promise<ParseSession> {
 }
 
 export async function getParseSignals(sessionId: string): Promise<string[]> {
-    return request<string[]>(`/parse/${sessionId}/signals`);
+    const res = await request<string[]>(`/parse/${sessionId}/signals`);
+    return Array.isArray(res) ? res : [];
 }
 
 export async function getParseCategories(sessionId: string): Promise<string[]> {
-    return request<string[]>(`/parse/${sessionId}/categories`);
+    const res = await request<string[]>(`/parse/${sessionId}/categories`);
+    return Array.isArray(res) ? res : [];
 }
 
 export async function getParseSignalTypes(sessionId: string): Promise<Record<string, SignalType>> {
@@ -297,6 +299,9 @@ export async function getParseChunk(
         method: 'POST',
         body: body ? JSON.stringify(body) : undefined,
     });
+    if (!Array.isArray(res)) {
+        return [];
+    }
     return res.map(transformEntry);
 }
 
@@ -310,6 +315,9 @@ export async function getValuesAtTime(
         url += `&signals=${encodeURIComponent(signals.join(','))}`;
     }
     const res = await request<RawLogEntry[]>(url);
+    if (!Array.isArray(res)) {
+        return [];
+    }
     return res.map(transformEntry);
 }
 
