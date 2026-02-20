@@ -31,3 +31,7 @@ backend/server
 dist/
 
 *.xml
+
+# Log files
+*.logs
+backend.logs
