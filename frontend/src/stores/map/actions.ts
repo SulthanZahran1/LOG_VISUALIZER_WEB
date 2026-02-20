@@ -226,6 +226,10 @@ export async function linkSignalLogSession(
             const ruleSignalNames = [...new Set(rules.map(r => r.signal))];
             const signalFilter = ruleSignalNames.length > 0 ? ruleSignalNames : undefined;
             const initialEntries = await getValuesAtTime(sessionId, Math.round(effectiveStartTime), signalFilter);
+            if (!Array.isArray(initialEntries)) {
+                console.warn('getValuesAtTime returned non-array value:', initialEntries);
+                return;
+            }
             const signalEntries = initialEntries.map(e => ({
                 deviceId: e.deviceId,
                 signalName: e.signalName,

@@ -101,6 +101,11 @@ export function initServerSideFetchEffect(): void {
                 // Only apply if this is still the latest fetch
                 if (gen !== fetchGeneration) return;
 
+                if (!Array.isArray(entries)) {
+                    console.warn('getValuesAtTime returned non-array value:', entries);
+                    return;
+                }
+
                 const signalEntries = entries.map(e => ({
                     deviceId: e.deviceId,
                     signalName: e.signalName,
