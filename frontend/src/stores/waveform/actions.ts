@@ -201,8 +201,8 @@ export async function updateWaveformEntries(): Promise<void> {
         if (!isLarge) {
             setHasFetched(true);
         }
-    } catch (err: any) {
-        if (err.status === 404) {
+    } catch (err: unknown) {
+        if ((err as { status?: number }).status === 404) {
             console.warn('Session not found on server during updateWaveformEntries, clearing local state');
             clearSession();
         } else {

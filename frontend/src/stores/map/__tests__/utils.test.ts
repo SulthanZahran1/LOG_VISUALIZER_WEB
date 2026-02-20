@@ -48,14 +48,14 @@ describe('mapStore Utils', () => {
         });
 
         it('should use fallback heuristic when no rules match', () => {
-            mapRules.value = { deviceToUnit: [] } as MapRules;
+            mapRules.value = { deviceToUnit: [], rules: [], defaultColor: '#808080' } as MapRules;
 
             // Pattern: "...Belts.B1ACNV13301-102@B13" -> "B1ACNV13301-102"
             expect(applyDeviceMapping('Belts.B1ACNV13301-102@B13')).toBe('B1ACNV13301-102');
         });
 
         it('should return deviceId as-is when no pattern matches', () => {
-            mapRules.value = { deviceToUnit: [] } as MapRules;
+            mapRules.value = { deviceToUnit: [], rules: [], defaultColor: '#808080' } as MapRules;
 
             expect(applyDeviceMapping('SimpleDevice')).toBe('SimpleDevice');
         });

@@ -4,6 +4,7 @@
  */
 
 import type { FileInfo, ParseSession, HealthResponse, LogEntry, SignalType } from '../models/types';
+import type { MapLayout, MapObject } from '../stores/map/types';
 export { uploadFileOptimized, CONFIG as UPLOAD_CONFIG } from './upload';
 export {
     uploadFileWebSocket,
@@ -416,8 +417,15 @@ export function streamParseEntries(
 }
 
 // Map
-export async function getMapLayout(): Promise<any> {
-    return request<any>('/map/layout');
+export interface MapLayoutResponse {
+    layout?: MapLayout;
+    name?: string;
+    mapId?: string;
+    objects?: Record<string, MapObject>;
+}
+
+export async function getMapLayout(): Promise<MapLayoutResponse> {
+    return request<MapLayoutResponse>('/map/layout');
 }
 
 export async function uploadMapLayout(file: File): Promise<FileInfo> {
@@ -527,8 +535,14 @@ export async function getDefaultMaps(): Promise<DefaultMapsResponse> {
     return request<DefaultMapsResponse>('/map/defaults');
 }
 
-export async function loadDefaultMap(name: string): Promise<any> {
-    return request<any>('/map/defaults/load', {
+export interface LoadDefaultMapResponse {
+    success: boolean;
+    mapId?: string;
+    name?: string;
+}
+
+export async function loadDefaultMap(name: string): Promise<LoadDefaultMapResponse> {
+    return request<LoadDefaultMapResponse>('/map/defaults/load', {
         method: 'POST',
         body: JSON.stringify({ name }),
     });

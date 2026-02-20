@@ -22,6 +22,7 @@ import {
     clearCaches,
     signalHistory, latestSignalValues, mapUseServerSide
 } from './state';
+import type { MapObject, MapLayout } from './types';
 
 
 // ======================
@@ -33,14 +34,16 @@ export async function fetchMapLayout(): Promise<void> {
     mapError.value = null;
     try {
         const data = await getMapLayout();
-        if (data?.objects) {
-            const allObjs = Object.values(data.objects);
-            const withUnitId = allObjs.filter((o: any) => o.unitId);
-            console.log('[fetchMapLayout] Total objects:', allObjs.length,
-                'with unitId:', withUnitId.length,
-                'sample unitIds:', withUnitId.slice(0, 5).map((o: any) => o.unitId));
+        // The API may return layout directly or wrapped in a 'layout' field
+        const layoutData = data.layout ?? data;
+        if (layoutData?.objects) {
+            const allObjs = Object.values(layoutData.objects);
+            const withUnitId = allObjs.filter((o: MapObject) => o.unitId);
+            void withUnitId; // Used for debug logging
+            //     'with unitId:', withUnitId.length,
+            //     'sample unitIds:', withUnitId.slice(0, 5).map((o: MapObject) => o.unitId));
         }
-        mapLayout.value = data;
+        mapLayout.value = layoutData as MapLayout;
     } catch (err: unknown) {
         mapError.value = err instanceof Error ? err.message : 'Failed to fetch map layout';
     } finally {
@@ -108,8 +111,10 @@ export async function loadDefaultMapByName(name: string): Promise<void> {
     mapLoading.value = true;
     mapError.value = null;
     try {
-        const layout = await loadDefaultMap(name);
-        mapLayout.value = layout;
+        const response = await loadDefaultMap(name);
+        if (response.mapId) {
+            await fetchMapLayout();
+        }
     } catch (err: unknown) {
         console.error('Failed to load default map:', err);
         mapError.value = err instanceof Error ? err.message : 'Failed to load default map';
@@ -169,7 +174,7 @@ export async function toggleCarrierTracking(): Promise<void> {
 export interface SignalLogEntry {
     deviceId: string;
     signalName: string;
-    value: any;
+    value: boolean | string | number;
     timestamp?: string | number;
 }
 
@@ -185,9 +190,8 @@ export async function linkSignalLogSession(
     signalLogFileName.value = sessionName;
     signalLogEntryCount.value = totalCount ?? entries.length;
 
-    console.log('[linkSignalLogSession] sessionId:', sessionId, 'totalCount:', totalCount,
-        'entries.length:', entries.length, 'entryCount set to:', signalLogEntryCount.value,
-        'mapUseServerSide:', mapUseServerSide.value);
+    //     'entries.length:', entries.length, 'entryCount set to:', signalLogEntryCount.value,
+    //     'mapUseServerSide:', mapUseServerSide.value);
 
     clearCaches();
     updateSignalValues(entries);

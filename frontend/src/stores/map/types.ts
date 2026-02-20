@@ -35,7 +35,7 @@ export interface UnitColorResult {
 
 export interface SignalHistoryEntry {
     timestamp: number;
-    value: any;
+    value: unknown;
 }
 
 // Re-export API types for convenience

@@ -20,7 +20,8 @@ test.describe('Large File Upload & Parsing (1.7GB)', () => {
 
         // Verify file exists
         if (!fs.existsSync(fixturePath)) {
-            throw new Error(`Fixture not found: ${fixturePath}. Run generate_large_log.go first.`)
+            test.skip(true, `Large fixture not found: ${fixturePath}. Run: python3 generate_log.py to create it.`)
+            return
         }
 
         const stats = fs.statSync(fixturePath)

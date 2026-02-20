@@ -9,7 +9,7 @@ test.describe('Transition View', () => {
 
     test('Transitions button is visible and disabled without session', async ({ page }) => {
         // Find the Transitions nav button
-        const transitionsBtn = page.locator('.nav-grid button').filter({ hasText: 'Transitions' })
+        const transitionsBtn = page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' })
         await expect(transitionsBtn).toBeVisible()
 
         // Should be disabled without a session
@@ -30,7 +30,7 @@ test.describe('Transition View', () => {
             await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
 
             // Click Transitions button
-            const transitionsBtn = page.locator('.nav-grid button').filter({ hasText: 'Transitions' })
+            const transitionsBtn = page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' })
             await expect(transitionsBtn).not.toHaveAttribute('disabled', '')
             await transitionsBtn.click()
 
@@ -52,7 +52,7 @@ test.describe('Transition View', () => {
 
             // Navigate to Transitions
             await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-            await page.locator('.nav-grid button').filter({ hasText: 'Transitions' }).click()
+            await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
 
             await expect(page.locator('.transition-view')).toBeVisible()
 
@@ -73,7 +73,7 @@ test.describe('Transition View', () => {
             await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 10000 })
 
             await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-            await page.locator('.nav-grid button').filter({ hasText: 'Transitions' }).click()
+            await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
 
             // Click Add Rule in empty state
             await page.locator('.empty-state .primary-btn').click()
@@ -98,7 +98,7 @@ test.describe('Transition View', () => {
             await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 10000 })
 
             await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-            await page.locator('.nav-grid button').filter({ hasText: 'Transitions' }).click()
+            await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
 
             // Click Add Rule
             await page.locator('.empty-state .primary-btn').click()
@@ -140,7 +140,7 @@ test.describe('Transition View', () => {
             await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 10000 })
 
             await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-            await page.locator('.nav-grid button').filter({ hasText: 'Transitions' }).click()
+            await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
 
             await expect(page.locator('.view-toolbar')).toBeVisible()
 
@@ -167,7 +167,7 @@ test.describe('Transition View', () => {
             await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 10000 })
 
             await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-            await page.locator('.nav-grid button').filter({ hasText: 'Transitions' }).click()
+            await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
 
             // Click add button in sidebar header
             await page.locator('.sidebar-header .icon-btn').click()
@@ -186,7 +186,7 @@ test.describe('Transition View', () => {
             await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 10000 })
 
             await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-            await page.locator('.nav-grid button').filter({ hasText: 'Transitions' }).click()
+            await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
 
             await page.locator('.sidebar-header .icon-btn').click()
             await expect(page.locator('.modal-overlay')).toBeVisible()
@@ -207,7 +207,7 @@ test.describe('Transition View', () => {
             await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 10000 })
 
             await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-            await page.locator('.nav-grid button').filter({ hasText: 'Transitions' }).click()
+            await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
 
             // Filter dropdown should be visible
             await expect(page.locator('.filter-controls select')).toBeVisible()

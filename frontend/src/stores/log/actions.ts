@@ -130,9 +130,9 @@ async function pollStatus(sessionId: string, abortSignal: AbortSignal): Promise<
             if (!abortSignal.aborted) {
                 setTimeout(poll, 1000);
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             if (abortSignal.aborted) return;
-            if (err.status === 404) {
+            if ((err as { status?: number }).status === 404) {
                 console.warn('Session not found on server, clearing local state');
                 clearSession();
             } else {
@@ -239,7 +239,6 @@ export async function fetchEntries(page: number, pageSize: number): Promise<void
     if (useServerSide.value) {
         const cached = serverPageCache.get(cacheKey);
         if (cached && Date.now() - cached.timestamp < 30000) {
-            console.log('[fetchEntries] Using cached data for key:', cacheKey);
             logEntries.value = cached.entries;
             serverPageOffset.value = (page - 1) * pageSize;
             return;
@@ -259,7 +258,6 @@ export async function fetchEntries(page: number, pageSize: number): Promise<void
             isLoadingLog.value = true;
         }
 
-        console.log('[fetchEntries] Fetching from server - page:', page, 'filters:', filters);
         const res = await getParseEntries(
             currentSession.value.id,
             page,
@@ -270,7 +268,6 @@ export async function fetchEntries(page: number, pageSize: number): Promise<void
 
         if (fetchController !== currentFetchAbortController) return;
 
-        console.log('[fetchEntries] Server returned:', res.entries.length, 'entries, total:', res.total);
 
         if (useServerSide.value) {
             serverPageCache.set(cacheKey, {
@@ -290,9 +287,9 @@ export async function fetchEntries(page: number, pageSize: number): Promise<void
         logEntries.value = res.entries as LogEntry[];
         totalEntries.value = res.total;
         serverPageOffset.value = (page - 1) * pageSize;
-    } catch (err: any) {
-        if (err?.name === 'AbortError' || fetchController !== currentFetchAbortController) return;
-        if (err.status === 404) {
+    } catch (err: unknown) {
+        if ((err as { name?: string }).name === 'AbortError' || fetchController !== currentFetchAbortController) return;
+        if ((err as { status?: number }).status === 404) {
             console.warn('Session not found on server during fetchEntries, clearing local state');
             clearSession();
         } else {
@@ -309,7 +306,7 @@ export async function fetchAllEntries(sessionId: string): Promise<LogEntry[]> {
         isLoadingLog.value = true;
         const res = await getParseEntries(sessionId, 1, 1000000);
         return res.entries as LogEntry[];
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error('Failed to fetch all entries:', err);
         throw err;
     } finally {

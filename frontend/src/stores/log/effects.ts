@@ -36,6 +36,7 @@ export function initFilterChangeEffect(): void {
             // Track dependencies
             const search = searchQuery.value;
             const category = categoryFilter.value;
+            void search; void category; // Used for dependency tracking
             sortColumn.value;
             sortDirection.value;
             signalTypeFilter.value;
@@ -44,12 +45,10 @@ export function initFilterChangeEffect(): void {
             selectedSignals.value;
 
             // Clear cache when filters change
-            console.log('[filter effect] Filters changed, clearing cache. Search:', search, 'Category:', Array.from(category));
             clearServerCache();
 
             // Debounce fetch
             const timer = setTimeout(() => {
-                console.log('[filter effect] Triggering fetch for page 1');
                 fetchEntries(1, SERVER_PAGE_SIZE);
             }, 100);
             return () => clearTimeout(timer);
