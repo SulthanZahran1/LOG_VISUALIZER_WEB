@@ -16,21 +16,21 @@ test.describe('Home Page', () => {
         // Check Log File card exists
         await expect(page.locator('.upload-card .card-header')).toContainText('Log File')
 
-        // Check Recent Files card exists
-        await expect(page.locator('.recent-files-card .card-header')).toContainText('Recent Files')
+        // Check Files card exists (has Loaded/Recent tabs)
+        await expect(page.locator('.files-card')).toBeVisible()
     })
 
     test('has working navigation buttons', async ({ page }) => {
         await page.goto('/')
 
-        // Check nav buttons exist
-        await expect(page.locator('.nav-button')).toHaveCount(4)
+        // Check nav buttons exist in the Open Views section
+        await expect(page.locator('.nav-grid .nav-button')).toHaveCount(4)
 
         // Check buttons are disabled without a session
-        const timingDiagram = page.locator('.nav-button').filter({ hasText: 'Timing Diagram' })
+        const timingDiagram = page.locator('.nav-grid .nav-button').filter({ hasText: 'Timing Diagram' })
         await expect(timingDiagram).toBeDisabled()
 
-        const logTable = page.locator('.nav-button').filter({ hasText: 'Log Table' })
+        const logTable = page.locator('.nav-grid .nav-button').filter({ hasText: 'Log Table' })
         await expect(logTable).toBeDisabled()
     })
 

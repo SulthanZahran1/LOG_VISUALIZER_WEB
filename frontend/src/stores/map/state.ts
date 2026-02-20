@@ -90,7 +90,7 @@ export function setPlaybackIntervalId(id: number | null) {
 // ======================
 export const carrierTrackingEnabled = signal(false);
 export const carrierLocations = signal<Map<string, string>>(new Map()); // carrierId -> unitId
-export const latestSignalValues = signal<Map<string, any>>(new Map()); // deviceId::signalName -> value
+export const latestSignalValues = signal<Map<string, unknown>>(new Map()); // deviceId::signalName -> value
 
 // Signal history for time-based playback (client-side mode only)
 export const signalHistory = signal<Map<string, SignalHistoryEntry[]>>(new Map());

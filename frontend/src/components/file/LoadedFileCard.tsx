@@ -1,3 +1,4 @@
+import React from 'react';
 import type { ParseSession, FileInfo } from '../../models/types';
 import { currentSession, totalEntries, isStreaming, streamProgress } from '../../stores/logStore';
 import type { ViewType } from '../../stores/logStore';
@@ -162,7 +163,7 @@ export function LoadedFileCard({ recentFiles, onOpenView, onUnload }: LoadedFile
                         class="view-btn"
                         onClick={() => onOpenView(btn.type)}
                         disabled={!isComplete}
-                        style={{ '--btn-color': btn.color } as any}
+                        style={{ '--btn-color': btn.color } as React.CSSProperties}
                     >
                         {icons[btn.icon as keyof typeof icons]}
                         <span>{btn.label}</span>

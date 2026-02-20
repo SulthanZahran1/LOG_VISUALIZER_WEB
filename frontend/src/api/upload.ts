@@ -239,7 +239,6 @@ async function compressFile(file: File): Promise<Blob> {
         const response = new Response(compressedStream);
         const compressed = await response.blob();
         
-        console.log(`Compressed ${file.size} bytes → ${compressed.size} bytes (${((1 - compressed.size/file.size) * 100).toFixed(1)}% reduction)`);
         return compressed;
     } catch (e) {
         console.warn('Compression failed, using uncompressed:', e);
@@ -272,9 +271,9 @@ export async function uploadFileOptimized(
     onProgress?.(5, 'Compressing file...');
     const compressedBlob = await compressFile(file);
     const isCompressed = compressedBlob.size < file.size;
-    const compressionRatio = file.size / compressedBlob.size;
+    const _compressionRatio = file.size / compressedBlob.size;
+    void _compressionRatio; // Used for debugging if needed
     
-    console.log(`Uploading ${isCompressed ? 'compressed' : 'uncompressed'}: ${file.size} → ${compressedBlob.size} bytes (${compressionRatio.toFixed(1)}x ratio)`);
 
     // Step 2: Slice the COMPRESSED data into chunks
     const uploadId = generateUploadId();
@@ -316,7 +315,6 @@ export async function uploadFileOptimized(
     }
 
     const { jobId } = await response.json() as { jobId: string };
-    console.log(`Upload processing started with job ID: ${jobId}`);
 
     // Step 5: Track async processing progress via SSE (this can take minutes for large files)
     const fileInfo = await trackUploadProgress(jobId, (progress, stage) => {

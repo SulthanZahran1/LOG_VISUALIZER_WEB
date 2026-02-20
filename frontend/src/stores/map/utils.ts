@@ -113,7 +113,7 @@ export function applyDeviceMapping(deviceId: string): string | null {
  * Get signal value at a specific time, or latest if time is null.
  * For large files (server-side mode), uses latest cached values.
  */
-export function getSignalValueAtTime(key: string, time: number | null): any {
+export function getSignalValueAtTime(key: string, time: number | null): unknown {
     // If no playback time, use latest value
     if (time === null) {
         return latestSignalValues.value.get(key);
@@ -131,7 +131,7 @@ export function getSignalValueAtTime(key: string, time: number | null): any {
     }
 
     // Find the value at or before the target time
-    let result: any = undefined;
+    let result: unknown = undefined;
     for (const entry of history) {
         if (entry.timestamp <= time) {
             result = entry.value;
@@ -210,8 +210,8 @@ export function getUnitColor(unitId: string): UnitColorResult {
 /**
  * Evaluate a rule condition.
  */
-function evaluateRuleCondition(value: any, ruleValue: any, op: string): boolean {
-    const normalizeValue = (v: any) => {
+function evaluateRuleCondition(value: unknown, ruleValue: unknown, op: string): boolean {
+    const normalizeValue = (v: unknown) => {
         if (v === null || v === undefined) return '';
         const s = String(v).trim().toLowerCase();
         if (s === 'on' || s === 'true' || s === '1') return 'true';
@@ -247,13 +247,12 @@ function logSignalDiagnostic(sortedRules: Array<{ signal: string }>): void {
     const ruleSignalNames = [...new Set(sortedRules.map(r => r.signal))];
     const matchingNames = ruleSignalNames.filter(s => allSignalNames.has(s));
     const missingNames = ruleSignalNames.filter(s => !allSignalNames.has(s));
+    void matchingNames; // Used for debug logging
 
-    console.log('[getUnitColor] Signal data: %d values, %d devices, %d unique signals',
-        latestSignalValues.value.size, deviceIds.size, allSignalNames.size);
-    console.log('[getUnitColor] Devices in data:', [...deviceIds]);
-    console.log('[getUnitColor] Signal names in data:', [...allSignalNames]);
-    console.log('[getUnitColor] Rule signals needed:', ruleSignalNames,
-        'Matching:', matchingNames, 'Missing:', missingNames);
+    //     latestSignalValues.value.size, deviceIds.size, allSignalNames.size);
+    // Debug: void deviceIds;
+    // Debug: void allSignalNames;
+    //     'Matching:', matchingNames, 'Missing:', missingNames);
 
     if (missingNames.length > 0) {
         console.warn('[getUnitColor] Rule signals NOT found in loaded data:', missingNames,

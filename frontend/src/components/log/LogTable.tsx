@@ -406,7 +406,7 @@ export function LogTable() {
         } else {
             selectedLogTime.value = null;
         }
-    }, [selectionState.selectedRows]);
+    }, [selectionState.selectedRows, selectionState.selectedIndices]);
 
     // Reset scroll when session/filters change
     useEffect(() => {
@@ -414,7 +414,8 @@ export function LogTable() {
             tableRef.current.scrollTop = 0;
             virtualActions.onScroll(0);
         }
-    }, [currentSession.value?.id, searchQuery.value, categoryFilter.value, sortColumn.value, sortDirection.value]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentSession.value?.id, searchQuery.value, categoryFilter.value, sortColumn.value, sortDirection.value, virtualActions.onScroll]);
 
     // Cleanup
     useEffect(() => {
@@ -457,19 +458,19 @@ export function LogTable() {
         if (contextMenu.value.visible) {
             contextMenu.value = { ...contextMenu.value, visible: false };
         }
-    }, [virtualActions]);
+    }, [virtualActions, contextMenu, scrollSignal]);
 
     // Row mouse handlers
     const handleRowMouseDown = useCallback((idx: number, e: MouseEvent) => {
         if (e.button === 2) return;
         contextMenu.value = { ...contextMenu.value, visible: false };
         selectionActions.handleRowClick(e, idx);
-    }, [selectionActions]);
+    }, [selectionActions, contextMenu]);
 
     const handleRowContextMenu = useCallback((e: MouseEvent) => {
         e.preventDefault();
         contextMenu.value = { x: e.clientX, y: e.clientY, visible: true };
-    }, []);
+    }, [contextMenu]);
 
     // Keyboard shortcuts
     const selectedIndex = selectionState.selectedIndices.length > 0
@@ -545,7 +546,7 @@ export function LogTable() {
             .join('\n');
         navigator.clipboard.writeText(text);
         contextMenu.value = { ...contextMenu.value, visible: false };
-    }, [selectionState.selectedIndices]);
+    }, [selectionState.selectedIndices, contextMenu]);
 
     const handleAddToWaveform = useCallback(() => {
         const entries = filteredEntries.value;

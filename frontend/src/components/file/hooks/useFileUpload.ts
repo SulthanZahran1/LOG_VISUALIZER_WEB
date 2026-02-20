@@ -59,7 +59,7 @@ export function useFileUpload(
         stats.value = null;
 
         const startTime = performance.now();
-        const memoryBefore = (performance as any).memory?.usedJSHeapSize || 0;
+        const memoryBefore = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize || 0;
 
         try {
             let info: FileInfo;
@@ -88,7 +88,7 @@ export function useFileUpload(
             }
 
             const endTime = performance.now();
-            const memoryAfter = (performance as any).memory?.usedJSHeapSize || 0;
+            const memoryAfter = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize || 0;
 
             const originalSize = file.size;
             const compressedSize = info.size || originalSize;

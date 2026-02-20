@@ -150,7 +150,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
                 const errorResponse: WorkerResponse = {
                     type: 'error',
                     id: message.id,
-                    payload: { error: `Unknown message type: ${(message as any).type}` }
+                    payload: { error: `Unknown message type: ${(message as WorkerMessage).type}` }
                 };
                 self.postMessage(errorResponse);
         }

@@ -273,7 +273,7 @@ export function WaveformCanvas() {
             const entries = waveformEntries.value[signalKey] || [];
             const hTime = hoverTime.value;
             if (hTime !== null && entries.length > 0) {
-                let valueAtTime: any = entries[0].value;
+                let valueAtTime: boolean | string | number = entries[0].value;
                 for (const e of entries) {
                     if (getTimestampMs(e) <= hTime) valueAtTime = e.value;
                     else break;
@@ -924,7 +924,7 @@ function drawBookmarks(ctx: CanvasRenderingContext2D, bookmarks: Bookmark[], sta
     });
 }
 
-function drawTooltip(ctx: CanvasRenderingContext2D, x: number, rowY: number, signalKey: string, value: any, width: number) {
+function drawTooltip(ctx: CanvasRenderingContext2D, x: number, rowY: number, signalKey: string, value: boolean | string | number, width: number) {
     const [device, signal] = signalKey.split('::');
     const valStr = String(value);
     const displayText = `${signal}: ${valStr}`;

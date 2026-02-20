@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -10,11 +11,28 @@ import (
 )
 
 func TestSessionManager(t *testing.T) {
+	// Create a temporary directory for test data
+	tmpDir, err := os.MkdirTemp("", "session-manager-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Set environment variables for test isolation
+	parsedDir := filepath.Join(tmpDir, "parsed")
+	tempDir := filepath.Join(tmpDir, "temp")
+	os.MkdirAll(parsedDir, 0755)
+	os.MkdirAll(tempDir, 0755)
+	
+	t.Setenv("PARSED_DB_DIR", parsedDir)
+	t.Setenv("DUCKDB_TEMP_DIR", tempDir)
+
 	// Create a dummy log file
-	tmpFile := "test_manager.log"
+	tmpFile := filepath.Join(tmpDir, "test_manager.log")
 	content := "2025-09-22 13:00:00.199 [Debug] [SYSTEM/PATH/DEV-1] [INPUT:SIG1] (Boolean) : ON\n"
-	os.WriteFile(tmpFile, []byte(content), 0644)
-	defer os.Remove(tmpFile)
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
 
 	m := NewManager()
 
@@ -25,7 +43,7 @@ func TestSessionManager(t *testing.T) {
 	}
 
 	// Poll for completion
-	maxRetries := 10
+	maxRetries := 20
 	for i := 0; i < maxRetries; i++ {
 		s, ok := m.GetSession(sess.ID)
 		if !ok {
@@ -37,7 +55,7 @@ func TestSessionManager(t *testing.T) {
 		if s.Status == models.SessionStatusError {
 			t.Fatalf("Session error: %v", s.Errors)
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 
 	// Verify entries

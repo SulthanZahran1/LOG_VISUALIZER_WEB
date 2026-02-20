@@ -141,7 +141,6 @@ class WebSocketUploadClient {
             this.ws = new WebSocket(WS_BASE);
 
             this.ws.onopen = () => {
-                console.log('[WebSocket] Connected');
                 this.isConnected = true;
                 clearTimeout(timeout);
                 
@@ -168,13 +167,11 @@ class WebSocketUploadClient {
 
             this.ws.onerror = (error) => {
                 console.error('[WebSocket] Connection error:', error);
-                console.log('[WebSocket] Attempted URL:', WS_BASE);
                 clearTimeout(timeout);
                 reject(new Error('WebSocket connection failed - check if server is running with WebSocket support'));
             };
 
             this.ws.onclose = () => {
-                console.log('[WebSocket] Disconnected');
                 this.isConnected = false;
                 this.connectPromise = null;
                 this.stopKeepalive();
@@ -323,7 +320,6 @@ class WebSocketUploadClient {
         const isCompressed = compressedBlob.size < file.size;
         const totalChunks = Math.ceil(compressedBlob.size / CONFIG.CHUNK_SIZE);
 
-        console.log(`[WebSocket] Uploading: ${file.size} → ${compressedBlob.size} bytes, ${totalChunks} chunks`);
 
         // 1. Initialize upload
         const initPayload: UploadInitPayload = {
@@ -656,7 +652,6 @@ class WebSocketUploadClient {
             const compressed = await response.blob();
             
             if (compressed.size < file.size * 0.95) {
-                console.log(`[WebSocket] Compressed: ${file.size} → ${compressed.size} bytes`);
                 return compressed;
             }
             return file;

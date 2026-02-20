@@ -23,7 +23,7 @@ import {
     availableSignals,
     viewRange,
     resetFetchState,
-    hasFetchedForCurrentSignals
+    // hasFetchedForCurrentSignals
 } from '../state';
 
 describe('waveformStore State', () => {

@@ -1,0 +1,31 @@
+# Docker Compose for E2E Testing
+# This runs the backend in a container for Playwright tests
+
+name: cim_visualizer_e2e
+
+services:
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    ports:
+      - "8089:8089"
+    volumes:
+      - e2e-uploads:/app/data/uploads
+      - e2e-temp:/app/data/temp
+    environment:
+      - PORT=8089
+      - GOGC=50
+      - DUCKDB_TEMP_DIR=/app/data/temp
+      - GOMEMLIMIT=2GiB
+      - CORS_ORIGIN=http://localhost:5173
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8089/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  e2e-uploads:
+  e2e-temp:
