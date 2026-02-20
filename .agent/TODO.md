@@ -20,7 +20,41 @@
 
 ---
 
-## 🚧 Active: Phase 3 — Map Viewer + Carrier Tracking
+## ✅ Completed: 4-Week Refactoring Sprint (2026-02-20)
+
+All refactoring work merged to master. See `REFACTORING_VERIFICATION.md` for details.
+
+---
+
+## 🚧 Active: Post-Refactoring Improvements
+
+**Branch**: `improve/post-refactoring-cleanup`
+
+See `IMPROVEMENT_PLAN.md` for comprehensive options.
+
+### Phase 1: Quick Wins (Foundation)
+- [ ] Fix 2 failing backend tests
+- [ ] Clean console statements (26 logs)
+- [ ] Fix 15 easy `any` type warnings
+
+### Phase 2: Backend Coverage
+- [ ] DuckDB store tests (critical for 1GB+ files)
+- [ ] PLC/MCS/CSV parser tests
+- [ ] Storage layer tests
+
+### Phase 3: Type Safety
+- [ ] Replace all remaining `any` types
+- [ ] Enable strict ESLint rules
+- [ ] Add runtime type validation
+
+### Phase 4: Component Tests
+- [ ] WaveformCanvas tests
+- [ ] SignalSidebar tests
+- [ ] MapCanvas tests
+
+### Phase 5: E2E Stability
+- [ ] Fix test infrastructure
+- [ ] Stabilize 52 failing tests
 
 ---
 
