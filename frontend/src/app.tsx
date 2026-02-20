@@ -1,6 +1,6 @@
 import { useSignal } from '@preact/signals'
 import { useEffect } from 'preact/hooks'
-import { checkHealth, getRecentFiles, deleteFile, renameFile, startParseMerge } from './api/client'
+import { checkHealth, getRecentFiles, deleteFile, renameFile, startParseMerge, getParseStatus } from './api/client'
 import { LogTable } from './components/log/LogTable'
 import { WaveformView } from './components/waveform/WaveformView'
 import { currentSession, startParsing, startSessionPolling, logError, initLogStore, activeTab, openViews, openView, closeView, type ViewType } from './stores/logStore'
@@ -51,7 +51,26 @@ export function App() {
       .then(() => {
         status.value = 'connected'
         fetchFiles()
-        initLogStore()
+        
+        // Check for session query parameter (used by E2E tests)
+        const urlParams = new URLSearchParams(window.location.search)
+        const sessionId = urlParams.get('session')
+        
+        if (sessionId) {
+          // Load session from URL parameter
+          getParseStatus(sessionId)
+            .then((session) => {
+              startSessionPolling(session)
+            })
+            .catch((err) => {
+              console.error('Failed to load session from URL:', err)
+              // Fall back to persisted session
+              initLogStore()
+            })
+        } else {
+          // Normal flow: load from persistence
+          initLogStore()
+        }
       })
       .catch((err) => {
         status.value = 'error'

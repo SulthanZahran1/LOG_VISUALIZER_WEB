@@ -5,6 +5,7 @@
  */
 
 import { streamParseEntries, getParseCategories } from '../../api/client';
+import { deleteSession } from '../../utils/persistence';
 import type { LogEntry, ParseSession } from '../../models/types';
 // saveSession is used via dynamic import in finalizeSessionLoad
 import {
@@ -134,6 +135,9 @@ async function pollStatus(sessionId: string, abortSignal: AbortSignal): Promise<
             if (abortSignal.aborted) return;
             if ((err as { status?: number }).status === 404) {
                 console.warn('Session not found on server, clearing local state');
+                if (currentSession.value) {
+                    void deleteSession(currentSession.value.id);
+                }
                 clearSession();
             } else {
                 logError.value = (err as Error).message;
@@ -157,7 +161,15 @@ async function handleSessionComplete(session: ParseSession): Promise<void> {
         .then(cats => {
             allCategories.value = cats;
         })
-        .catch(err => console.error('Failed to fetch categories:', err));
+        .catch((err: unknown) => {
+            if ((err as { status?: number }).status === 404) {
+                console.warn('Session not found when fetching categories, clearing state');
+                void deleteSession(session.id);
+                clearSession();
+            } else {
+                console.error('Failed to fetch categories:', err);
+            }
+        });
 
     // Load data
     if (useServerSide.value) {
@@ -291,6 +303,9 @@ export async function fetchEntries(page: number, pageSize: number): Promise<void
         if ((err as { name?: string }).name === 'AbortError' || fetchController !== currentFetchAbortController) return;
         if ((err as { status?: number }).status === 404) {
             console.warn('Session not found on server during fetchEntries, clearing local state');
+            if (currentSession.value) {
+                void deleteSession(currentSession.value.id);
+            }
             clearSession();
         } else {
             logError.value = (err as Error).message;
@@ -435,19 +450,36 @@ export function entryMatchesSearch(entry: LogEntry): boolean {
 
 export async function initLogStore(): Promise<void> {
     const { getSessions } = await import('../../utils/persistence');
+    const { getParseStatus } = await import('../../api/client');
 
     try {
         const sessions = await getSessions();
-        if (sessions.length > 0) {
-            const lastSession = sessions[sessions.length - 1];
-            currentSession.value = lastSession;
+        if (sessions.length === 0) return;
 
-            if (lastSession.status === 'complete') {
-                handleSessionComplete(lastSession);
-            } else if (lastSession.status === 'parsing' || lastSession.status === 'pending') {
+        const lastSession = sessions[sessions.length - 1];
+
+        // Verify session still exists on server before loading
+        try {
+            const serverSession = await getParseStatus(lastSession.id);
+            currentSession.value = serverSession;
+
+            if (serverSession.status === 'complete') {
+                handleSessionComplete(serverSession);
+            } else if (serverSession.status === 'parsing' || serverSession.status === 'pending') {
                 const ctrl = new AbortController();
                 setPollAbortController(ctrl);
-                pollStatus(lastSession.id, ctrl.signal);
+                pollStatus(serverSession.id, ctrl.signal);
+            }
+        } catch (err: unknown) {
+            if ((err as { status?: number }).status === 404) {
+                console.warn('Stored session not found on server, clearing:', lastSession.id);
+                await deleteSession(lastSession.id);
+                // Clear any other stale sessions too
+                for (const s of sessions.slice(0, -1)) {
+                    await deleteSession(s.id);
+                }
+            } else {
+                console.error('Failed to verify session status:', err);
             }
         }
     } catch (err) {
