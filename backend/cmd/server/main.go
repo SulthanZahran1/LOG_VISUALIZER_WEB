@@ -99,6 +99,9 @@ func main() {
 
 	e := echo.New()
 
+	// Setup custom error handler
+	api.SetupMiddleware(e)
+
 	// Configure middleware
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
 		Skipper: func(c echo.Context) bool {
