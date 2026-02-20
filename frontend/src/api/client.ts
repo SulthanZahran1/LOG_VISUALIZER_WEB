@@ -305,7 +305,7 @@ export async function getValuesAtTime(
     ts: number,
     signals?: string[]
 ): Promise<LogEntry[]> {
-    let url = `/parse/${sessionId}/at-time?ts=${ts}`;
+    let url = `/parse/${sessionId}/at-time?timestamp=${ts}`;
     if (signals && signals.length > 0) {
         url += `&signals=${encodeURIComponent(signals.join(','))}`;
     }
