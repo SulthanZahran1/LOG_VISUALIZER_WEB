@@ -490,6 +490,8 @@ AGENTS.md              ← Start here (you are reading this)
 ├── CONTEXT.md         ← Session context, quick start
 ├── TESTING_CHECKLIST.md← Testing procedures
 ├── API.md             ← API endpoints, upload flows
+├── REFACTORING_PLAN.md ← Comprehensive refactoring plan
+├── REFACTORING_VERIFICATION.md ← Implementation verification
 ├── frontend/
 │   └── FRONTEND.md   ← Frontend architecture
 └── backend/
@@ -497,6 +499,24 @@ AGENTS.md              ← Start here (you are reading this)
     ├── UPLOAD_HANDLING.md ← Upload pipeline
     └── STORAGE.md     ← Storage layer
 ```
+
+### Current Refactoring Effort (Active)
+
+The codebase is undergoing a comprehensive refactoring to improve readability and test coverage.
+
+| Document | Purpose |
+|----------|---------|
+| **[REFACTORING_PLAN.md](./REFACTORING_PLAN.md)** | Full 4-week refactoring plan with phases |
+| **[REFACTORING_VERIFICATION.md](./REFACTORING_VERIFICATION.md)** | Implementation verification report |
+| **.agent/architecture/REFACTORING_HANDLERS.md** | Backend handlers refactoring guide |
+| **.agent/architecture/REFACTORING_LOGTABLE.md** | LogTable component refactoring guide |
+| **.agent/architecture/TESTING_INFRASTRUCTURE.md** | Testing setup and patterns |
+
+**Current Targets:**
+- `handlers.go` (1,335 lines) → Split into focused handlers
+- `LogTable.tsx` (1,160 lines) → Decompose into hooks/components
+- `mapStore.ts` (897 lines, 73 functions) → Modular store structure
+- Test coverage: 10% → 70%+
 
 ---
 

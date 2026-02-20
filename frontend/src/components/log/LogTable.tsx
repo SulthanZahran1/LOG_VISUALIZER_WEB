@@ -1,4 +1,3 @@
-
 import { useSignal } from '@preact/signals';
 import { useRef, useEffect, useState, useCallback, useMemo } from 'preact/hooks';
 import {
@@ -23,29 +22,39 @@ import {
     categoryFilter,
     availableCategories,
     jumpToTime,
-    entryMatchesSearch
 } from '../../stores/logStore';
 import { getTimeTree } from '../../api/client';
 import type { TimeTreeEntry } from '../../api/client';
 import { toggleSignal } from '../../stores/waveformStore';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
 import type { LogEntry } from '../../models/types';
-import {
-    colorSettings,
-    getCategoryColor,
-    getSignalPatternColor,
-    getValueSeverity,
-    getDeviceColor,
-} from '../../stores/colorCodingStore';
+import { colorSettings } from '../../stores/colorCodingStore';
 import { SignalSidebar } from '../waveform/SignalSidebar';
-import { ColorCodingSettings } from '../settings/ColorCodingSettings';
-import { SearchIcon, ChartIcon, CopyIcon, RefreshIcon, ChevronUpIcon, ChevronDownIcon, FilterIcon, ClockIcon } from '../icons';
+
+// Components
+import { LogTableToolbar } from './components/LogTableToolbar';
+import { HighlightText } from './components/HighlightText';
+
+// Hooks
+import {
+    useVirtualScroll,
+    useRowSelection,
+    useColumnManagement,
+    useSearchFilter,
+    useKeyboardShortcuts,
+    DEFAULT_COLUMNS,
+    DEFAULT_COLUMN_ORDER
+} from './hooks';
+
+// Utils
+import { computeRowColorCoding } from './utils/colorCoding';
+
 import './LogTable.css';
 
 const ROW_HEIGHT = 28;
-const BUFFER = 15; // Increased buffer for smoother scrolling
-const SERVER_PAGE_SIZE = 200; // Larger pages = fewer requests
-const MAX_SCROLL_HEIGHT = 15_000_000; // Safe limit below browser max (~18M Firefox, ~33M Chrome)
+const BUFFER = 15;
+const SERVER_PAGE_SIZE = 200;
+const MAX_SCROLL_HEIGHT = 15_000_000;
 
 /** Compute scroll scale factor when virtual height exceeds browser max */
 function getScrollScale(): number {
@@ -56,22 +65,19 @@ function getScrollScale(): number {
 }
 
 /**
- * Category Filter Popover Component
+ * Category Filter Popover Component (uses logStore)
  */
-function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
-    // Access signals reactively - re-renders when they change
+function CategoryFilterPopoverContainer({ onClose }: { onClose: () => void }) {
     const categories = availableCategories.value;
-    const [searchQuery, setSearchQuery] = useState('');
+    const [localSearchQuery, setLocalSearchQuery] = useState('');
 
-    // Filter categories based on search query
-    const filteredCategories = searchQuery.trim() === ''
+    const filteredCategories = localSearchQuery.trim() === ''
         ? categories
         : categories.filter(cat =>
-            (cat || '(Uncategorized)').toLowerCase().includes(searchQuery.toLowerCase())
+            (cat || '(Uncategorized)').toLowerCase().includes(localSearchQuery.toLowerCase())
         );
 
     const handleToggle = (cat: string) => {
-        // Normalize null/undefined to empty string for consistent filtering
         const normalizedCat = cat ?? '';
         const currentFilter = categoryFilter.value;
         const newFilter = new Set(currentFilter);
@@ -87,7 +93,6 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
         categoryFilter.value = new Set();
     };
 
-    // Close on outside click
     const popoverRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -98,7 +103,6 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
         const handleEscape = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
         };
-        // Delay to avoid immediate close from the click that opened it
         setTimeout(() => {
             document.addEventListener('mousedown', handleClickOutside);
             document.addEventListener('keydown', handleEscape);
@@ -118,12 +122,17 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
                 </div>
             </div>
             <div className="popover-search">
-                <span className="popover-search-icon"><SearchIcon size={12} /></span>
+                <span className="popover-search-icon">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="m21 21-4.35-4.35" />
+                    </svg>
+                </span>
                 <input
                     type="text"
                     placeholder="Search categories..."
-                    value={searchQuery}
-                    onInput={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
+                    value={localSearchQuery}
+                    onInput={(e) => setLocalSearchQuery((e.target as HTMLInputElement).value)}
                 />
             </div>
             <div className="popover-list">
@@ -133,7 +142,6 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
                     <div className="popover-empty">No matching categories</div>
                 ) : (
                     filteredCategories.map(cat => {
-                        // Normalize null/undefined to empty string for consistent filtering
                         const normalizedCat = cat ?? '';
                         return (
                             <label key={normalizedCat || '__uncategorized__'} className="filter-item">
@@ -153,7 +161,7 @@ function CategoryFilterPopover({ onClose }: { onClose: () => void }) {
 }
 
 /**
- * Jump to Time Popover Component
+ * Build time tree for Jump to Time feature
  */
 function buildTimeTree(entries: Array<{ timestamp: string | number }>) {
     const tree = new Map<string, Map<number, Map<number, number>>>();
@@ -188,7 +196,6 @@ function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (
     const isServerSide = useServerSide.value;
     const entries = filteredEntries.value;
 
-    // Server-side: fetch full time tree from backend
     const [serverTree, setServerTree] = useState<Map<string, Map<number, Map<number, number>>> | null>(null);
     useEffect(() => {
         if (!isServerSide || !currentSession.value) return;
@@ -204,12 +211,9 @@ function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (
         }).catch(err => console.error('Failed to fetch time tree:', err));
     }, [isServerSide]);
 
-    // Client-side: build from loaded entries
     const clientTree = useMemo(() => isServerSide ? new Map<string, Map<number, Map<number, number>>>() : buildTimeTree(entries), [entries, isServerSide]);
-
     const timeTree = isServerSide ? (serverTree ?? new Map<string, Map<number, Map<number, number>>>()) : clientTree;
-
-    const dates = useMemo(() => Array.from(timeTree.keys()).sort(), [timeTree]);
+    const dates = useMemo((): string[] => Array.from(timeTree.keys()).sort(), [timeTree]);
 
     const [selectedDate, setSelectedDate] = useState('');
     const [selectedHour, setSelectedHour] = useState('');
@@ -225,7 +229,7 @@ function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (
         const hourMap = timeTree.get(selectedDate)!;
         const h = Number(selectedHour);
         if (!hourMap.has(h)) return [];
-        return Array.from(hourMap.get(h)!.keys()).sort((a, b) => a - b);
+        return Array.from(hourMap.get(h)!.keys()).sort((a: number, b: number) => a - b);
     }, [selectedDate, selectedHour, timeTree]);
 
     const handleGo = () => {
@@ -320,76 +324,79 @@ function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (
 }
 
 /**
- * Performant Log Table with Virtual Scrolling and Premium UX
+ * Main LogTable Component
+ * 
+ * Refactored with granular decomposition using hooks and sub-components.
  */
-// Column definition type
-type ColumnKey = 'timestamp' | 'deviceId' | 'signalName' | 'category' | 'value' | 'type';
-
-interface ColumnDef {
-    key: ColumnKey;
-    id: string; // Short ID for width lookup
-    label: string;
-    sortable: boolean;
-    resizable: boolean;
-}
-
-const COLUMNS: ColumnDef[] = [
-    { key: 'timestamp', id: 'ts', label: 'TIMESTAMP', sortable: true, resizable: true },
-    { key: 'deviceId', id: 'dev', label: 'DEVICE ID', sortable: true, resizable: true },
-    { key: 'signalName', id: 'sig', label: 'SIGNAL NAME', sortable: true, resizable: true },
-    { key: 'category', id: 'cat', label: 'CATEGORY', sortable: true, resizable: true },
-    { key: 'value', id: 'val', label: 'VALUE', sortable: false, resizable: true },
-    { key: 'type', id: 'type', label: 'TYPE', sortable: false, resizable: false },
-];
-
 export function LogTable() {
     const tableRef = useRef<HTMLDivElement>(null);
     const scrollSignal = useSignal(0);
-    const selectedRows = useSignal<Set<number>>(new Set());
-    // For drag selection
-    const isDragging = useSignal(false);
-    const dragStartIndex = useSignal<number | null>(null);
-
-    const columnWidths = useSignal({
-        ts: 220,
-        dev: 180,
-        sig: 250,
-        cat: 120,
-        val: 150,
-        type: 100
-    });
     const contextMenu = useSignal<{ x: number, y: number, visible: boolean }>({ x: 0, y: 0, visible: false });
-
-    // --- Column Order (Draggable) ---
-    const columnOrder = useSignal<ColumnKey[]>(['timestamp', 'deviceId', 'signalName', 'category', 'value', 'type']);
-    const draggedColumn = useSignal<ColumnKey | null>(null);
-    const dragOverColumn = useSignal<ColumnKey | null>(null);
-
-    // --- Category Filter Popover ---
     const categoryFilterOpen = useSignal(false);
     const jumpToTimeOpen = useSignal(false);
+    const [isFetchingPage, setIsFetchingPage] = useState(false);
+    const fetchTimeoutRef = useRef<number | null>(null);
 
-    // --- Debounced Search ---
-    const [localQuery, setLocalQuery] = useState(searchQuery.value);
-    useEffect(() => {
-        const handler = setTimeout(() => {
-            searchQuery.value = localQuery;
-        }, 100);
-        return () => clearTimeout(handler);
-    }, [localQuery]);
+    // ===== HOOKS =====
 
-    // Keep local query in sync if external change happens
-    useEffect(() => {
-        if (searchQuery.value !== localQuery) {
-            setLocalQuery(searchQuery.value);
-        }
-    }, [searchQuery.value]);
+    // Column management
+    const { state: columnState, actions: columnActions } = useColumnManagement(
+        DEFAULT_COLUMN_ORDER,
+        { ts: 220, dev: 180, sig: 250, cat: 120, val: 150, type: 100 }
+    );
 
-    // Update selectedLogTime for bookmark functionality
+    // Row selection
+    const { state: selectionState, actions: selectionActions } = useRowSelection();
+
+    // Virtual scroll
+    const totalCount = useServerSide.value ? totalEntries.value : filteredEntries.value.length;
+    const containerHeight = tableRef.current?.clientHeight || 600;
+    const {
+        state: virtualState,
+        actions: virtualActions
+    } = useVirtualScroll({
+        rowHeight: ROW_HEIGHT,
+        buffer: BUFFER,
+        totalItems: totalCount,
+        containerHeight,
+        serverSide: useServerSide.value,
+        pageSize: SERVER_PAGE_SIZE,
+        maxScrollHeight: MAX_SCROLL_HEIGHT
+    });
+
+    // Search/filter with store integration
+    const { state: searchState, actions: searchActions } = useSearchFilter({
+        externalQuery: searchQuery.value,
+        onQueryChange: (q) => searchQuery.value = q,
+        onRegexChange: (v) => searchRegex.value = v,
+        onCaseSensitiveChange: (v) => searchCaseSensitive.value = v,
+        onShowChangedOnlyChange: (v) => showChangedOnly.value = v,
+        onHighlightModeChange: (v) => searchHighlightMode.value = v
+    });
+
+    // Sync search state with store
     useEffect(() => {
-        const indices = Array.from(selectedRows.value);
+        searchRegex.value = searchState.useRegex;
+    }, [searchState.useRegex]);
+
+    useEffect(() => {
+        searchCaseSensitive.value = searchState.caseSensitive;
+    }, [searchState.caseSensitive]);
+
+    useEffect(() => {
+        showChangedOnly.value = searchState.showChangedOnly;
+    }, [searchState.showChangedOnly]);
+
+    useEffect(() => {
+        searchHighlightMode.value = searchState.highlightMode;
+    }, [searchState.highlightMode]);
+
+    // ===== EFFECTS =====
+
+    // Sync selection with logStore for bookmark functionality
+    useEffect(() => {
+        const indices = selectionState.selectedIndices;
         if (indices.length > 0) {
-            // Use the last selected row's timestamp
             const lastIdx = indices[indices.length - 1];
             const offset = useServerSide.value ? serverPageOffset.value : 0;
             const entry = filteredEntries.value[lastIdx - offset];
@@ -399,58 +406,37 @@ export function LogTable() {
         } else {
             selectedLogTime.value = null;
         }
-    }, [selectedRows.value]);
+    }, [selectionState.selectedRows]);
 
-    // Use a ref for scroll position to avoid signal update overhead during scroll
-    const scrollTopRef = useRef(0);
-    const scrollTimeoutRef = useRef<number | null>(null);
-    const isScrollingRef = useRef(false);
-
-    const [isFetchingPage, setIsFetchingPage] = useState(false);
-
-    // Force re-render when entries change (for server-side virtual scrolling)
-    // Debounced to prevent excessive re-renders during rapid scrolling
-    const [, forceRender] = useState({});
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            forceRender({});
-        }, 50); // 50ms debounce
-        return () => clearTimeout(timer);
-    }, [filteredEntries.value, totalEntries.value, serverPageOffset.value]);
-
-    // Reset scroll when session or filters change
+    // Reset scroll when session/filters change
     useEffect(() => {
         if (tableRef.current) {
             tableRef.current.scrollTop = 0;
-            scrollTopRef.current = 0;
-            scrollSignal.value = 0;
+            virtualActions.onScroll(0);
         }
     }, [currentSession.value?.id, searchQuery.value, categoryFilter.value, sortColumn.value, sortDirection.value]);
 
-    // Separate ref for fetch debouncing
-    const fetchTimeoutRef = useRef<number | null>(null);
-    const scrollDebounceRef = useRef<number | null>(null);
+    // Cleanup
+    useEffect(() => {
+        return () => {
+            if (fetchTimeoutRef.current) {
+                window.clearTimeout(fetchTimeoutRef.current);
+            }
+        };
+    }, []);
 
-    // Optimized scroll handler with debouncing
-    const onScroll = useCallback((e: Event) => {
+    // ===== HANDLERS =====
+
+    // Combined scroll handler
+    const handleScroll = useCallback((e: Event) => {
         const scrollTop = (e.target as HTMLDivElement).scrollTop;
-        scrollTopRef.current = scrollTop;
+        scrollSignal.value = scrollTop;
+        virtualActions.onScroll(scrollTop);
 
-        // Clear existing timeouts
-        if (scrollDebounceRef.current) {
-            window.clearTimeout(scrollDebounceRef.current);
-        }
         if (fetchTimeoutRef.current) {
             window.clearTimeout(fetchTimeoutRef.current);
         }
 
-        // Mark as actively scrolling
-        isScrollingRef.current = true;
-
-        // Update scroll signal immediately for rigid scrolling
-        scrollSignal.value = scrollTop;
-
-        // Server-side: Debounced page fetching
         if (useServerSide.value) {
             const scale = getScrollScale();
             const realScrollTop = scrollTop * scale;
@@ -468,285 +454,105 @@ export function LogTable() {
             }
         }
 
-        if (contextMenu.value.visible) contextMenu.value = { ...contextMenu.value, visible: false };
+        if (contextMenu.value.visible) {
+            contextMenu.value = { ...contextMenu.value, visible: false };
+        }
+    }, [virtualActions]);
+
+    // Row mouse handlers
+    const handleRowMouseDown = useCallback((idx: number, e: MouseEvent) => {
+        if (e.button === 2) return;
+        contextMenu.value = { ...contextMenu.value, visible: false };
+        selectionActions.handleRowClick(e, idx);
+    }, [selectionActions]);
+
+    const handleRowContextMenu = useCallback((e: MouseEvent) => {
+        e.preventDefault();
+        contextMenu.value = { x: e.clientX, y: e.clientY, visible: true };
     }, []);
 
-    // Cleanup timeout on unmount
-    useEffect(() => {
-        return () => {
-            if (scrollTimeoutRef.current) {
-                window.clearTimeout(scrollTimeoutRef.current);
+    // Keyboard shortcuts
+    const selectedIndex = selectionState.selectedIndices.length > 0
+        ? selectionState.selectedIndices[selectionState.selectedIndices.length - 1]
+        : null;
+
+    const keyboardActions = useKeyboardShortcuts({
+        totalCount,
+        selectedIndex,
+        pageSize: 20,
+        serverSide: useServerSide.value,
+        serverPageOffset: serverPageOffset.value,
+        serverPageLength: filteredEntries.value.length,
+        serverPageSize: SERVER_PAGE_SIZE,
+        rowHeight: ROW_HEIGHT,
+        scrollScale: virtualState.scaleFactor,
+        containerRef: tableRef,
+        onSelect: (index, options) => {
+            if (options?.range) {
+                selectionActions.selectRange(index);
+            } else {
+                selectionActions.selectRow(index);
             }
-            if (fetchTimeoutRef.current) {
-                window.clearTimeout(fetchTimeoutRef.current);
-            }
-            if (scrollDebounceRef.current) {
-                window.clearTimeout(scrollDebounceRef.current);
-            }
-        };
-    }, []);
-
-    // --- Keyboard Navigation ---
-    const handleKeyDown = (e: KeyboardEvent) => {
-        // Ctrl+Shift+G / Cmd+Shift+G: Toggle Jump to Time popover (works even with no selection)
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'G') {
-            e.preventDefault();
-            jumpToTimeOpen.value = !jumpToTimeOpen.value;
-            return;
-        }
-
-        if (selectedRows.value.size === 0) return;
-
-        // Get the last selected index (anchor)
-        const indices = Array.from(selectedRows.value).sort((a, b) => a - b);
-        let curr = indices[indices.length - 1]; // Move from last selected
-        if (indices.length > 1 && e.shiftKey) {
-            // If range selecting, rely on dragStartIndex if avail, or just last
-            if (dragStartIndex.value !== null) curr = dragStartIndex.value;
-        }
-
-        const total = useServerSide.value ? totalEntries.value : filteredEntries.value.length;
-        let next = curr;
-        let handled = true;
-
-        switch (e.key) {
-            case 'ArrowUp': next = Math.max(0, curr - 1); break;
-            case 'ArrowDown': next = Math.min(total - 1, curr + 1); break;
-            case 'PageUp': next = Math.max(0, curr - 20); break;
-            case 'PageDown': next = Math.min(total - 1, curr + 20); break;
-            case 'Home': next = 0; break;
-            case 'End': next = total - 1; break;
-            case 'a':
-                if (e.ctrlKey || e.metaKey) {
-                    e.preventDefault();
-                    if (useServerSide.value) {
-                        // In server-side mode, select only the current page
-                        const offset = serverPageOffset.value;
-                        const pageLen = filteredEntries.value.length;
-                        const newSet = new Set<number>();
-                        for (let i = offset; i < offset + pageLen; i++) newSet.add(i);
-                        selectedRows.value = newSet;
-                    } else {
-                        const newSet = new Set<number>();
-                        for (let i = 0; i < total; i++) newSet.add(i);
-                        selectedRows.value = newSet;
-                    }
-                    return;
-                }
-                handled = false;
-                break;
-            case 'c':
-                if (e.ctrlKey || e.metaKey) {
-                    handleCopy();
-                    return;
-                }
-                handled = false;
-                break;
-            default: handled = false;
-        }
-
-        if (handled) {
-            e.preventDefault();
-
-            // In server-side mode, fetch the target page if navigating outside loaded range
+        },
+        onSelectAll: () => {
             if (useServerSide.value) {
                 const offset = serverPageOffset.value;
                 const pageLen = filteredEntries.value.length;
-                if (next < offset || next >= offset + pageLen) {
-                    const targetPage = Math.floor(next / SERVER_PAGE_SIZE) + 1;
-                    fetchEntries(targetPage, SERVER_PAGE_SIZE);
+                for (let i = offset; i < offset + pageLen; i++) {
+                    selectionActions.toggleRow(i);
                 }
-            }
-
-            // Scroll into view (scale for capped scroll height)
-            const kbScale = getScrollScale();
-            const rowTop = (next * ROW_HEIGHT) / kbScale;
-            const rowBottom = rowTop + ROW_HEIGHT / kbScale;
-            const viewport = tableRef.current;
-            if (viewport) {
-                if (rowTop < viewport.scrollTop) viewport.scrollTop = rowTop;
-                else if (rowBottom > viewport.scrollTop + viewport.clientHeight) viewport.scrollTop = rowBottom - viewport.clientHeight;
-            }
-
-            // Selection Logic
-            if (e.shiftKey) {
-                const anchor = dragStartIndex.value ?? curr;
-                const newSet = new Set<number>();
-                const start = Math.min(anchor, next);
-                const end = Math.max(anchor, next);
-                for (let i = start; i <= end; i++) newSet.add(i);
-                selectedRows.value = newSet;
             } else {
-                selectedRows.value = new Set([next]);
-                dragStartIndex.value = next;
+                selectionActions.selectAll(totalCount);
             }
-        }
-    };
+        },
+        onCopy: () => {
+            const entries = filteredEntries.value;
+            const offset = useServerSide.value ? serverPageOffset.value : 0;
+            const text = selectionState.selectedIndices
+                .map(idx => {
+                    const e = entries[idx - offset];
+                    return e ? `${formatDateTime(e.timestamp)}\t${e.deviceId}\t${e.signalName}\t${e.value}` : '';
+                })
+                .filter(line => line !== '')
+                .join('\n');
+            navigator.clipboard.writeText(text);
+            contextMenu.value = { ...contextMenu.value, visible: false };
+        },
+        onJumpToIndex: (page) => fetchEntries(page, SERVER_PAGE_SIZE),
+        onJumpToTime: () => jumpToTimeOpen.value = !jumpToTimeOpen.value
+    });
 
-
-    const handleHeaderClick = (col: keyof LogEntry) => {
+    // Header click handler
+    const handleHeaderClick = useCallback((col: keyof LogEntry) => {
         if (sortColumn.value === col) {
             sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
         } else {
             sortColumn.value = col;
             sortDirection.value = 'asc';
         }
-    };
-
-    const handleResize = (colId: string, e: MouseEvent) => {
-        const col = colId as keyof typeof columnWidths.value;
-        e.preventDefault();
-        e.stopPropagation();
-        const startX = e.clientX;
-        const startWidth = columnWidths.value[col];
-
-        const onMouseMove = (moveEvent: MouseEvent) => {
-            const delta = moveEvent.clientX - startX;
-            columnWidths.value = {
-                ...columnWidths.value,
-                [col]: Math.max(50, startWidth + delta)
-            };
-        };
-
-        const onMouseUp = () => {
-            window.removeEventListener('mousemove', onMouseMove);
-            window.removeEventListener('mouseup', onMouseUp);
-        };
-
-        window.addEventListener('mousemove', onMouseMove);
-        window.addEventListener('mouseup', onMouseUp);
-    };
-
-    // --- Column Drag and Drop ---
-    const handleColumnDragStart = (colKey: ColumnKey, e: DragEvent) => {
-        draggedColumn.value = colKey;
-        e.dataTransfer!.effectAllowed = 'move';
-        e.dataTransfer!.setData('text/plain', colKey);
-        // Add a slight delay to show the drag ghost
-        const target = e.target as HTMLElement;
-        target.classList.add('dragging');
-    };
-
-    const handleColumnDragEnd = (e: DragEvent) => {
-        const target = e.target as HTMLElement;
-        target.classList.remove('dragging');
-        draggedColumn.value = null;
-        dragOverColumn.value = null;
-    };
-
-    const handleColumnDragOver = (colKey: ColumnKey, e: DragEvent) => {
-        e.preventDefault();
-        e.dataTransfer!.dropEffect = 'move';
-        if (draggedColumn.value && draggedColumn.value !== colKey) {
-            dragOverColumn.value = colKey;
-        }
-    };
-
-    const handleColumnDragLeave = () => {
-        dragOverColumn.value = null;
-    };
-
-    const handleColumnDrop = (targetColKey: ColumnKey, e: DragEvent) => {
-        e.preventDefault();
-        const sourceColKey = e.dataTransfer!.getData('text/plain') as ColumnKey;
-
-        if (sourceColKey && sourceColKey !== targetColKey) {
-            const newOrder = [...columnOrder.value];
-            const sourceIdx = newOrder.indexOf(sourceColKey);
-            const targetIdx = newOrder.indexOf(targetColKey);
-
-            if (sourceIdx !== -1 && targetIdx !== -1) {
-                // Remove from source and insert at target
-                newOrder.splice(sourceIdx, 1);
-                newOrder.splice(targetIdx, 0, sourceColKey);
-                columnOrder.value = newOrder;
-            }
-        }
-
-        draggedColumn.value = null;
-        dragOverColumn.value = null;
-    };
-
-    // --- Mouse Interaction (Click & Drag) ---
-    const handleMouseDown = (idx: number, e: MouseEvent) => {
-        // Right click doesn't start selection drag usually, just context menu
-        if (e.button === 2) return;
-
-        contextMenu.value = { ...contextMenu.value, visible: false };
-
-        if (e.shiftKey) {
-            // Range select
-            const newSelection = new Set(selectedRows.value);
-            const anchor = dragStartIndex.value ?? idx;
-            const start = Math.min(anchor, idx);
-            const end = Math.max(anchor, idx);
-            // If ctrl not held, clear others (standard OS behavior usually clears, but let's be additive if they want? No, standard is clear unless Ctrl)
-            if (!e.ctrlKey && !e.metaKey) newSelection.clear();
-
-            for (let i = start; i <= end; i++) newSelection.add(i);
-            selectedRows.value = newSelection;
-        } else if (e.ctrlKey || e.metaKey) {
-            // Toggle
-            const newSelection = new Set(selectedRows.value);
-            if (newSelection.has(idx)) newSelection.delete(idx);
-            else newSelection.add(idx);
-            selectedRows.value = newSelection;
-            dragStartIndex.value = idx;
-        } else {
-            // Single select / Start of drag
-            isDragging.value = true;
-            dragStartIndex.value = idx;
-            selectedRows.value = new Set([idx]);
-        }
-    };
-
-    const handleMouseEnter = (idx: number) => {
-        if (isDragging.value && dragStartIndex.value !== null) {
-            const start = Math.min(dragStartIndex.value, idx);
-            const end = Math.max(dragStartIndex.value, idx);
-            const newSet = new Set<number>();
-            for (let i = start; i <= end; i++) newSet.add(i);
-            selectedRows.value = newSet;
-        }
-    };
-
-    const handleMouseUp = () => {
-        isDragging.value = false;
-    };
-
-    useEffect(() => {
-        window.addEventListener('mouseup', handleMouseUp);
-        return () => window.removeEventListener('mouseup', handleMouseUp);
     }, []);
 
-
-    const handleContextMenu = (e: MouseEvent) => {
-        e.preventDefault();
-        contextMenu.value = { x: e.clientX, y: e.clientY, visible: true };
-    };
-
-    const handleCopy = () => {
+    // Action handlers
+    const handleCopy = useCallback(() => {
         const entries = filteredEntries.value;
         const offset = useServerSide.value ? serverPageOffset.value : 0;
-        const text = Array.from(selectedRows.value)
-            .sort((a, b) => a - b)
+        const text = selectionState.selectedIndices
             .map(idx => {
                 const e = entries[idx - offset];
                 return e ? `${formatDateTime(e.timestamp)}\t${e.deviceId}\t${e.signalName}\t${e.value}` : '';
             })
             .filter(line => line !== '')
             .join('\n');
-
         navigator.clipboard.writeText(text);
         contextMenu.value = { ...contextMenu.value, visible: false };
-    };
+    }, [selectionState.selectedIndices]);
 
-    const handleAddToWaveform = () => {
+    const handleAddToWaveform = useCallback(() => {
         const entries = filteredEntries.value;
         const offset = useServerSide.value ? serverPageOffset.value : 0;
         const processed = new Set<string>();
 
-        Array.from(selectedRows.value).forEach(idx => {
+        selectionState.selectedIndices.forEach(idx => {
             const e = entries[idx - offset];
             if (e) {
                 const key = `${e.deviceId}::${e.signalName}`;
@@ -757,194 +563,92 @@ export function LogTable() {
             }
         });
         contextMenu.value = { ...contextMenu.value, visible: false };
-    };
+    }, [selectionState.selectedIndices]);
 
-    // --- Search Highlight Helper ---
-    const HighlightText = ({ text }: { text: string }) => {
-        const query = searchQuery.value;
-        if (!query) return <span>{text}</span>;
-
-        if (searchRegex.value) {
-            try {
-                const flags = searchCaseSensitive.value ? 'g' : 'gi';
-                const regex = new RegExp(`(${query})`, flags);
-                const parts = text.split(regex);
-                return (
-                    <span>
-                        {parts.map((part, i) =>
-                            regex.test(part) ? <mark key={i} className="highlight-match">{part}</mark> : part
-                        )}
-                    </span>
-                );
-            } catch {
-                return <span>{text}</span>;
-            }
+    const handleReload = useCallback(() => {
+        if (useServerSide.value) {
+            const currentPage = Math.floor(serverPageOffset.value / SERVER_PAGE_SIZE) + 1;
+            fetchEntries(currentPage, SERVER_PAGE_SIZE);
         } else {
-            // Simple string highlight
-            if (!text) return <span></span>;
-            const lowerText = searchCaseSensitive.value ? text : text.toLowerCase();
-            const lowerQuery = searchCaseSensitive.value ? query : query.toLowerCase();
-            const index = lowerText.indexOf(lowerQuery);
-
-            if (index === -1) return <span>{text}</span>;
-
-            const before = text.substring(0, index);
-            const match = text.substring(index, index + query.length);
-            const after = text.substring(index + query.length);
-
-            return (
-                <span>
-                    {before}
-                    <mark className="highlight-match">{match}</mark>
-                    <HighlightText text={after} />
-                </span>
-            );
+            fetchEntries(1, 1000);
         }
-    };
+    }, []);
 
+    // Jump to time handler
+    const handleJumpToTime = useCallback(async (ts: number) => {
+        const index = await jumpToTime(ts);
+        if (index !== null && tableRef.current) {
+            tableRef.current.scrollTop = (index * ROW_HEIGHT) / getScrollScale();
+            selectionActions.selectRow(index);
+        }
+    }, [selectionActions]);
 
-    // Viewport calculations - ALWAYS use scrollSignal to ensure re-renders on scroll
-    const viewportHeight = tableRef.current?.clientHeight || 600;
-    const totalCount = useServerSide.value ? totalEntries.value : filteredEntries.value.length;
-    const scrollScale = getScrollScale();
-    const totalHeight = (totalCount * ROW_HEIGHT) / scrollScale;
-
-    // Use scrollSignal to ensure component re-renders when scroll position changes
-    const currentScroll = scrollSignal.value;
+    // ===== RENDER CALCULATIONS =====
 
     const startIdx = useServerSide.value
         ? serverPageOffset.value
-        : Math.max(0, Math.floor(currentScroll / ROW_HEIGHT) - BUFFER);
-
-    const endIdx = useServerSide.value
-        ? serverPageOffset.value + filteredEntries.value.length
-        : Math.min(totalCount, Math.ceil((currentScroll + viewportHeight) / ROW_HEIGHT) + BUFFER);
+        : virtualState.startIndex;
 
     const visibleEntries = useServerSide.value
         ? filteredEntries.value
-        : filteredEntries.value.slice(startIdx, endIdx);
+        : filteredEntries.value.slice(virtualState.startIndex, virtualState.endIndex);
 
-    const offsetTop = useServerSide.value
-        ? (serverPageOffset.value * ROW_HEIGHT) / scrollScale
-        : startIdx * ROW_HEIGHT;
+    // ===== RENDER =====
 
     return (
-        <div className="log-table-container"
-            onKeyDown={handleKeyDown}
+        <div
+            className="log-table-container"
+            onKeyDown={keyboardActions.handleKeyDown}
             onClick={() => contextMenu.value = { ...contextMenu.value, visible: false }}
-            tabIndex={0}>
+            tabIndex={0}
+        >
+            {/* Toolbar */}
+            <LogTableToolbar
+                searchState={searchState}
+                onSearchChange={searchActions.setQuery}
+                onToggleRegex={searchActions.toggleRegex}
+                onToggleCaseSensitive={searchActions.toggleCaseSensitive}
+                onToggleShowChangedOnly={searchActions.toggleShowChangedOnly}
+                onToggleHighlightMode={searchActions.toggleHighlightMode}
+                selectionCount={selectionState.selectionCount}
+                jumpToTimeOpen={jumpToTimeOpen.value}
+                onToggleJumpToTime={() => jumpToTimeOpen.value = !jumpToTimeOpen.value}
+                onOpenWaveform={() => openView('waveform')}
+                onCopy={handleCopy}
+                onReload={handleReload}
+            />
 
-            <div className="log-table-toolbar">
-                <div className="toolbar-left">
-                    <div className="search-box">
-                        <span className="search-icon"><SearchIcon size={14} /></span>
-                        <input
-                            type="text"
-                            placeholder="Filter signals, devices, values..."
-                            value={localQuery}
-                            onInput={(e) => setLocalQuery((e.target as HTMLInputElement).value)}
-                        />
-                    </div>
-                    <div className="filter-options">
-                        <label className={`filter-toggle ${searchRegex.value ? 'active' : ''}`} title="Use Regular Expression for search">
-                            <input
-                                type="checkbox"
-                                checked={searchRegex.value}
-                                onChange={(e) => searchRegex.value = (e.currentTarget as HTMLInputElement).checked}
-                            />
-                            <span className="toggle-label">Regex</span>
-                        </label>
-                        <label className={`filter-toggle ${searchCaseSensitive.value ? 'active' : ''}`} title="Case Sensitive Search">
-                            <input
-                                type="checkbox"
-                                checked={searchCaseSensitive.value}
-                                onChange={(e) => searchCaseSensitive.value = (e.currentTarget as HTMLInputElement).checked}
-                            />
-                            <span className="toggle-label">Aa</span>
-                        </label>
-                        <label className={`filter-toggle ${showChangedOnly.value ? 'active' : ''}`} title="Show only entries where signal values changed">
-                            <input
-                                type="checkbox"
-                                checked={showChangedOnly.value}
-                                onChange={(e) => showChangedOnly.value = (e.currentTarget as HTMLInputElement).checked}
-                            />
-                            <span className="toggle-label">Changes Only</span>
-                        </label>
-                        <label className={`filter-toggle ${searchHighlightMode.value ? 'active' : ''}`} title="Highlight matching rows instead of filtering">
-                            <input
-                                type="checkbox"
-                                checked={searchHighlightMode.value}
-                                onChange={(e) => searchHighlightMode.value = (e.currentTarget as HTMLInputElement).checked}
-                            />
-                            <span className="toggle-label">Highlight</span>
-                        </label>
-                    </div>
-                </div>
-                <div className="toolbar-actions">
-                    <span className="selection-count">
-                        {selectedRows.value.size > 0 && `${selectedRows.value.size} selected`}
-                    </span>
-                    <div className="toolbar-jump">
-                        <button className="btn-jump-to-time" onClick={() => jumpToTimeOpen.value = !jumpToTimeOpen.value} title="Jump to point in time (Ctrl+Shift+G)">
-                            <ClockIcon />
-                            <span>Jump to Time</span>
-                            <kbd>Ctrl+Shift+G</kbd>
-                        </button>
-                        {jumpToTimeOpen.value && (
-                            <JumpToTimePopover
-                                onClose={() => jumpToTimeOpen.value = false}
-                                onJump={async (ts) => {
-                                    const index = await jumpToTime(ts);
-                                    if (index !== null && tableRef.current) {
-                                        tableRef.current.scrollTop = (index * ROW_HEIGHT) / getScrollScale();
-                                        selectedRows.value = new Set([index]);
-                                    }
-                                }}
-                            />
-                        )}
-                    </div>
-                    <div className="toolbar-separator"></div>
-                    <ColorCodingSettings />
-                    <div className="toolbar-separator"></div>
-                    <button className="btn-icon" onClick={() => openView('waveform')} title="Open Timing Diagram"><ChartIcon /></button>
-                    <button className="btn-icon" onClick={handleCopy} title="Copy selected (Ctrl+C)"><CopyIcon /></button>
-                    <button className="btn-icon" onClick={() => {
-                        if (useServerSide.value) {
-                            const currentPage = Math.floor(serverPageOffset.value / SERVER_PAGE_SIZE) + 1;
-                            fetchEntries(currentPage, SERVER_PAGE_SIZE);
-                        } else {
-                            fetchEntries(1, 1000);
-                        }
-                    }} title="Reload data"><RefreshIcon /></button>
-                </div>
-            </div>
-
+            {/* Table */}
             <div className="log-table-view-split">
                 <SignalSidebar />
                 <div className="log-table-content">
+                    {/* Header */}
                     <div className="log-table-header">
-                        {columnOrder.value.map((colKey) => {
-                            const col = COLUMNS.find(c => c.key === colKey)!;
-                            const isDragOver = dragOverColumn.value === colKey;
-                            const isDraggingCol = draggedColumn.value === colKey;
+                        {columnState.columnOrder.map((colKey) => {
+                            const colDef = DEFAULT_COLUMNS.find(c => c.key === colKey)!;
+                            const isDragOver = columnActions.isDragOver(colKey);
+                            const isDraggingCol = columnActions.isDragging(colKey);
+                            const width = columnActions.getColumnWidth(colDef.id);
 
-                            // Special rendering for category column with filter popover
-                            if (col.key === 'category') {
+                            if (colDef.key === 'category') {
                                 return (
                                     <div
-                                        key={col.key}
+                                        key={colDef.key}
                                         className={`log-col col-cat ${categoryFilter.value.size > 0 ? 'filter-active' : ''} ${isDragOver ? 'drag-over' : ''} ${isDraggingCol ? 'dragging' : ''}`}
-                                        style={{ width: columnWidths.value[col.id as keyof typeof columnWidths.value] }}
+                                        style={{ width }}
                                         draggable
-                                        onDragStart={(e) => handleColumnDragStart(col.key, e)}
-                                        onDragEnd={handleColumnDragEnd}
-                                        onDragOver={(e) => handleColumnDragOver(col.key, e)}
-                                        onDragLeave={handleColumnDragLeave}
-                                        onDrop={(e) => handleColumnDrop(col.key, e)}
+                                        onDragStart={(e) => columnActions.handleDragStart(colDef.key, e)}
+                                        onDragEnd={columnActions.handleDragEnd}
+                                        onDragOver={(e) => columnActions.handleDragOver(colDef.key, e)}
+                                        onDragLeave={columnActions.handleDragLeave}
+                                        onDrop={(e) => columnActions.handleDrop(colDef.key, e)}
                                         title="Drag to reorder"
                                     >
                                         <span className="col-header-text" onClick={() => handleHeaderClick('category')}>
-                                            {col.label} {sortColumn.value === 'category' && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
+                                            {colDef.label}
+                                            {sortColumn.value === 'category' && (
+                                                sortDirection.value === 'asc' ? <span>▲</span> : <span>▼</span>
+                                            )}
                                         </span>
                                         <button
                                             className={`category-filter-btn ${categoryFilter.value.size > 0 ? 'active' : ''}`}
@@ -954,202 +658,165 @@ export function LogTable() {
                                             }}
                                             title="Filter by category"
                                         >
-                                            <FilterIcon size={12} />
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                                            </svg>
                                             {categoryFilter.value.size > 0 && (
                                                 <span className="filter-badge">{categoryFilter.value.size}</span>
                                             )}
                                         </button>
-                                        {categoryFilterOpen.value && <CategoryFilterPopover onClose={() => categoryFilterOpen.value = false} />}
-                                        {col.resizable && <div className="resize-handle" onMouseDown={(e) => handleResize(col.id, e)} />}
+                                        {categoryFilterOpen.value && (
+                                            <CategoryFilterPopoverContainer onClose={() => categoryFilterOpen.value = false} />
+                                        )}
+                                        {colDef.resizable && (
+                                            <div className="resize-handle" onMouseDown={(e) => columnActions.handleResize(colDef.id, e)} />
+                                        )}
                                     </div>
                                 );
                             }
 
-                            // Standard rendering for other columns
                             return (
                                 <div
-                                    key={col.key}
-                                    className={`log-col col-${col.id} ${isDragOver ? 'drag-over' : ''} ${isDraggingCol ? 'dragging' : ''}`}
-                                    style={{ width: columnWidths.value[col.id as keyof typeof columnWidths.value] }}
-                                    onClick={() => col.sortable && handleHeaderClick(col.key as keyof LogEntry)}
+                                    key={colDef.key}
+                                    className={`log-col col-${colDef.id} ${isDragOver ? 'drag-over' : ''} ${isDraggingCol ? 'dragging' : ''}`}
+                                    style={{ width }}
+                                    onClick={() => colDef.sortable && handleHeaderClick(colDef.key as keyof LogEntry)}
                                     draggable
-                                    onDragStart={(e) => handleColumnDragStart(col.key, e)}
-                                    onDragEnd={handleColumnDragEnd}
-                                    onDragOver={(e) => handleColumnDragOver(col.key, e)}
-                                    onDragLeave={handleColumnDragLeave}
-                                    onDrop={(e) => handleColumnDrop(col.key, e)}
+                                    onDragStart={(e) => columnActions.handleDragStart(colDef.key, e)}
+                                    onDragEnd={columnActions.handleDragEnd}
+                                    onDragOver={(e) => columnActions.handleDragOver(colDef.key, e)}
+                                    onDragLeave={columnActions.handleDragLeave}
+                                    onDrop={(e) => columnActions.handleDrop(colDef.key, e)}
                                     title="Drag to reorder"
                                 >
-                                    {col.label} {col.sortable && sortColumn.value === col.key && (sortDirection.value === 'asc' ? <ChevronUpIcon /> : <ChevronDownIcon />)}
-                                    {col.resizable && <div className="resize-handle" onMouseDown={(e) => handleResize(col.id, e)} />}
+                                    {colDef.label}
+                                    {colDef.sortable && sortColumn.value === colDef.key && (
+                                        sortDirection.value === 'asc' ? <span>▲</span> : <span>▼</span>
+                                    )}
+                                    {colDef.resizable && (
+                                        <div className="resize-handle" onMouseDown={(e) => columnActions.handleResize(colDef.id, e)} />
+                                    )}
                                 </div>
                             );
                         })}
                     </div>
 
-                    <div className="log-table-viewport" ref={tableRef} onScroll={onScroll}>
-                        <div className="log-table-spacer" style={{ height: `${totalHeight}px` }}>
-                            <div className="log-table-rows" style={{ transform: `translateY(${offsetTop}px)` }}>
+                    {/* Viewport with rows */}
+                    <div className="log-table-viewport" ref={tableRef} onScroll={handleScroll}>
+                        <div
+                            className="log-table-spacer"
+                            style={{ height: `${virtualState.scrollHeight}px` }}
+                        >
+                            <div
+                                className="log-table-rows"
+                                style={{ transform: `translateY(${useServerSide.value ? (serverPageOffset.value * ROW_HEIGHT) / virtualState.scaleFactor : virtualState.offsetY}px)` }}
+                            >
                                 {visibleEntries.map((entry, i) => {
                                     const actualIdx = startIdx + i;
-                                    const isSelected = selectedRows.value.has(actualIdx);
-                                    const isHighlightMatch = searchHighlightMode.value && searchQuery.value && entryMatchesSearch(entry);
-                                    
-                                    // Compute color coding classes and styles
-                                    const colorClasses: string[] = [];
-                                    const rowStyles: Record<string, string> = {};
-                                    const valueClassMods: string[] = [];
-                                    
-                                    if (colorSettings.value.enabled) {
-                                        const settings = colorSettings.value;
-                                        
-                                        switch (settings.mode) {
-                                            case 'category': {
-                                                const catColor = getCategoryColor(entry.category);
-                                                if (catColor && settings.applyToRow) {
-                                                    const categoryClass = (entry.category || 'uncategorized').toLowerCase().replace(/[^a-z0-9]/g, '-');
-                                                    colorClasses.push(`category-${categoryClass}`);
-                                                    rowStyles['--row-opacity'] = String(settings.rowOpacity);
-                                                }
-                                                break;
-                                            }
-                                            case 'signalPattern': {
-                                                const patternColor = getSignalPatternColor(entry.signalName);
-                                                if (patternColor && settings.applyToRow) {
-                                                    // Find which pattern matched to determine the class
-                                                    const matchedPattern = settings.signalPatterns.find(p => {
-                                                        if (!p.enabled) return false;
-                                                        try {
-                                                            const regex = p.isRegex
-                                                                ? new RegExp(p.pattern, 'i')
-                                                                : new RegExp(p.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-                                                            return regex.test(entry.signalName);
-                                                        } catch { return false; }
-                                                    });
-                                                    if (matchedPattern) {
-                                                        const patternClass = matchedPattern.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
-                                                        colorClasses.push(`pattern-${patternClass}`);
-                                                        rowStyles['--row-opacity'] = String(settings.rowOpacity);
-                                                    }
-                                                }
-                                                break;
-                                            }
-                                            case 'valueSeverity': {
-                                                const valueStr = String(entry.value);
-                                                const severity = getValueSeverity(valueStr);
-                                                if (severity) {
-                                                    if (settings.applyToRow) {
-                                                        colorClasses.push(`severity-${severity}`);
-                                                        rowStyles['--row-opacity'] = String(settings.rowOpacity);
-                                                    }
-                                                    if (settings.applyToValue) {
-                                                        valueClassMods.push(`val-severity-${severity}`);
-                                                    }
-                                                }
-                                                break;
-                                            }
-                                            case 'signalType': {
-                                                // Use CSS variables for signal type colors
-                                                rowStyles['--color-bool-true'] = settings.booleanTrueColor;
-                                                rowStyles['--color-bool-false'] = settings.booleanFalseColor;
-                                                rowStyles['--color-integer'] = settings.integerColor;
-                                                rowStyles['--color-string'] = settings.stringColor;
-                                                break;
-                                            }
-                                            case 'device': {
-                                                if (settings.applyToRow) {
-                                                    const deviceColor = getDeviceColor(entry.deviceId);
-                                                    colorClasses.push('device-colored', 'custom-color');
-                                                    rowStyles['--device-color'] = deviceColor;
-                                                    rowStyles['--custom-bg-color'] = `rgba(${parseInt(deviceColor.slice(1, 3), 16)}, ${parseInt(deviceColor.slice(3, 5), 16)}, ${parseInt(deviceColor.slice(5, 7), 16)}, ${settings.rowOpacity})`;
-                                                    rowStyles['--custom-border-color'] = deviceColor;
-                                                }
-                                                break;
-                                            }
-                                        }
-                                        
-                                        if (settings.alternatingRows) {
-                                            colorClasses.push('alternating');
-                                            rowStyles['--alternating-opacity'] = String(settings.alternatingRowOpacity);
-                                        }
-                                    }
-                                    
+                                    const isSelected = selectionActions.isSelected(actualIdx);
+
+                                    // Compute color coding
+                                    const colorResult = colorSettings.value.enabled
+                                        ? computeRowColorCoding(entry, colorSettings.value)
+                                        : { classes: [], styles: {}, valueClassMods: [] };
+
+                                    // Check highlight match
+                                    const isHighlightMatch = searchHighlightMode.value && searchQuery.value && (
+                                        entry.deviceId.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+                                        entry.signalName.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+                                        String(entry.value).toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+                                        (entry.category || '').toLowerCase().includes(searchQuery.value.toLowerCase())
+                                    );
+
+                                    const classNames = ['log-table-row'];
+                                    if (isSelected) classNames.push('selected');
+                                    if (isHighlightMatch) classNames.push('search-highlight');
+                                    classNames.push(...colorResult.classes);
+
                                     return (
                                         <div
                                             key={actualIdx}
-                                            className={`log-table-row ${isSelected ? 'selected' : ''} ${isHighlightMatch ? 'search-highlight' : ''} ${colorClasses.join(' ')}`}
-                                            style={rowStyles}
-                                            onMouseDown={(e) => handleMouseDown(actualIdx, e)}
-                                            onMouseEnter={() => handleMouseEnter(actualIdx)}
-                                            onContextMenu={handleContextMenu}
+                                            className={classNames.join(' ')}
+                                            style={colorResult.styles}
+                                            onMouseDown={(e) => handleRowMouseDown(actualIdx, e)}
+                                            onContextMenu={handleRowContextMenu}
                                         >
-                                            {columnOrder.value.map((colKey) => {
-                                                const col = COLUMNS.find(c => c.key === colKey)!;
-                                                const width = columnWidths.value[col.id as keyof typeof columnWidths.value];
+                                            {columnState.columnOrder.map((colKey) => {
+                                                const colId = { timestamp: 'ts', deviceId: 'dev', signalName: 'sig', category: 'cat', value: 'val', type: 'type' }[colKey];
+                                                const width = columnActions.getColumnWidth(colId!);
 
-                                                switch (col.key) {
+                                                switch (colKey) {
                                                     case 'timestamp':
-                                                        return <div key={col.key} className="log-col" style={{ width }}>{formatDateTime(entry.timestamp)}</div>;
+                                                        return <div key={colKey} className="log-col" style={{ width }}>{formatDateTime(entry.timestamp)}</div>;
                                                     case 'deviceId':
-                                                        return <div key={col.key} className="log-col" style={{ width }}><HighlightText text={entry.deviceId} /></div>;
+                                                        return <div key={colKey} className="log-col" style={{ width }}><HighlightText text={entry.deviceId} query={searchQuery.value} useRegex={searchRegex.value} caseSensitive={searchCaseSensitive.value} /></div>;
                                                     case 'signalName':
-                                                        return <div key={col.key} className="log-col" style={{ width }}><HighlightText text={entry.signalName} /></div>;
+                                                        return <div key={colKey} className="log-col" style={{ width }}><HighlightText text={entry.signalName} query={searchQuery.value} useRegex={searchRegex.value} caseSensitive={searchCaseSensitive.value} /></div>;
                                                     case 'category':
-                                                        return <div key={col.key} className="log-col" style={{ width }}><HighlightText text={entry.category || ''} /></div>;
+                                                        return <div key={colKey} className="log-col" style={{ width }}><HighlightText text={entry.category || ''} query={searchQuery.value} useRegex={searchRegex.value} caseSensitive={searchCaseSensitive.value} /></div>;
                                                     case 'value': {
                                                         const valueStr = String(entry.value);
                                                         const dataAttr = entry.signalType === 'boolean' ? { 'data-value': valueStr.toLowerCase() } : {};
-                                                        const valueClass = `log-col val-${entry.signalType} ${valueClassMods.join(' ')}`;
-                                                        return <div key={col.key} className={valueClass} style={{ width }} {...dataAttr}><HighlightText text={valueStr} /></div>;
+                                                        const valueClass = `log-col val-${entry.signalType} ${colorResult.valueClassMods.join(' ')}`;
+                                                        return <div key={colKey} className={valueClass} style={{ width }} {...dataAttr}><HighlightText text={valueStr} query={searchQuery.value} useRegex={searchRegex.value} caseSensitive={searchCaseSensitive.value} /></div>;
                                                     }
                                                     case 'type':
-                                                        return <div key={col.key} className="log-col" style={{ width }}>{entry.signalType}</div>;
+                                                        return <div key={colKey} className="log-col" style={{ width }}>{entry.signalType}</div>;
                                                     default:
                                                         return null;
                                                 }
                                             })}
                                         </div>
                                     );
-                                })},
+                                })}
                             </div>
                         </div>
+
+                        {/* Loading states */}
+                        {(isLoadingLog.value || isStreaming.value) && (
+                            <div className="log-loading-overlay">
+                                <div className="loader"></div>
+                                {isStreaming.value ? (
+                                    <div className="streaming-progress">
+                                        <span>Streaming Log Entries... {streamProgress.value}%</span>
+                                        <div className="progress-bar-container">
+                                            <div className="progress-bar" style={{ width: `${streamProgress.value}%` }}></div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <span>Loading Log Data...</span>
+                                )}
+                            </div>
+                        )}
+
+                        {useServerSide.value && isFetchingPage && !isLoadingLog.value && (
+                            <div className="log-loading-indicator">
+                                <div className="loader-small"></div>
+                                <span>Loading more entries...</span>
+                            </div>
+                        )}
+
+                        {!isLoadingLog.value && totalCount === 0 && (
+                            <div className="log-empty-state">
+                                {searchQuery.value ? 'No entries match your filter' : 'No entries found'}
+                            </div>
+                        )}
                     </div>
 
-                    {(isLoadingLog.value || isStreaming.value) && (
-                        <div className="log-loading-overlay">
-                            <div className="loader"></div>
-                            {isStreaming.value ? (
-                                <div className="streaming-progress">
-                                    <span>Streaming Log Entries... {streamProgress.value}%</span>
-                                    <div className="progress-bar-container">
-                                        <div className="progress-bar" style={{ width: `${streamProgress.value}%` }}></div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <span>Loading Log Data...</span>
-                            )}
-                        </div>
+                    {/* Jump to Time popover */}
+                    {jumpToTimeOpen.value && (
+                        <JumpToTimePopover
+                            onClose={() => jumpToTimeOpen.value = false}
+                            onJump={handleJumpToTime}
+                        />
                     )}
 
-                    {/* Server-side page fetching indicator */}
-                    {useServerSide.value && isFetchingPage && !isLoadingLog.value && (
-                        <div className="log-loading-indicator">
-                            <div className="loader-small"></div>
-                            <span>Loading more entries...</span>
-                        </div>
-                    )}
-
-                    {!isLoadingLog.value && totalCount === 0 && (
-                        <div className="log-empty-state">
-                            {searchQuery.value ? 'No entries match your filter' : 'No entries found'}
-                        </div>
-                    )}
-
+                    {/* Context menu */}
                     {contextMenu.value.visible && (
                         <div className="context-menu" style={{ top: contextMenu.value.y, left: contextMenu.value.x }}>
                             <div className="menu-item" onClick={handleAddToWaveform}>Add to Waveform</div>
                             <div className="menu-item" onClick={handleCopy}>Copy Selected Rows</div>
-                            <div className="menu-item" onClick={() => { selectedRows.value = new Set(); contextMenu.value = { ...contextMenu.value, visible: false }; }}>Clear Selection</div>
+                            <div className="menu-item" onClick={() => { selectionActions.clearSelection(); contextMenu.value = { ...contextMenu.value, visible: false }; }}>Clear Selection</div>
                         </div>
                     )}
                 </div>
@@ -1157,4 +824,3 @@ export function LogTable() {
         </div>
     );
 }
-
