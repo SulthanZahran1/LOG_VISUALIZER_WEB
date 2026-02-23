@@ -465,11 +465,12 @@ func (h *ParseHandlerImpl) sendSSEError(c echo.Context, message string) {
 }
 
 func parseTimestamp(s string) (time.Time, error) {
-	ms, err := strconv.ParseInt(s, 10, 64)
+	// Try parsing as float first (handles both integer and decimal timestamps)
+	msFloat, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		return time.Time{}, err
 	}
-	return time.UnixMilli(ms), nil
+	return time.UnixMilli(int64(msFloat)), nil
 }
 
 func parseInt64Param(s string) (int64, error) {
