@@ -199,7 +199,8 @@ func (h *ParseHandlerImpl) HandleParseStream(c echo.Context) error {
 
 	// Stream entries in chunks
 	page := 1
-	pageSize := 100
+	pageSize := 1000
+	var processedCount int
 
 	for {
 		ctx := c.Request().Context()
@@ -209,19 +210,35 @@ func (h *ParseHandlerImpl) HandleParseStream(c echo.Context) error {
 			return nil
 		}
 
-		h.sendSSEData(c, map[string]interface{}{
-			"entries": entries,
-			"page":    page,
-			"total":   total,
-		})
+		// Calculate progress
+		processedCount += len(entries)
+		progress := 0
+		if total > 0 {
+			progress = (processedCount * 100) / total
+		}
 
-		// Check if we've sent all entries
-		if len(entries) == 0 || page*pageSize >= total {
+		// Check if we're done
+		isDone := len(entries) == 0 || processedCount >= total
+
+		if isDone {
+			// Send completion signal
+			h.sendSSEData(c, map[string]interface{}{
+				"done":  true,
+				"total": total,
+			})
+			c.Response().Flush()
 			return nil
 		}
 
-		page++
+		h.sendSSEData(c, map[string]interface{}{
+			"entries":  entries,
+			"page":     page,
+			"total":    total,
+			"progress": progress,
+		})
 		c.Response().Flush()
+
+		page++
 	}
 }
 
