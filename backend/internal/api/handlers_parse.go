@@ -232,7 +232,7 @@ func (h *ParseHandlerImpl) HandleParseChunk(c echo.Context) error {
 		return NewValidationError("sessionId")
 	}
 
-	// Parse time range
+	// Parse time range from query params
 	startTs, err := parseTimestamp(c.QueryParam("start"))
 	if err != nil {
 		return NewBadRequestError("invalid start time", err)
@@ -242,7 +242,21 @@ func (h *ParseHandlerImpl) HandleParseChunk(c echo.Context) error {
 		return NewBadRequestError("invalid end time", err)
 	}
 
-	// Parse signal filter
+	// Parse signal filter from body (optional)
+	var req struct {
+		Signals []string `json:"signals,omitempty"`
+	}
+	if err := c.Bind(&req); err == nil && len(req.Signals) > 0 {
+		// Use signals from body if provided
+		ctx := c.Request().Context()
+		entries, ok := h.sessionMgr.GetChunk(ctx, id, startTs, endTs, req.Signals)
+		if !ok {
+			return NewNotFoundError("session", id)
+		}
+		return c.JSON(http.StatusOK, entries)
+	}
+
+	// Fallback to query params
 	signals := c.QueryParams()["signals"]
 
 	ctx := c.Request().Context()
@@ -261,20 +275,21 @@ func (h *ParseHandlerImpl) HandleParseChunkBoundaries(c echo.Context) error {
 		return NewValidationError("sessionId")
 	}
 
-	// Parse time range
-	startTs, err := parseTimestamp(c.QueryParam("start"))
-	if err != nil {
-		return NewBadRequestError("invalid start time", err)
+	// Parse JSON body for time range and signals
+	var req struct {
+		Start   float64  `json:"start"`
+		End     float64  `json:"end"`
+		Signals []string `json:"signals"`
 	}
-	endTs, err := parseTimestamp(c.QueryParam("end"))
-	if err != nil {
-		return NewBadRequestError("invalid end time", err)
+	if err := c.Bind(&req); err != nil {
+		return NewBadRequestError("invalid request body", err)
 	}
 
-	signals := c.QueryParams()["signals"]
+	startTs := time.UnixMilli(int64(req.Start))
+	endTs := time.UnixMilli(int64(req.End))
 
 	ctx := c.Request().Context()
-	boundaries, ok := h.sessionMgr.GetBoundaryValues(ctx, id, startTs, endTs, signals)
+	boundaries, ok := h.sessionMgr.GetBoundaryValues(ctx, id, startTs, endTs, req.Signals)
 	if !ok {
 		return NewNotFoundError("session", id)
 	}
