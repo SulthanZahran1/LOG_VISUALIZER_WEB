@@ -918,8 +918,8 @@ func (ds *DuckStore) GetValuesAtTime(ctx context.Context, ts time.Time, signals 
 
 // BoundaryValues holds the last value before and first value after a time window for each signal
 type BoundaryValues struct {
-	Before map[string]models.LogEntry // signal key -> last entry before startTs
-	After  map[string]models.LogEntry // signal key -> first entry after endTs
+	Before map[string]models.LogEntry `json:"before"` // signal key -> last entry before startTs
+	After  map[string]models.LogEntry `json:"after"`  // signal key -> first entry after endTs
 }
 
 // GetBoundaryValues returns the last value before startTs and first value after endTs for each signal.
