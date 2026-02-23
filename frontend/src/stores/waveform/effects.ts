@@ -124,7 +124,7 @@ export function initWaveformDataEffect(): void {
 
         const timer = setTimeout(() => {
             updateWaveformEntries();
-        }, isLarge ? 150 : 0);
+        }, isLarge ? 80 : 0);
 
         return () => clearTimeout(timer);
     });

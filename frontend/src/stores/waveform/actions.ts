@@ -167,6 +167,12 @@ export async function updateWaveformEntries(): Promise<void> {
     isWaveformLoading.value = true;
     waveformLoadingProgress.value = 0;
 
+    // For large files, clear entries immediately to avoid showing stale data
+    // Boundary values will be used to render continuation lines during loading
+    if (isLarge) {
+        waveformEntries.value = {};
+    }
+
     try {
         const sessionId = session.id;
         const start = range.start;
