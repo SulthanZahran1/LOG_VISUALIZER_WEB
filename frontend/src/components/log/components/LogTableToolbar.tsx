@@ -3,7 +3,7 @@
  * 
  * Toolbar with search, filters, and actions for the log table.
  */
-import { SearchIcon, ChartIcon, CopyIcon, RefreshIcon, ClockIcon, GridIcon } from '../../icons';
+import { SearchIcon, ChartIcon, CopyIcon, RefreshIcon, ClockIcon } from '../../icons';
 import { ColorCodingSettings } from '../../settings/ColorCodingSettings';
 import type { SearchFilterState } from '../hooks/useSearchFilter';
 
@@ -28,10 +28,6 @@ export interface LogTableToolbarProps {
     onToggleJumpToTime: () => void;
     /** Open waveform view */
     onOpenWaveform?: () => void;
-    /** Heatmap open state */
-    showHeatmap?: boolean;
-    /** Toggle heatmap */
-    onToggleHeatmap?: () => void;
     /** Copy selected rows */
     onCopy: () => void;
     /** Reload data */
@@ -52,8 +48,6 @@ export function LogTableToolbar({
     jumpToTimeOpen,
     onToggleJumpToTime,
     onOpenWaveform,
-    showHeatmap,
-    onToggleHeatmap,
     onCopy,
     onReload
 }: LogTableToolbarProps) {
@@ -134,16 +128,6 @@ export function LogTableToolbar({
                 <div className="toolbar-separator"></div>
                 <ColorCodingSettings />
                 <div className="toolbar-separator"></div>
-                {onToggleHeatmap && (
-                    <button 
-                        className={`btn-icon ${showHeatmap ? 'active' : ''}`} 
-                        onClick={onToggleHeatmap} 
-                        title="Toggle Heatmap"
-                        style={{ color: showHeatmap ? 'var(--primary-accent)' : 'inherit' }}
-                    >
-                        <GridIcon />
-                    </button>
-                )}
                 {onOpenWaveform && (
                     <button className="btn-icon" onClick={onOpenWaveform} title="Open Waveform">
                         <ChartIcon />

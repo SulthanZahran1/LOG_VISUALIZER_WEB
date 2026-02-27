@@ -26,7 +26,6 @@ import {
     availableSignalNames,
     availableDeviceIds,
     jumpToTime,
-    showHeatmap,
 } from '../../stores/logStore';
 import { getTimeTree } from '../../api/client';
 import type { TimeTreeEntry } from '../../api/client';
@@ -55,8 +54,6 @@ import {
 
 // Utils
 import { computeRowColorCoding } from './utils/colorCoding';
-import { TransferHeatmap } from './TransferHeatmap';
-
 import './LogTable.css';
 
 const ROW_HEIGHT = 28;
@@ -413,13 +410,6 @@ export function LogTable() {
     const isGenericLog = isGenericLogSession(currentSession.value);
     const isTRSLog = isTRSLogSession(currentSession.value);
 
-    // Default showHeatmap based on isTRSLog when a new TRS session is loaded
-    useEffect(() => {
-        if (isTRSLog && currentSession.value) {
-            showHeatmap.value = true;
-        }
-    }, [currentSession.value?.id, isTRSLog]);
-
     // ===== HOOKS =====
 
     // Column management
@@ -711,8 +701,6 @@ export function LogTable() {
                 jumpToTimeOpen={jumpToTimeOpen.value}
                 onToggleJumpToTime={() => jumpToTimeOpen.value = !jumpToTimeOpen.value}
                 onOpenWaveform={isGenericLog || isTRSLog ? undefined : () => openView('waveform')}
-                showHeatmap={showHeatmap.value}
-                onToggleHeatmap={isTRSLog ? () => showHeatmap.value = !showHeatmap.value : undefined}
                 onCopy={handleCopy}
                 onReload={handleReload}
             />
@@ -721,14 +709,6 @@ export function LogTable() {
             <div className="log-table-view-split">
                 <SignalSidebar />
                 <div className="log-table-content">
-                    {/* Heatmap if TRS */}
-                    {isTRSLog && showHeatmap.value && (
-                        <TransferHeatmap 
-                            onCellClick={(src, dst) => {
-                                searchQuery.value = `${src} ${dst}`;
-                            }}
-                        />
-                    )}
                     {/* Header */}
                     <div className="log-table-header">
                         {columnState.columnOrder.map((colKey) => {

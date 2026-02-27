@@ -343,12 +343,14 @@ export function App() {
         {activeTab.value === 'heatmap' && (
           <div className="view-container heatmap-view">
             <div className="view-header">
-              <h2>Transfer Traffic Heatmap</h2>
-              <p>Intensity represents transfer frequency between locations</p>
+              <h2>Transfer Rack Heatmap</h2>
+              <p>
+                Rack IDs are parsed from transfer source/destination in `zxxxyy` format and plotted by X and Z+YY.
+              </p>
             </div>
             <TransferHeatmap 
-              onCellClick={(src, dst) => {
-                searchQuery.value = `${src} ${dst}`;
+              onCellClick={(rackId) => {
+                searchQuery.value = rackId;
                 handleOpenView('log-table');
               }}
             />
@@ -763,12 +765,14 @@ export function App() {
         }
 
         .heatmap-view {
-          padding: var(--spacing-xl);
+          padding: var(--spacing-lg);
           background: var(--bg-primary);
+          gap: var(--spacing-md);
         }
 
         .heatmap-view .view-header {
-          margin-bottom: var(--spacing-lg);
+          margin-bottom: 0;
+          padding: 0 var(--spacing-xs);
         }
 
         .heatmap-view .view-header h2 {
@@ -784,11 +788,8 @@ export function App() {
         }
 
         .heatmap-view .transfer-heatmap-container {
-          max-height: none;
           flex: 1;
-          border: 1px solid var(--border-color);
-          border-radius: var(--card-radius);
-          background: var(--bg-secondary);
+          min-height: 0;
         }
 
         .session-status {

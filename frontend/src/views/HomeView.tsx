@@ -176,7 +176,6 @@ export function HomeView({
                                 {activeFileTab === 'loaded' ? (
                                     <LoadedFileCard
                                         recentFiles={recentFiles}
-                                        onOpenView={handleNavigation}
                                         onUnload={handleUnload}
                                     />
                                 ) : (

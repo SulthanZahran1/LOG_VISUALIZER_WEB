@@ -61,7 +61,6 @@ export {
     // View
     openViews,
     activeTab,
-    showHeatmap,
     signalTypeFilter,
     // Sync
     isSyncEnabled,

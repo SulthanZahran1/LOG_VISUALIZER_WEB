@@ -55,8 +55,8 @@ Server message types:
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/parse` | Start parse (single `fileId` or merged `fileIds`) |
-| GET | `/parse/:sessionId/status` | Parse status/progress summary |
-| GET | `/parse/:sessionId/progress` | SSE parse progress stream |
+| GET | `/parse/:sessionId/status` | Parse status/progress summary (includes `parserName`) |
+| GET | `/parse/:sessionId/progress` | SSE parse progress stream (includes `parserName`) |
 | GET | `/parse/:sessionId/entries` | Paginated entries |
 | GET | `/parse/:sessionId/entries/msgpack` | Msgpack-encoded entries |
 | GET | `/parse/:sessionId/stream` | SSE entry stream |

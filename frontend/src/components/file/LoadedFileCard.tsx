@@ -1,50 +1,11 @@
 import React from 'react';
 import type { ParseSession, FileInfo } from '../../models/types';
 import { currentSession, totalEntries, isStreaming, streamProgress } from '../../stores/logStore';
-import type { ViewType } from '../../stores/logStore';
 
 interface LoadedFileCardProps {
     recentFiles: FileInfo[];
-    onOpenView: (viewType: ViewType) => void;
     onUnload: () => void;
 }
-
-const viewButtons: { type: ViewType; label: string; icon: string; color: string }[] = [
-    { type: 'log-table', label: 'Log Table', icon: 'table', color: '#34A853' },
-    { type: 'waveform', label: 'Waveform', icon: 'waveform', color: '#4285F4' },
-    { type: 'map-viewer', label: 'Map', icon: 'map', color: '#FBBC04' },
-    { type: 'transitions', label: 'Transitions', icon: 'chart', color: '#EA4335' },
-];
-
-const icons = {
-    table: (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-            <line x1="3" y1="9" x2="21" y2="9" />
-            <line x1="3" y1="15" x2="21" y2="15" />
-            <line x1="9" y1="3" x2="9" y2="21" />
-        </svg>
-    ),
-    waveform: (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 12h4l3-9 4 18 3-9h4" />
-        </svg>
-    ),
-    map: (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="1,6 1,22 8,18 16,22 23,18 23,2 16,6 8,2 1,6" />
-            <line x1="8" y1="2" x2="8" y2="18" />
-            <line x1="16" y1="6" x2="16" y2="22" />
-        </svg>
-    ),
-    chart: (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="20" x2="18" y2="10" />
-            <line x1="12" y1="20" x2="12" y2="4" />
-            <line x1="6" y1="20" x2="6" y2="14" />
-        </svg>
-    ),
-};
 
 function formatSize(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -64,7 +25,7 @@ function getStatusLabel(session: ParseSession): string {
     }
 }
 
-export function LoadedFileCard({ recentFiles, onOpenView, onUnload }: LoadedFileCardProps) {
+export function LoadedFileCard({ recentFiles, onUnload }: LoadedFileCardProps) {
     const session = currentSession.value;
     const entries = totalEntries.value;
     const streaming = isStreaming.value;
@@ -115,7 +76,6 @@ export function LoadedFileCard({ recentFiles, onOpenView, onUnload }: LoadedFile
     }
 
     const isParsing = session.status === 'pending' || session.status === 'parsing';
-    const isComplete = session.status === 'complete';
     const showProgress = isParsing || streaming;
     const progressValue = streaming ? progress : (session.progress || 0);
 
@@ -155,21 +115,6 @@ export function LoadedFileCard({ recentFiles, onOpenView, onUnload }: LoadedFile
                     <div class="progress-bar" style={{ width: `${progressValue}%` }}></div>
                 </div>
             )}
-
-            <div class="view-buttons">
-                {viewButtons.map(btn => (
-                    <button
-                        key={btn.type}
-                        class="view-btn"
-                        onClick={() => onOpenView(btn.type)}
-                        disabled={!isComplete}
-                        style={{ '--btn-color': btn.color } as React.CSSProperties}
-                    >
-                        {icons[btn.icon as keyof typeof icons]}
-                        <span>{btn.label}</span>
-                    </button>
-                ))}
-            </div>
 
             <style>{`
                 .loaded-card {
@@ -273,49 +218,6 @@ export function LoadedFileCard({ recentFiles, onOpenView, onUnload }: LoadedFile
                     height: 100%;
                     background: var(--primary-accent);
                     transition: width 0.3s ease;
-                }
-
-                .view-buttons {
-                    display: grid;
-                    grid-template-columns: repeat(4, 1fr);
-                    gap: var(--spacing-sm);
-                    margin-top: auto;
-                }
-
-                .view-btn {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    gap: 4px;
-                    padding: var(--spacing-sm);
-                    background: var(--bg-primary);
-                    border: 1px solid var(--border-color);
-                    border-radius: var(--border-radius);
-                    color: var(--text-secondary);
-                    cursor: pointer;
-                    transition: all var(--transition-fast);
-                    font-size: 11px;
-                    font-weight: 500;
-                }
-
-                .view-btn:hover:not(:disabled) {
-                    background: var(--bg-tertiary);
-                    border-color: var(--btn-color, var(--primary-accent));
-                    color: var(--btn-color, var(--primary-accent));
-                    transform: translateY(-1px);
-                }
-
-                .view-btn:disabled {
-                    opacity: 0.4;
-                    cursor: not-allowed;
-                }
-
-                .view-btn svg {
-                    transition: transform var(--transition-fast);
-                }
-
-                .view-btn:hover:not(:disabled) svg {
-                    transform: scale(1.1);
                 }
             `}</style>
         </div>

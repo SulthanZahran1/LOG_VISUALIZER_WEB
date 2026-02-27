@@ -50,6 +50,8 @@ go test ./...
 
 - Backend: Go + Echo + DuckDB-backed parsing/storage path for large PLC logs
 - Frontend: Preact + `@preact/signals` + Vite
+- Support: Standard PLC logs (bracket-delimited), MCS carrier logs, and specialized Transfer logs (TRS).
+- Features: Synchronized Log Table, Waveform View, Map View, and Transfer Heatmap.
 - Upload paths: HTTP chunked upload and WebSocket upload (`/api/ws/uploads`)
 - Primary stores: modular `stores/log`, `stores/waveform`, `stores/map` with legacy re-export entrypoints preserved
 

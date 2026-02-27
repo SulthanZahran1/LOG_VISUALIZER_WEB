@@ -1,5 +1,31 @@
 # Changelog
 
+## [Unreleased] - 2026-02-27
+
+### Added - Transfer Log & Heatmap Visualization ✅ COMPLETE
+
+Implemented specialized support for TRS transfer logs with a dedicated heatmap visualization:
+
+**New Parsers:**
+- `TRSLogParser` - Handles backtick-delimited transfer logs (`@example-transfer.log`). Maps transfer metadata (CmdID, Status, Source, Dest, etc.) into structured entries.
+- `GenericLogParser` - Fallback parser for standard timestamped logs (e.g., `YYYY-MM-DD HH:MM:SS [LEVEL] Message`).
+
+**New Visualization:**
+- **Transfer Heatmap** - High-density grid visualizing transfer traffic between Source and Destination locations.
+  - Intensity-based color coding (purple scale) for frequency.
+  - Interactive cells: Click a cell to filter the Log Table to specific Source/Destination pairs.
+  - Integrated toggle in Log Table toolbar.
+  - Dedicated full-page view tab.
+
+**UX Improvements:**
+- **Adaptive UI** - Navigation grid now enables/disables views based on log format (e.g., hiding Waveform for Transfer logs).
+- **Dynamic Log Table** - Columns automatically adapt based on format:
+  - Standard: TIMESTAMP, DEVICE ID, SIGNAL NAME, VALUE
+  - Generic: TIMESTAMP, SOURCE, LEVEL, MESSAGE
+  - Transfer: TIMESTAMP, CARRIER ID, CMD ID, STATUS, SOURCE, DEST, CURR LOC, RESULT
+- **Auto-Navigation** - Successfully parsing a Transfer or Generic log automatically opens the Log Table.
+- **Optimized Loading** - Skips irrelevant background data (Map/Waveform) for non-signal log formats.
+
 ## [Unreleased] - 2026-02-20
 
 ### Added - E2E Tests with Docker Support ✅ COMPLETE
