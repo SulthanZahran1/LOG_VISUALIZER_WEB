@@ -41,7 +41,7 @@ func (p *ObservableLogParser) CanParse(filePath string) (bool, error) {
 	matched := 0
 
 	for scanner.Scan() && checked < 20 {
-		line := strings.TrimSpace(scanner.Text())
+		line := normalizeObservableLine(scanner.Text())
 		if line == "" || isObservableHeaderLine(line) {
 			continue
 		}
@@ -110,7 +110,7 @@ func (p *ObservableLogParser) ParseWithProgress(filePath string, onProgress Prog
 		line := scanner.Text()
 		bytesRead += int64(len(line)) + 1
 
-		line = strings.TrimSpace(line)
+		line = normalizeObservableLine(line)
 		if line == "" || isObservableHeaderLine(line) {
 			continue
 		}
@@ -324,4 +324,20 @@ func inferObservableType(dataType string, value string) models.SignalType {
 	default:
 		return InferType(value)
 	}
+}
+
+func normalizeObservableLine(line string) string {
+	// Some Windows-exported logs are UTF-16-like in transport paths and include NUL bytes.
+	// Strip NUL bytes so ASCII delimiters can be detected reliably.
+	if strings.IndexByte(line, 0) >= 0 {
+		line = strings.ReplaceAll(line, "\x00", "")
+	}
+
+	// Handle common BOM variants.
+	line = strings.TrimPrefix(line, "\ufeff")
+	line = strings.TrimPrefix(line, "\xEF\xBB\xBF")
+	line = strings.TrimPrefix(line, "\xFF\xFE")
+	line = strings.TrimPrefix(line, "\xFE\xFF")
+
+	return strings.TrimSpace(line)
 }

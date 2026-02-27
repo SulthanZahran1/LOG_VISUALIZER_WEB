@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/plc-visualizer/backend/internal/models"
@@ -42,6 +43,21 @@ random text line`
 		}
 		if canParse {
 			t.Error("Expected CanParse to return false for non-observable format")
+		}
+	})
+
+	t.Run("handles UTF-16-like null padded lines with BOM", func(t *testing.T) {
+		header := "date  time  status  variables device-id datatype  tag\n"
+		data := "2026-02-19 00:02:10:955`OBSERVABLE`CIM WRITE>>> TRANSFER_REQ`B1ASTO15203-102`Boolean`False`True`1`OWNERID=Devices,DEVICE_TYPE=Cranes,INDEX=2,TAG_NAME=TransferRequest\n"
+		content := "\xFF\xFE" + nullPadASCII(header+data)
+
+		filePath := createTestFile(t, content)
+		canParse, err := parser.CanParse(filePath)
+		if err != nil {
+			t.Fatalf("CanParse failed: %v", err)
+		}
+		if !canParse {
+			t.Error("Expected CanParse to handle null padded observable content")
 		}
 	})
 }
@@ -120,6 +136,27 @@ func TestObservableParser_Parse(t *testing.T) {
 			t.Errorf("Expected fallback value true, got %v", entry.Value)
 		}
 	})
+
+	t.Run("parses UTF-16-like null padded lines with BOM", func(t *testing.T) {
+		header := "date  time  status  variables device-id datatype  tag\n"
+		data := "2026-02-19 00:02:10:955`OBSERVABLE`CIM READ <<< JOB_READY`B1ASTO15203-102`Boolean`False`True`1`OWNERID=Devices,DEVICE_TYPE=Cranes,INDEX=2,TAG_NAME=JobReady\n"
+		content := "\xFF\xFE" + nullPadASCII(header+data)
+
+		filePath := createTestFile(t, content)
+		parsedLog, errors, err := parser.Parse(filePath)
+		if err != nil {
+			t.Fatalf("Parse failed: %v", err)
+		}
+		if len(errors) != 0 {
+			t.Fatalf("Expected 0 errors, got %d", len(errors))
+		}
+		if len(parsedLog.Entries) != 1 {
+			t.Fatalf("Expected 1 entry, got %d", len(parsedLog.Entries))
+		}
+		if parsedLog.Entries[0].SignalName != "JOB_READY" {
+			t.Fatalf("Expected JOB_READY signal, got %s", parsedLog.Entries[0].SignalName)
+		}
+	})
 }
 
 func TestParserRegistry_FindsObservableFormat(t *testing.T) {
@@ -138,4 +175,14 @@ func TestParserRegistry_FindsObservableFormat(t *testing.T) {
 	if found.Name() != "observable_log" {
 		t.Fatalf("Expected observable_log parser, got %s", found.Name())
 	}
+}
+
+func nullPadASCII(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) * 2)
+	for i := 0; i < len(s); i++ {
+		b.WriteByte(s[i])
+		b.WriteByte(0)
+	}
+	return b.String()
 }
