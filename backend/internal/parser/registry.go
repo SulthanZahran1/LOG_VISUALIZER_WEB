@@ -20,6 +20,7 @@ func NewRegistry() *Registry {
 			NewPLCDebugParser(),
 			NewPLCTabParser(),
 			NewMCSLogParser(),
+			NewObservableLogParser(),
 			NewCSVSignalParser(),
 		},
 	}
