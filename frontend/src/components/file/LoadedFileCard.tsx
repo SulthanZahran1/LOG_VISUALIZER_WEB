@@ -1,4 +1,3 @@
-import React from 'react';
 import type { ParseSession, FileInfo } from '../../models/types';
 import { currentSession, totalEntries, isStreaming, streamProgress } from '../../stores/logStore';
 
