@@ -30,7 +30,7 @@ export function MapObjectComponent({ object, onClick }: ObjectProps) {
         return <Arrow object={object} x={x} y={y} width={width} height={height} selected={isSelected} />;
     }
     if (object.type.includes('Label')) {
-        return <Label object={object} x={x} y={y} height={height} selected={isSelected} />;
+        return <Label object={object} x={x} y={y} width={width} height={height} selected={isSelected} />;
     }
 
     // Default to rectangle (Belt, Diverter, Port)
@@ -106,19 +106,42 @@ function Arrow({ object, x, y, width, height, selected }: { object: MapObject, x
     );
 }
 
-function Label({ object, x, y, height, selected }: { object: MapObject, x: number, y: number, height: number, selected?: boolean }) {
+function Label({ object, x, y, width, height, selected }: { object: MapObject, x: number, y: number, width: number, height: number, selected?: boolean }) {
+    const bg = cssColor(object.backColor);
     return (
-        <text
-            x={x}
-            y={y + height}
-            fill={selected ? '#ff0000' : 'var(--text-muted)'}
-            fontSize="11"
-            fontWeight="600"
-            style={{ pointerEvents: 'none', userSelect: 'none' }}
-        >
-            {object.text}
-        </text>
+        <g style={{ pointerEvents: 'none', userSelect: 'none' }}>
+            {bg && (
+                <rect
+                    x={x}
+                    y={y}
+                    width={width}
+                    height={height}
+                    fill={bg}
+                    stroke={selected ? '#ff0000' : 'none'}
+                    strokeWidth={selected ? 2 : 0}
+                    opacity={0.75}
+                />
+            )}
+            <text
+                x={x + width / 2}
+                y={y + height / 2}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill={selected ? '#ff0000' : bg ? '#000' : 'var(--text-muted)'}
+                fontSize="10"
+                fontWeight="600"
+            >
+                {object.text}
+            </text>
+        </g>
     );
+}
+
+/** Convert .NET/CSS color names to CSS-usable values. Returns null for Transparent. */
+function cssColor(color: string): string | null {
+    if (!color || color === 'Transparent') return null;
+    // .NET color names are mostly valid CSS color names (Lime, Yellow, Silver, DeepSkyBlue, etc.)
+    return color;
 }
 
 // Helpers

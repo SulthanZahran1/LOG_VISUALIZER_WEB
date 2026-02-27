@@ -18,6 +18,7 @@ type MapObject struct {
 	LineThick     string `json:"lineThick"`     // For arrows/lines
 	FlowDirection string `json:"flowDirection"` // "Angle_90", etc.
 	ForeColor     string `json:"foreColor"`     // Color name or hex
+	BackColor     string `json:"backColor"`     // Background color name or hex
 	EndCap        string `json:"endCap"`        // For arrows
 	StartCap      string `json:"startCap"`      // For arrows
 	DashStyle     string `json:"dashStyle"`     // For lines

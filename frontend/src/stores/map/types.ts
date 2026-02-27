@@ -16,6 +16,7 @@ export interface MapObject {
     lineThick: string;
     flowDirection: string;
     foreColor: string;
+    backColor: string;
     endCap: string;
     startCap: string;
     dashStyle: string;

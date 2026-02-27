@@ -72,6 +72,7 @@ type ObjectElement struct {
 	LineThick     string `xml:"lineThick,attr"`
 	FlowDirection string `xml:"flowDirection,attr"`
 	ForeColor     string `xml:"foreColor,attr"`
+	BackColor     string `xml:"backColor,attr"`
 	EndCap        string `xml:"endCap,attr"`
 	StartCap      string `xml:"startCap,attr"`
 	DashStyle     string `xml:"dashStyle,attr"`
@@ -89,6 +90,7 @@ type ObjectElement struct {
 	LineThickChild     string `xml:"LineThick"`
 	FlowDirectionChild string `xml:"FlowDirection"`
 	ForeColorChild     string `xml:"ForeColor"`
+	BackColorChild     string `xml:"BackColor"`
 	EndCapChild        string `xml:"EndCap"`
 	StartCapChild      string `xml:"StartCap"`
 	DashStyleChild     string `xml:"DashStyle"`
@@ -116,6 +118,13 @@ func (o ObjectElement) GetForeColor() string {
 		return o.ForeColor
 	}
 	return o.ForeColorChild
+}
+
+func (o ObjectElement) GetBackColor() string {
+	if o.BackColor != "" {
+		return o.BackColor
+	}
+	return o.BackColorChild
 }
 
 func (o ObjectElement) GetEndCap() string {
@@ -312,6 +321,7 @@ func fillLayout(layout *models.MapLayout, objects []ObjectElement) {
 				LineThick:     obj.GetLineThick(),
 				FlowDirection: obj.GetFlowDirection(),
 				ForeColor:     obj.GetForeColor(),
+				BackColor:     obj.GetBackColor(),
 				EndCap:        obj.GetEndCap(),
 				StartCap:      obj.GetStartCap(),
 				DashStyle:     obj.GetDashStyle(),

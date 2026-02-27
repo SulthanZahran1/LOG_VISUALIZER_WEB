@@ -240,7 +240,20 @@ func TestMapHandler_HandleSetActiveMap(t *testing.T) {
 			for id, data := range tt.setupFiles {
 				store.AddFile(id, "test.xml", data)
 			}
-			handler := NewMapHandler(store, "./data")
+
+			// Create a temp data dir with the default map file for default map tests
+			dataDir := t.TempDir()
+			if tt.mapID == "default:test.xml" {
+				mapsDir := dataDir + "/defaults/maps"
+				if err := os.MkdirAll(mapsDir, 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(mapsDir+"/test.xml", []byte("<map/>"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			handler := NewMapHandler(store, dataDir)
 
 			e := echo.New()
 			body, _ := json.Marshal(setActiveMapRequest{MapID: tt.mapID})
@@ -357,14 +370,16 @@ func TestMapHandler_HandleGetMapRules(t *testing.T) {
 
 func TestMapHandler_HandleRecentMapFiles(t *testing.T) {
 	tests := []struct {
-		name     string
-		files    map[string]string // id -> filename
-		expected int
+		name          string
+		files         map[string]string // id -> filename
+		expectedXML   int
+		expectedYAML  int
 	}{
 		{
-			name:     "empty storage",
-			files:    map[string]string{},
-			expected: 0,
+			name:         "empty storage",
+			files:        map[string]string{},
+			expectedXML:  0,
+			expectedYAML: 0,
 		},
 		{
 			name: "mixed files",
@@ -374,7 +389,8 @@ func TestMapHandler_HandleRecentMapFiles(t *testing.T) {
 				"file3": "rules.yaml",
 				"file4": "data.csv",
 			},
-			expected: 2, // Only XML and YAML
+			expectedXML:  1,
+			expectedYAML: 1,
 		},
 		{
 			name: "only map files",
@@ -383,7 +399,8 @@ func TestMapHandler_HandleRecentMapFiles(t *testing.T) {
 				"file2": "config.YAML",
 				"file3": "rules.yml",
 			},
-			expected: 3,
+			expectedXML:  1,
+			expectedYAML: 2,
 		},
 	}
 
@@ -393,7 +410,7 @@ func TestMapHandler_HandleRecentMapFiles(t *testing.T) {
 			for id, filename := range tt.files {
 				store.AddFile(id, filename, []byte("content"))
 			}
-			handler := NewMapHandler(store, "./data")
+			handler := NewMapHandler(store, t.TempDir())
 
 			e := echo.New()
 			req := httptest.NewRequest(http.MethodGet, "/api/map/files/recent", nil)
@@ -407,14 +424,20 @@ func TestMapHandler_HandleRecentMapFiles(t *testing.T) {
 				return
 			}
 
-			var files []models.FileInfo
-			if err := json.Unmarshal(rec.Body.Bytes(), &files); err != nil {
+			var response struct {
+				XMLFiles  []models.FileInfo `json:"xmlFiles"`
+				YAMLFiles []models.FileInfo `json:"yamlFiles"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 				t.Errorf("failed to unmarshal: %v", err)
 				return
 			}
 
-			if len(files) != tt.expected {
-				t.Errorf("expected %d files, got %d", tt.expected, len(files))
+			if len(response.XMLFiles) != tt.expectedXML {
+				t.Errorf("expected %d xmlFiles, got %d", tt.expectedXML, len(response.XMLFiles))
+			}
+			if len(response.YAMLFiles) != tt.expectedYAML {
+				t.Errorf("expected %d yamlFiles, got %d", tt.expectedYAML, len(response.YAMLFiles))
 			}
 		})
 	}
