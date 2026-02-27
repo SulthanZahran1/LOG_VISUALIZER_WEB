@@ -1,3 +1,4 @@
+import { Fragment } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import { logEntries } from '../../stores/logStore';
 import './TransferHeatmap.css';
@@ -112,18 +113,16 @@ export function TransferHeatmap({ onCellClick, showControls = true }: TransferHe
 
             const parts = String(entry.value).split('|');
             if (parts.length < 4) return;
+            const status = String(parts[1] || '').trim().toUpperCase();
+            if (status !== 'COMPLETED') return;
 
             const sourceRack = extractRackCoordinate(parts[2]);
             const destRack = extractRackCoordinate(parts[3]);
-            const uniqueRacks = new Map<string, RackCoordinate>();
-
-            if (sourceRack) uniqueRacks.set(sourceRack.rackId, sourceRack);
-            if (destRack) uniqueRacks.set(destRack.rackId, destRack);
-
-            if (uniqueRacks.size === 0) return;
+            const racks: RackCoordinate[] = [sourceRack, destRack].filter((rack): rack is RackCoordinate => rack !== null);
+            if (racks.length === 0) return;
             transferRows += 1;
 
-            uniqueRacks.forEach(rack => {
+            racks.forEach(rack => {
                 rackIds.add(rack.rackId);
                 xSet.add(rack.x);
                 totalRackHits += 1;
@@ -367,41 +366,48 @@ export function TransferHeatmap({ onCellClick, showControls = true }: TransferHe
                                     <th className="summary-col" title="Total rack hits in this row">Row Total</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                {filteredYValues.map(yAxis => (
-                                    <tr key={yAxis.key}>
-                                        <th className="sticky-col" title={yAxis.label}>{yAxis.label}</th>
-                                        {filteredXValues.map(x => {
-                                            const count = data.matrix[yAxis.key]?.[x] || 0;
-                                            const underThreshold = count > 0 && count < minCount;
-                                            const visibleCount = underThreshold ? 0 : count;
-                                            const intensity = intensityFor(yAxis.key, x, visibleCount);
-                                            const alpha = visibleCount > 0 ? Math.max(0.22, intensity) : 0;
-                                            const backgroundColor = visibleCount > 0
-                                                ? `rgba(${paletteColor[0]}, ${paletteColor[1]}, ${paletteColor[2]}, ${alpha})`
-                                                : 'transparent';
-                                            const rackId = data.cellRackIds[yAxis.key]?.[x] || '';
-                                            const isClickable = visibleCount > 0 && rackId !== '';
-                                            const shouldShowLabel = visibleCount > 0 || showZeros;
+                    <tbody>
+                        {filteredYValues.map((yAxis, index) => (
+                            <Fragment key={yAxis.key}>
+                                {index > 0 && filteredYValues[index - 1].z !== yAxis.z && (
+                                        <tr className="z-separator-row" aria-hidden="true">
+                                            <td colSpan={filteredXValues.length + 2}></td>
+                                        </tr>
+                                    )}
+                                <tr>
+                                    <th className="sticky-col" title={yAxis.label}>{yAxis.label}</th>
+                                    {filteredXValues.map(x => {
+                                        const count = data.matrix[yAxis.key]?.[x] || 0;
+                                        const underThreshold = count > 0 && count < minCount;
+                                        const visibleCount = underThreshold ? 0 : count;
+                                        const intensity = intensityFor(yAxis.key, x, visibleCount);
+                                        const alpha = visibleCount > 0 ? Math.max(0.22, intensity) : 0;
+                                        const backgroundColor = visibleCount > 0
+                                            ? `rgba(${paletteColor[0]}, ${paletteColor[1]}, ${paletteColor[2]}, ${alpha})`
+                                            : 'transparent';
+                                        const rackId = data.cellRackIds[yAxis.key]?.[x] || '';
+                                        const isClickable = visibleCount > 0 && rackId !== '';
+                                        const shouldShowLabel = visibleCount > 0 || showZeros;
 
-                                            return (
-                                                <td
-                                                    key={x}
-                                                    style={{ backgroundColor }}
-                                                    className={visibleCount > 0 ? 'has-data' : 'no-data'}
-                                                    onClick={() => isClickable && onCellClick?.(rackId)}
-                                                    title={`${rackId || `${formatX(x)} ${yAxis.label}`}: ${count} transfers`}
-                                                >
-                                                    {shouldShowLabel ? formatLabel(visibleCount, intensity) : ''}
-                                                </td>
-                                            );
-                                        })}
-                                        <td className="summary-col" title={`Total for ${yAxis.label}`}>
-                                            {(data.rowTotals[yAxis.key] || 0).toLocaleString()}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
+                                        return (
+                                            <td
+                                                key={x}
+                                                style={{ backgroundColor }}
+                                                className={visibleCount > 0 ? 'has-data' : 'no-data'}
+                                                onClick={() => isClickable && onCellClick?.(rackId)}
+                                                title={`${rackId || `${formatX(x)} ${yAxis.label}`}: ${count} transfers`}
+                                            >
+                                                {shouldShowLabel ? formatLabel(visibleCount, intensity) : ''}
+                                            </td>
+                                        );
+                                    })}
+                                    <td className="summary-col" title={`Total for ${yAxis.label}`}>
+                                        {(data.rowTotals[yAxis.key] || 0).toLocaleString()}
+                                    </td>
+                                </tr>
+                            </Fragment>
+                        ))}
+                    </tbody>
                             <tfoot>
                                 <tr>
                                     <th className="sticky-col">Column Total</th>
