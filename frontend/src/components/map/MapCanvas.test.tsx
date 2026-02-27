@@ -37,8 +37,8 @@ describe('MapCanvas', () => {
     const createMockLayout = (): MapLayout => ({
         version: '1.0',
         objects: {
-            'Unit1': { name: 'Unit1', type: 'station', text: 'Unit 1', size: '12', location: '100,100', unitId: 'unit1', lineThick: '1', flowDirection: 'none', foreColor: 'black', endCap: 'none', startCap: 'none', dashStyle: 'solid' },
-            'Unit2': { name: 'Unit2', type: 'station', text: 'Unit 2', size: '12', location: '200,200', unitId: 'unit2', lineThick: '1', flowDirection: 'none', foreColor: 'black', endCap: 'none', startCap: 'none', dashStyle: 'solid' }
+            'Unit1': { name: 'Unit1', type: 'station', text: 'Unit 1', size: '12', location: '100,100', unitId: 'unit1', lineThick: '1', flowDirection: 'none', foreColor: 'black', backColor: '', endCap: 'none', startCap: 'none', dashStyle: 'solid' },
+            'Unit2': { name: 'Unit2', type: 'station', text: 'Unit 2', size: '12', location: '200,200', unitId: 'unit2', lineThick: '1', flowDirection: 'none', foreColor: 'black', backColor: '', endCap: 'none', startCap: 'none', dashStyle: 'solid' }
         }
     });
 

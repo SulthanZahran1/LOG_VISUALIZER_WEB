@@ -10,7 +10,7 @@ describe('mapStore Centering & Follow', () => {
         mapLayout.value = {
             version: '1.0',
             objects: {
-                'UNIT1': { name: 'UNIT1', type: 'Station', location: '100,200', unitId: 'UNIT1', text: '', size: '10,10', flowDirection: '', foreColor: '', endCap: '', startCap: '', dashStyle: '', lineThick: '' }
+                'UNIT1': { name: 'UNIT1', type: 'Station', location: '100,200', unitId: 'UNIT1', text: '', size: '10,10', flowDirection: '', foreColor: '', backColor: '', endCap: '', startCap: '', dashStyle: '', lineThick: '' }
             }
         };
         mapZoom.value = 1.0;

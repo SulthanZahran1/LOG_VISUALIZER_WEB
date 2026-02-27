@@ -63,7 +63,7 @@ export function TransitionTable() {
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Rule</th>
+                        <th>Configuration</th>
                         <th>Start Time</th>
                         <th>End Time</th>
                         <th>Duration</th>
@@ -72,9 +72,9 @@ export function TransitionTable() {
                 </thead>
                 <tbody>
                     {results.map((result, index) => (
-                        <tr key={`${result.ruleId}-${result.startTime}`} class={`status-${result.status}`}>
+                        <tr key={`${result.configName}-${result.startTime}`} class={`status-${result.status}`}>
                             <td class="cell-num">{index + 1}</td>
-                            <td class="cell-rule">{result.ruleName}</td>
+                            <td class="cell-rule">{result.configName}</td>
                             <td class="cell-time">{formatTime(result.startTime)}</td>
                             <td class="cell-time">{formatTime(result.endTime)}</td>
                             <td class="cell-duration">{formatDuration(result.duration)}</td>
