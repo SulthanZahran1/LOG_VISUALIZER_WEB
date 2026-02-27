@@ -7,9 +7,10 @@ import { currentSession, startParsing, startSessionPolling, logError, initLogSto
 import { HomeView } from './views/HomeView'
 import { MapViewer } from './views/MapViewer'
 import { TransitionView } from './components/transition/TransitionView'
+import { TransferHeatmap } from './components/log/TransferHeatmap'
 import { BookmarkPanel } from './components/BookmarkPanel'
 import { BookmarkNotification } from './components/BookmarkNotification'
-import { XIcon } from './components/icons'
+import { XIcon, GridIcon } from './components/icons'
 import {
   addBookmark,
   getCurrentTime,
@@ -21,6 +22,7 @@ import {
   syncFromMap
 } from './stores/bookmarkStore'
 import { initMapSync } from './stores/mapStore'
+import { searchQuery } from './stores/log'
 import type { FileInfo } from './models/types'
 
 // Initialize bidirectional sync between mapStore and bookmarkStore
@@ -210,6 +212,7 @@ export function App() {
       case 'waveform': return 'Timing Diagram';
       case 'map-viewer': return 'Map Viewer';
       case 'transitions': return 'Transitions';
+      case 'heatmap': return 'Transfer Heatmap';
       default: return viewType;
     }
   }
@@ -226,6 +229,8 @@ export function App() {
         return <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 3v18" /></>;
       case 'transitions':
         return <path d="M12 8v4l3 3M12 3v1M12 20v1M3 12h1M20 12h1" />;
+      case 'heatmap':
+        return <GridIcon />;
       default:
         return null;
     }
@@ -335,6 +340,20 @@ export function App() {
         {activeTab.value === 'waveform' && <WaveformView />}
         {activeTab.value === 'map-viewer' && <MapViewer />}
         {activeTab.value === 'transitions' && <TransitionView />}
+        {activeTab.value === 'heatmap' && (
+          <div className="view-container heatmap-view">
+            <div className="view-header">
+              <h2>Transfer Traffic Heatmap</h2>
+              <p>Intensity represents transfer frequency between locations</p>
+            </div>
+            <TransferHeatmap 
+              onCellClick={(src, dst) => {
+                searchQuery.value = `${src} ${dst}`;
+                handleOpenView('log-table');
+              }}
+            />
+          </div>
+        )}
 
         <BookmarkPanel />
         <BookmarkNotification />
@@ -734,6 +753,42 @@ export function App() {
 
         .footer-sep {
           opacity: 0.3;
+        }
+
+        .view-container {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+
+        .heatmap-view {
+          padding: var(--spacing-xl);
+          background: var(--bg-primary);
+        }
+
+        .heatmap-view .view-header {
+          margin-bottom: var(--spacing-lg);
+        }
+
+        .heatmap-view .view-header h2 {
+          margin: 0;
+          font-size: 20px;
+          color: var(--text-primary);
+        }
+
+        .heatmap-view .view-header p {
+          margin: var(--spacing-xs) 0 0;
+          color: var(--text-muted);
+          font-size: 14px;
+        }
+
+        .heatmap-view .transfer-heatmap-container {
+          max-height: none;
+          flex: 1;
+          border: 1px solid var(--border-color);
+          border-radius: var(--card-radius);
+          background: var(--bg-secondary);
         }
 
         .session-status {

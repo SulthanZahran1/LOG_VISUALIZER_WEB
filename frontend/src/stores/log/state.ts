@@ -83,6 +83,7 @@ export const allDeviceIds = signal<string[]>([]);
 // ======================
 export const openViews = signal<ViewType[]>(['home']);
 export const activeTab = signal<ViewType>('home');
+export const showHeatmap = signal(false);
 export const signalTypeFilter = signal<string | null>(null);
 
 // ======================

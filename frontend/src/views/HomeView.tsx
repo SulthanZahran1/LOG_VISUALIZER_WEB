@@ -41,6 +41,7 @@ export function HomeView({
     const isMerging = useSignal(false);
 
     const isGenericLog = currentSession.value?.parserName === 'generic_log';
+    const isTRSLog = currentSession.value?.parserName === 'trs_log';
 
     const handleNavigation = (view: ViewType) => {
         onOpenView(view);
@@ -212,9 +213,9 @@ export function HomeView({
                         <NavButton
                             title="Timing Diagram"
                             icon="waveform"
-                            description={isGenericLog ? "Not available for this log format" : "Visualize signal changes over time"}
+                            description={(isGenericLog || isTRSLog) ? "Not available for this log format" : "Visualize signal changes over time"}
                             color="#4285F4"
-                            disabled={!currentSession.value || isGenericLog}
+                            disabled={!currentSession.value || isGenericLog || isTRSLog}
                             onClick={() => handleNavigation('waveform')}
                         />
                         <NavButton
@@ -226,19 +227,27 @@ export function HomeView({
                             onClick={() => handleNavigation('log-table')}
                         />
                         <NavButton
+                            title="Transfer Heatmap"
+                            icon="heatmap"
+                            description="Visualize transfer traffic density"
+                            color="#9C27B0"
+                            disabled={!currentSession.value || !isTRSLog}
+                            onClick={() => handleNavigation('heatmap')}
+                        />
+                        <NavButton
                             title="Map Viewer"
                             icon="map"
-                            description={isGenericLog ? "Not available for this log format" : "View carrier positions"}
+                            description={(isGenericLog || isTRSLog) ? "Not available for this log format" : "View carrier positions"}
                             color="#FBBC04"
-                            disabled={!currentSession.value || isGenericLog}
+                            disabled={!currentSession.value || isGenericLog || isTRSLog}
                             onClick={() => handleNavigation('map-viewer')}
                         />
                         <NavButton
                             title="Transitions"
                             icon="chart"
-                            description={isGenericLog ? "Not available for this log format" : "Analyze signal intervals"}
+                            description={(isGenericLog || isTRSLog) ? "Not available for this log format" : "Analyze signal intervals"}
                             color="#EA4335"
-                            disabled={!currentSession.value || isGenericLog}
+                            disabled={!currentSession.value || isGenericLog || isTRSLog}
                             onClick={() => handleNavigation('transitions')}
                         />
                     </div>

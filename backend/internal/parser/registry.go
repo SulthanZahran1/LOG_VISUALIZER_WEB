@@ -23,6 +23,7 @@ func NewRegistry() *Registry {
 			NewObservableLogParser(),
 			NewCSVSignalParser(),
 			NewGenericLogParser(),
+			NewTRSLogParser(),
 		},
 	}
 }

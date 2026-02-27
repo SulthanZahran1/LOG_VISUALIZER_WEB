@@ -7,6 +7,7 @@
 import { streamParseEntries, getParseCategories, getParseSignals } from '../../api/client';
 import { deleteSession } from '../../utils/persistence';
 import type { LogEntry, ParseSession } from '../../models/types';
+import type { ViewType, ServerPageCache, FetchFilters } from './types';
 // saveSession is used via dynamic import in finalizeSessionLoad
 import {
     currentSession, logEntries, totalEntries, serverPageOffset,
@@ -27,20 +28,24 @@ function isGenericLogSession(session: ParseSession | null | undefined): boolean 
     return (session as ParseSession & { parserName?: string } | null | undefined)?.parserName === 'generic_log';
 }
 
+function isTRSLogSession(session: ParseSession | null | undefined): boolean {
+    return (session as ParseSession & { parserName?: string } | null | undefined)?.parserName === 'trs_log';
+}
+
 // Track last initialized session for range reset (managed by effects)
 
 // ======================
 // View Management
 // ======================
 
-export function openView(viewType: 'home' | 'log-table' | 'waveform' | 'map-viewer' | 'transitions'): void {
+export function openView(viewType: ViewType): void {
     if (!openViews.value.includes(viewType)) {
         openViews.value = [...openViews.value, viewType];
     }
     activeTab.value = viewType;
 }
 
-export function closeView(viewType: 'home' | 'log-table' | 'waveform' | 'map-viewer' | 'transitions'): void {
+export function closeView(viewType: ViewType): void {
     if (viewType === 'home') return;
     openViews.value = openViews.value.filter(v => v !== viewType);
     if (activeTab.value === viewType) {
@@ -240,14 +245,14 @@ async function handleSessionComplete(session: ParseSession): Promise<void> {
 
     finalizeSessionLoad(session);
 
-    // Auto-open log table for generic logs
-    if (isGenericLogSession(session)) {
+    // Auto-open log table for generic and TRS logs
+    if (isGenericLogSession(session) || isTRSLogSession(session)) {
         openView('log-table');
     }
 }
 
 async function finalizeSessionLoad(session: ParseSession): Promise<void> {
-    if (isGenericLogSession(session)) {
+    if (isGenericLogSession(session) || isTRSLogSession(session)) {
         return;
     }
 

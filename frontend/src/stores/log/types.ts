@@ -6,7 +6,7 @@
 
 import type { LogEntry, ParseSession } from '../../models/types';
 
-export type ViewType = 'home' | 'log-table' | 'waveform' | 'map-viewer' | 'transitions';
+export type ViewType = 'home' | 'log-table' | 'waveform' | 'map-viewer' | 'transitions' | 'heatmap';
 
 export interface ServerPageCache {
     page: number;

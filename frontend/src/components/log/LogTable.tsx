@@ -26,6 +26,7 @@ import {
     availableSignalNames,
     availableDeviceIds,
     jumpToTime,
+    showHeatmap,
 } from '../../stores/logStore';
 import { getTimeTree } from '../../api/client';
 import type { TimeTreeEntry } from '../../api/client';
@@ -54,6 +55,7 @@ import {
 
 // Utils
 import { computeRowColorCoding } from './utils/colorCoding';
+import { TransferHeatmap } from './TransferHeatmap';
 
 import './LogTable.css';
 
@@ -71,8 +73,25 @@ const GENERIC_COLUMNS: ColumnDef[] = [
 
 const GENERIC_COLUMN_ORDER: ColumnKey[] = ['timestamp', 'deviceId', 'signalName', 'value'];
 
+const TRS_COLUMNS: ColumnDef[] = [
+    { key: 'timestamp', id: 'ts', label: 'TIMESTAMP', sortable: true, resizable: true },
+    { key: 'deviceId', id: 'dev', label: 'CARRIER ID', sortable: true, resizable: true },
+    { key: 'cmdID' as ColumnKey, id: 'cmd', label: 'CMD ID', sortable: true, resizable: true },
+    { key: 'status' as ColumnKey, id: 'status', label: 'STATUS', sortable: true, resizable: true },
+    { key: 'source' as ColumnKey, id: 'src', label: 'SOURCE', sortable: true, resizable: true },
+    { key: 'dest' as ColumnKey, id: 'dst', label: 'DEST', sortable: true, resizable: true },
+    { key: 'currLoc' as ColumnKey, id: 'loc', label: 'CURR LOC', sortable: true, resizable: true },
+    { key: 'result' as ColumnKey, id: 'res', label: 'RESULT', sortable: true, resizable: true },
+];
+
+const TRS_COLUMN_ORDER: ColumnKey[] = ['timestamp', 'deviceId', 'cmdID' as ColumnKey, 'status' as ColumnKey, 'source' as ColumnKey, 'dest' as ColumnKey, 'currLoc' as ColumnKey, 'result' as ColumnKey];
+
 function isGenericLogSession(session: ParseSession | null | undefined): boolean {
-    return (session as ParseSession & { parserName?: string } | null | undefined)?.parserName === 'generic_log';
+    return (session as any)?.parserName === 'generic_log';
+}
+
+function isTRSLogSession(session: ParseSession | null | undefined): boolean {
+    return (session as any)?.parserName === 'trs_log';
 }
 
 /** Compute scroll scale factor when virtual height exceeds browser max */
@@ -392,13 +411,25 @@ export function LogTable() {
     const fetchTimeoutRef = useRef<number | null>(null);
 
     const isGenericLog = isGenericLogSession(currentSession.value);
+    const isTRSLog = isTRSLogSession(currentSession.value);
+
+    // Default showHeatmap based on isTRSLog when a new TRS session is loaded
+    useEffect(() => {
+        if (isTRSLog && currentSession.value) {
+            showHeatmap.value = true;
+        }
+    }, [currentSession.value?.id, isTRSLog]);
 
     // ===== HOOKS =====
 
     // Column management
     const { state: columnState, actions: columnActions } = useColumnManagement(
-        isGenericLog ? GENERIC_COLUMN_ORDER : DEFAULT_COLUMN_ORDER,
-        isGenericLog ? { ts: 220, dev: 120, sig: 100, val: 500 } : { ts: 220, dev: 180, sig: 250, cat: 120, val: 150, type: 100 }
+        isGenericLog ? GENERIC_COLUMN_ORDER : isTRSLog ? TRS_COLUMN_ORDER : DEFAULT_COLUMN_ORDER,
+        isGenericLog 
+            ? { ts: 220, dev: 120, sig: 100, val: 500 } 
+            : isTRSLog 
+                ? { ts: 180, dev: 120, cmd: 100, status: 120, src: 150, dst: 150, loc: 150, res: 100 }
+                : { ts: 220, dev: 180, sig: 250, cat: 120, val: 150, type: 100 }
     );
 
     // Row selection
@@ -679,11 +710,9 @@ export function LogTable() {
                 selectionCount={selectionState.selectionCount}
                 jumpToTimeOpen={jumpToTimeOpen.value}
                 onToggleJumpToTime={() => jumpToTimeOpen.value = !jumpToTimeOpen.value}
-                onOpenWaveform={() => {
-                    if (!isGenericLog) {
-                        openView('waveform');
-                    }
-                }}
+                onOpenWaveform={isGenericLog || isTRSLog ? undefined : () => openView('waveform')}
+                showHeatmap={showHeatmap.value}
+                onToggleHeatmap={isTRSLog ? () => showHeatmap.value = !showHeatmap.value : undefined}
                 onCopy={handleCopy}
                 onReload={handleReload}
             />
@@ -692,10 +721,18 @@ export function LogTable() {
             <div className="log-table-view-split">
                 <SignalSidebar />
                 <div className="log-table-content">
+                    {/* Heatmap if TRS */}
+                    {isTRSLog && showHeatmap.value && (
+                        <TransferHeatmap 
+                            onCellClick={(src, dst) => {
+                                searchQuery.value = `${src} ${dst}`;
+                            }}
+                        />
+                    )}
                     {/* Header */}
                     <div className="log-table-header">
                         {columnState.columnOrder.map((colKey) => {
-                            const columns = isGenericLog ? GENERIC_COLUMNS : DEFAULT_COLUMNS;
+                            const columns = isGenericLog ? GENERIC_COLUMNS : isTRSLog ? TRS_COLUMNS : DEFAULT_COLUMNS;
                             const colDef = columns.find(c => c.key === colKey)!;
                             const isDragOver = columnActions.isDragOver(colKey);
                             const isDraggingCol = columnActions.isDragging(colKey);
@@ -811,10 +848,16 @@ export function LogTable() {
                                             onContextMenu={handleRowContextMenu}
                                         >
                                             {columnState.columnOrder.map((colKey) => {
-                                                const colId = { timestamp: 'ts', deviceId: 'dev', signalName: 'sig', category: 'cat', value: 'val', type: 'type' }[colKey];
-                                                const width = columnActions.getColumnWidth(colId!);
+                                                const colIdMap: Record<string, string> = { 
+                                                    timestamp: 'ts', deviceId: 'dev', signalName: 'sig', 
+                                                    category: 'cat', value: 'val', type: 'type',
+                                                    cmdID: 'cmd', status: 'status', source: 'src', 
+                                                    dest: 'dst', currLoc: 'loc', result: 'res'
+                                                };
+                                                const colId = colIdMap[colKey as string] || 'val';
+                                                const width = columnActions.getColumnWidth(colId);
 
-                                                switch (colKey) {
+                                                switch (colKey as string) {
                                                     case 'timestamp':
                                                         return <div key={colKey} className="log-col" style={{ width }}>{formatDateTime(entry.timestamp)}</div>;
                                                     case 'deviceId':
@@ -831,6 +874,19 @@ export function LogTable() {
                                                     }
                                                     case 'type':
                                                         return <div key={colKey} className="log-col" style={{ width }}>{entry.signalType}</div>;
+                                                    case 'cmdID':
+                                                    case 'status':
+                                                    case 'source':
+                                                    case 'dest':
+                                                    case 'currLoc':
+                                                    case 'result': {
+                                                        const parts = String(entry.value).split('|');
+                                                        const idxMap: Record<string, number> = {
+                                                            cmdID: 0, status: 1, source: 2, dest: 3, currLoc: 4, result: 5
+                                                        };
+                                                        const val = parts[idxMap[colKey as string]] || '';
+                                                        return <div key={colKey} className="log-col" style={{ width }}><HighlightText text={val} query={searchQuery.value} useRegex={searchRegex.value} caseSensitive={searchCaseSensitive.value} /></div>;
+                                                    }
                                                     default:
                                                         return null;
                                                 }
