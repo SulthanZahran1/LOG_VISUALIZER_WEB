@@ -386,7 +386,7 @@ export function LogTable() {
     const tableRef = useRef<HTMLDivElement>(null);
     const scrollSignal = useSignal(0);
     const contextMenu = useSignal<{ x: number, y: number, visible: boolean }>({ x: 0, y: 0, visible: false });
-    const categoryFilterOpenColumn = useSignal<ColumnKey | null>(null);
+    const categoryFilterOpenColumn = useSignal<FilterableColumn | null>(null);
     const jumpToTimeOpen = useSignal(false);
     const [isFetchingPage, setIsFetchingPage] = useState(false);
     const fetchTimeoutRef = useRef<number | null>(null);
@@ -704,7 +704,7 @@ export function LogTable() {
                                 ? colDef.key
                                 : null;
                             const canShowColumnFilterToggle = filterColumn !== null;
-                            const isFilterOpen = categoryFilterOpenColumn.value === colDef.key;
+                            const isFilterOpen = filterColumn !== null && categoryFilterOpenColumn.value === filterColumn;
                             const activeFilterCount = filterColumn === 'category'
                                 ? categoryFilter.value.size
                                 : filterColumn === 'signalName'
@@ -737,9 +737,14 @@ export function LogTable() {
                                     {canShowColumnFilterToggle && (
                                         <button
                                             className={`category-filter-btn ${hasActiveColumnFilter ? 'active' : ''}`}
+                                            onMouseDown={(e) => {
+                                                // Prevent header drag/sort from consuming the filter button click.
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                            }}
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                categoryFilterOpenColumn.value = isFilterOpen ? null : colDef.key;
+                                                categoryFilterOpenColumn.value = isFilterOpen ? null : filterColumn;
                                             }}
                                             title={filterColumn === 'category' ? 'Filter by category' : filterColumn === 'signalName' ? 'Filter by signal name' : 'Filter by device ID'}
                                         >
