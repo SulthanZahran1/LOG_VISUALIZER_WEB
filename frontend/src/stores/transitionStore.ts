@@ -49,10 +49,25 @@ export interface TransitionStats {
     min: number;
     max: number;
     average: number;
+    median: number;
+    p90: number;
+    p95: number;
     stdDev: number;
+    range: number;
+    cv: number; // coefficient of variation (stdDev / average)
+    totalDuration: number;
+    firstStartTime: number | null;
+    lastEndTime: number | null;
+    elapsedTime: number;
+    throughputPerHour: number;
+    targetLowerBound?: number;
+    targetUpperBound?: number;
     withinTarget: number;
     aboveTarget: number;
     belowTarget: number;
+    withinTargetPct: number;
+    aboveTargetPct: number;
+    belowTargetPct: number;
 }
 
 // Aggregation settings for trend chart
@@ -120,28 +135,67 @@ export const transitionStats = computed((): TransitionStats | null => {
             min: 0,
             max: 0,
             average: 0,
+            median: 0,
+            p90: 0,
+            p95: 0,
             stdDev: 0,
+            range: 0,
+            cv: 0,
+            totalDuration: 0,
+            firstStartTime: null,
+            lastEndTime: null,
+            elapsedTime: 0,
+            throughputPerHour: 0,
+            targetLowerBound: config.targetDuration !== undefined ? config.targetDuration - (config.tolerance ?? 0) : undefined,
+            targetUpperBound: config.targetDuration !== undefined ? config.targetDuration + (config.tolerance ?? 0) : undefined,
             withinTarget: 0,
             aboveTarget: 0,
-            belowTarget: 0
+            belowTarget: 0,
+            withinTargetPct: 0,
+            aboveTargetPct: 0,
+            belowTargetPct: 0
         };
     }
 
     const durations = results.map(r => r.duration);
+    const sortedDurations = [...durations].sort((a, b) => a - b);
     const min = Math.min(...durations);
     const max = Math.max(...durations);
     const sum = durations.reduce((a, b) => a + b, 0);
     const average = sum / durations.length;
+    const median = calculatePercentile(sortedDurations, 50);
+    const p90 = calculatePercentile(sortedDurations, 90);
+    const p95 = calculatePercentile(sortedDurations, 95);
 
     // Standard deviation
     const squaredDiffs = durations.map(d => Math.pow(d - average, 2));
     const avgSquaredDiff = squaredDiffs.reduce((a, b) => a + b, 0) / durations.length;
     const stdDev = Math.sqrt(avgSquaredDiff);
+    const range = max - min;
+    const cv = average > 0 ? stdDev / average : 0;
+
+    const startTimes = results.map(r => r.startTime);
+    const endTimes = results.map(r => r.endTime);
+    const firstStartTime = Math.min(...startTimes);
+    const lastEndTime = Math.max(...endTimes);
+    const elapsedTime = Math.max(0, lastEndTime - firstStartTime);
+    const throughputPerHour = elapsedTime > 0
+        ? results.length / (elapsedTime / (60 * 60 * 1000))
+        : 0;
 
     // Target compliance
     const withinTarget = results.filter(r => r.status === 'ok').length;
     const aboveTarget = results.filter(r => r.status === 'above').length;
     const belowTarget = results.filter(r => r.status === 'below').length;
+    const withinTargetPct = (withinTarget / results.length) * 100;
+    const aboveTargetPct = (aboveTarget / results.length) * 100;
+    const belowTargetPct = (belowTarget / results.length) * 100;
+    const targetLowerBound = config.targetDuration !== undefined
+        ? config.targetDuration - (config.tolerance ?? 0)
+        : undefined;
+    const targetUpperBound = config.targetDuration !== undefined
+        ? config.targetDuration + (config.tolerance ?? 0)
+        : undefined;
 
     return {
         configName: config.name,
@@ -149,12 +203,43 @@ export const transitionStats = computed((): TransitionStats | null => {
         min,
         max,
         average,
+        median,
+        p90,
+        p95,
         stdDev,
+        range,
+        cv,
+        totalDuration: sum,
+        firstStartTime,
+        lastEndTime,
+        elapsedTime,
+        throughputPerHour,
+        targetLowerBound,
+        targetUpperBound,
         withinTarget,
         aboveTarget,
-        belowTarget
+        belowTarget,
+        withinTargetPct,
+        aboveTargetPct,
+        belowTargetPct
     };
 });
+
+function calculatePercentile(sortedValues: number[], percentile: number): number {
+    if (sortedValues.length === 0) return 0;
+    if (sortedValues.length === 1) return sortedValues[0];
+
+    const rank = (percentile / 100) * (sortedValues.length - 1);
+    const lowerIndex = Math.floor(rank);
+    const upperIndex = Math.ceil(rank);
+
+    if (lowerIndex === upperIndex) {
+        return sortedValues[lowerIndex];
+    }
+
+    const weight = rank - lowerIndex;
+    return sortedValues[lowerIndex] + (sortedValues[upperIndex] - sortedValues[lowerIndex]) * weight;
+}
 
 // ============================================================================
 // Config Operations

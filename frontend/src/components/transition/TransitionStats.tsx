@@ -14,9 +14,21 @@ export function TransitionStats({ stats }: TransitionStatsProps) {
         return `${ms.toFixed(0)}ms`;
     };
 
-    const getPercentage = (value: number, total: number) => {
-        if (total === 0) return 0;
-        return (value / total) * 100;
+    const formatTimestamp = (ms: number | null) => {
+        if (ms === null) return 'N/A';
+        return new Date(ms).toLocaleString('en-US', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+    };
+
+    const formatRate = (value: number) => {
+        return value.toFixed(1);
     };
 
     if (!stats || stats.count === 0) {
@@ -35,6 +47,51 @@ export function TransitionStats({ stats }: TransitionStatsProps) {
                     <span class="stat-count">{stats.count} transitions</span>
                 </div>
 
+                <div class="stats-meta">
+                    <div class="meta-item">
+                        <span class="meta-label">Window Start</span>
+                        <span class="meta-value">{formatTimestamp(stats.firstStartTime)}</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Window End</span>
+                        <span class="meta-value">{formatTimestamp(stats.lastEndTime)}</span>
+                    </div>
+                    {stats.targetLowerBound !== undefined && stats.targetUpperBound !== undefined ? (
+                        <div class="meta-item">
+                            <span class="meta-label">Target Window</span>
+                            <span class="meta-value">
+                                {formatDuration(stats.targetLowerBound)} - {formatDuration(stats.targetUpperBound)}
+                            </span>
+                        </div>
+                    ) : (
+                        <div class="meta-item">
+                            <span class="meta-label">Target Window</span>
+                            <span class="meta-value">No target configured</span>
+                        </div>
+                    )}
+                </div>
+
+                <h4 class="section-title">Operational Summary</h4>
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Elapsed Window</span>
+                        <span class="stat-value">{formatDuration(stats.elapsedTime)}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Total Measured</span>
+                        <span class="stat-value">{formatDuration(stats.totalDuration)}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Throughput / h</span>
+                        <span class="stat-value">{formatRate(stats.throughputPerHour)}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Range</span>
+                        <span class="stat-value">{formatDuration(stats.range)}</span>
+                    </div>
+                </div>
+
+                <h4 class="section-title">Distribution</h4>
                 <div class="stat-grid">
                     <div class="stat-item">
                         <span class="stat-label">Min</span>
@@ -49,8 +106,24 @@ export function TransitionStats({ stats }: TransitionStatsProps) {
                         <span class="stat-value highlight">{formatDuration(stats.average)}</span>
                     </div>
                     <div class="stat-item">
+                        <span class="stat-label">P50 (Median)</span>
+                        <span class="stat-value">{formatDuration(stats.median)}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">P90</span>
+                        <span class="stat-value">{formatDuration(stats.p90)}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">P95</span>
+                        <span class="stat-value">{formatDuration(stats.p95)}</span>
+                    </div>
+                    <div class="stat-item">
                         <span class="stat-label">Std Dev</span>
                         <span class="stat-value">{formatDuration(stats.stdDev)}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">CV</span>
+                        <span class="stat-value">{(stats.cv * 100).toFixed(1)}%</span>
                     </div>
                 </div>
 
@@ -63,11 +136,11 @@ export function TransitionStats({ stats }: TransitionStatsProps) {
                                 <div class="compliance-bar">
                                     <div
                                         class="compliance-fill ok"
-                                        style={{ width: `${getPercentage(stats.withinTarget, stats.count)}%` }}
+                                        style={{ width: `${stats.withinTargetPct}%` }}
                                     />
                                 </div>
                                 <span class="compliance-value">
-                                    {stats.withinTarget} ({getPercentage(stats.withinTarget, stats.count).toFixed(1)}%)
+                                    {stats.withinTarget} ({stats.withinTargetPct.toFixed(1)}%)
                                 </span>
                             </div>
                             <div class="compliance-row">
@@ -75,11 +148,11 @@ export function TransitionStats({ stats }: TransitionStatsProps) {
                                 <div class="compliance-bar">
                                     <div
                                         class="compliance-fill above"
-                                        style={{ width: `${getPercentage(stats.aboveTarget, stats.count)}%` }}
+                                        style={{ width: `${stats.aboveTargetPct}%` }}
                                     />
                                 </div>
                                 <span class="compliance-value">
-                                    {stats.aboveTarget} ({getPercentage(stats.aboveTarget, stats.count).toFixed(1)}%)
+                                    {stats.aboveTarget} ({stats.aboveTargetPct.toFixed(1)}%)
                                 </span>
                             </div>
                             <div class="compliance-row">
@@ -87,11 +160,11 @@ export function TransitionStats({ stats }: TransitionStatsProps) {
                                 <div class="compliance-bar">
                                     <div
                                         class="compliance-fill below"
-                                        style={{ width: `${getPercentage(stats.belowTarget, stats.count)}%` }}
+                                        style={{ width: `${stats.belowTargetPct}%` }}
                                     />
                                 </div>
                                 <span class="compliance-value">
-                                    {stats.belowTarget} ({getPercentage(stats.belowTarget, stats.count).toFixed(1)}%)
+                                    {stats.belowTarget} ({stats.belowTargetPct.toFixed(1)}%)
                                 </span>
                             </div>
                         </div>
@@ -140,9 +213,47 @@ export function TransitionStats({ stats }: TransitionStatsProps) {
                     color: var(--text-muted);
                 }
 
+                .stats-meta {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                    gap: var(--spacing-sm);
+                    margin-bottom: var(--spacing-lg);
+                }
+
+                .meta-item {
+                    background: var(--bg-primary);
+                    border: 1px solid var(--border-color);
+                    border-radius: 6px;
+                    padding: 8px 10px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+
+                .meta-label {
+                    font-size: 10px;
+                    color: var(--text-muted);
+                    text-transform: uppercase;
+                    letter-spacing: 0.4px;
+                }
+
+                .meta-value {
+                    font-size: 12px;
+                    font-family: var(--font-mono);
+                    color: var(--text-secondary);
+                }
+
+                .section-title {
+                    margin: 0 0 var(--spacing-sm) 0;
+                    font-size: 12px;
+                    color: var(--text-secondary);
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+
                 .stat-grid {
                     display: grid;
-                    grid-template-columns: repeat(2, 1fr);
+                    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
                     gap: var(--spacing-md);
                     margin-bottom: var(--spacing-lg);
                 }
