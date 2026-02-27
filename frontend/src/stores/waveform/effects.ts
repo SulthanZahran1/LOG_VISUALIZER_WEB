@@ -50,10 +50,14 @@ export function initSignalListEffect(): void {
     effect(() => {
         const session = currentSession.value;
         if (session && session.status === 'complete' && allSignals.value.length === 0) {
+            const sessionId = session.id;
             Promise.all([
-                getParseSignals(session.id),
-                getParseSignalTypes(session.id),
+                getParseSignals(sessionId),
+                getParseSignalTypes(sessionId),
             ]).then(([signals, typesRecord]) => {
+                if (currentSession.value?.id !== sessionId) {
+                    return;
+                }
                 allSignals.value = signals;
                 const typesMap = new Map<string, string>();
                 for (const [key, val] of Object.entries(typesRecord)) {
@@ -61,6 +65,9 @@ export function initSignalListEffect(): void {
                 }
                 allSignalTypes.value = typesMap as Map<string, SignalType>;
             }).catch(err => {
+                if (currentSession.value?.id !== sessionId) {
+                    return;
+                }
                 if (err.status === 404) {
                     console.warn('Session not found on server during getParseSignals, clearing local state');
                     clearSession();
@@ -79,23 +86,37 @@ export function initSignalListEffect(): void {
  * Effect: Fetch entries for the current viewport to identify signals with changes
  */
 export function initChangedSignalsEffect(): void {
+    let activeFetchId = 0;
+
     effect(() => {
         const session = currentSession.value;
         const range = viewRange.value;
         const active = showChangedInView.value;
 
         if (!session || !range || !active) {
+            activeFetchId++;
             signalsWithChanges.value = new Set();
             return;
         }
 
-        getParseChunk(session.id, range.start, range.end).then(chunk => {
+        const fetchId = ++activeFetchId;
+        const sessionId = session.id;
+
+        getParseChunk(sessionId, range.start, range.end).then(chunk => {
+            if (fetchId !== activeFetchId || currentSession.value?.id !== sessionId || !showChangedInView.value) {
+                return;
+            }
+
             const changed = new Set<string>();
             for (const e of chunk) {
                 changed.add(`${e.deviceId}::${e.signalName}`);
             }
             signalsWithChanges.value = changed;
         }).catch(err => {
+            if (fetchId !== activeFetchId || currentSession.value?.id !== sessionId) {
+                return;
+            }
+
             if (err.status === 404) {
                 console.warn('Session not found on server during chunk fetch, clearing local state');
                 clearSession();

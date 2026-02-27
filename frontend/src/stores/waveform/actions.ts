@@ -166,6 +166,7 @@ export async function updateWaveformEntries(): Promise<void> {
     const requestId = incrementRequestId();
     isWaveformLoading.value = true;
     waveformLoadingProgress.value = 0;
+    const sessionId = session.id;
 
     // For large files, clear entries immediately to avoid showing stale data
     // Boundary values will be used to render continuation lines during loading
@@ -174,7 +175,6 @@ export async function updateWaveformEntries(): Promise<void> {
     }
 
     try {
-        const sessionId = session.id;
         const start = range.start;
         const end = range.end;
         const signals = selectedSignals.value;
@@ -209,6 +209,9 @@ export async function updateWaveformEntries(): Promise<void> {
         }
     } catch (err: unknown) {
         if ((err as { status?: number }).status === 404) {
+            if (currentSession.value?.id !== sessionId) {
+                return;
+            }
             console.warn('Session not found on server during updateWaveformEntries, clearing local state');
             clearSession();
         } else {
