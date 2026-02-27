@@ -562,7 +562,7 @@ export async function getMapRules(): Promise<MapRules> {
 export async function setActiveMap(id: string): Promise<void> {
     await request<void>('/map/active', {
         method: 'POST',
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ mapId: id }),
     });
 }
 

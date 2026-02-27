@@ -23,6 +23,48 @@ import {
 import type { UnitColorResult } from './types';
 
 /**
+ * Fit the entire map into the viewport with padding.
+ */
+export function fitMapToView(): void {
+    if (!mapLayout.value?.objects) return;
+    const objects = Object.values(mapLayout.value.objects);
+    if (objects.length === 0) return;
+
+    const viewport = viewportSize.value;
+    if (!viewport.width || !viewport.height) return;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const obj of objects) {
+        const locParts = obj.location.split(',').map(Number);
+        const sizeParts = obj.size.split(',').map(Number);
+        if (locParts.length !== 2 || sizeParts.length !== 2) continue;
+        if (locParts.some(isNaN) || sizeParts.some(isNaN)) continue;
+        const [x, y] = locParts;
+        const [w, h] = sizeParts;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x + w);
+        maxY = Math.max(maxY, y + h);
+    }
+
+    if (!isFinite(minX)) return;
+    const contentW = maxX - minX;
+    const contentH = maxY - minY;
+    if (contentW <= 0 || contentH <= 0) return;
+
+    const padding = 40;
+    const scaleX = (viewport.width - padding * 2) / contentW;
+    const scaleY = (viewport.height - padding * 2) / contentH;
+    const zoom = Math.max(0.1, Math.min(scaleX, scaleY, 10));
+
+    mapZoom.value = zoom;
+    mapOffset.value = {
+        x: padding + (viewport.width - padding * 2 - contentW * zoom) / 2 - minX * zoom,
+        y: padding + (viewport.height - padding * 2 - contentH * zoom) / 2 - minY * zoom,
+    };
+}
+
+/**
  * Center the map view on a specific unit.
  */
 export function centerOnUnit(unitId: string): void {

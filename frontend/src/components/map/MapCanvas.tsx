@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'preact/hooks';
-import { useSignal } from '@preact/signals';
+import { useSignal, effect } from '@preact/signals';
 import {
     mapLayout, mapLoading, mapError, mapZoom, mapOffset, selectedUnitId, fetchMapLayout, mapObjectsArray,
-    viewportSize, followedCarrierId,
+    viewportSize, followedCarrierId, fitMapToView,
     type MapObject
 } from '../../stores/mapStore';
 import { MapObjectComponent } from './MapObjectComponents';
@@ -18,13 +18,29 @@ export function MapCanvas() {
         fetchMapLayout();
 
         // Report viewport size
+        let disposeEffect: (() => void) | undefined;
         if (containerRef.current) {
             const observer = new ResizeObserver(entries => {
                 const { width, height } = entries[0].contentRect;
                 viewportSize.value = { width, height };
             });
             observer.observe(containerRef.current);
-            return () => observer.disconnect();
+
+            // Auto-fit whenever map layout changes to a new object
+            let prevLayout = mapLayout.peek();
+            disposeEffect = effect(() => {
+                const layout = mapLayout.value;
+                const vp = viewportSize.value;
+                if (layout !== prevLayout && layout && vp.width > 0) {
+                    prevLayout = layout;
+                    fitMapToView();
+                }
+            });
+
+            return () => {
+                observer.disconnect();
+                disposeEffect?.();
+            };
         }
     }, []);
 

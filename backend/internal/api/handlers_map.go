@@ -147,7 +147,7 @@ func (h *MapHandlerImpl) HandleSetActiveMap(c echo.Context) error {
 		// Default map - verify file exists
 		cleanName := strings.TrimPrefix(req.MapID, "default:")
 		path := filepath.Join(h.dataDir, "defaults", "maps", cleanName)
-		if _, err := filepath.Abs(path); err != nil {
+		if _, err := os.Stat(path); err != nil {
 			return NewNotFoundError("map", req.MapID)
 		}
 	} else {
@@ -218,30 +218,64 @@ func (h *MapHandlerImpl) HandleRecentMapFiles(c echo.Context) error {
 		return NewInternalError("failed to list files", err)
 	}
 
-	// Filter to only map/rules files
-	var mapFiles []*models.FileInfo
+	// Split files into XML and YAML
+	var xmlFiles []*models.FileInfo
+	var yamlFiles []*models.FileInfo
 	for _, f := range files {
 		nameLower := strings.ToLower(f.Name)
-		if strings.HasSuffix(nameLower, ".xml") ||
-			strings.HasSuffix(nameLower, ".yaml") ||
-			strings.HasSuffix(nameLower, ".yml") {
-			mapFiles = append(mapFiles, f)
+		if strings.HasSuffix(nameLower, ".xml") {
+			xmlFiles = append(xmlFiles, f)
+		} else if strings.HasSuffix(nameLower, ".yaml") || strings.HasSuffix(nameLower, ".yml") {
+			yamlFiles = append(yamlFiles, f)
 		}
 	}
 
-	return c.JSON(http.StatusOK, mapFiles)
+	// Use empty slices instead of nil to serialize as [] not null
+	if xmlFiles == nil {
+		xmlFiles = []*models.FileInfo{}
+	}
+	if yamlFiles == nil {
+		yamlFiles = []*models.FileInfo{}
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"xmlFiles":  xmlFiles,
+		"yamlFiles": yamlFiles,
+	})
 }
 
 // HandleGetDefaultMaps returns available default maps
 func (h *MapHandlerImpl) HandleGetDefaultMaps(c echo.Context) error {
-	// List default maps from data/defaults/maps directory
+	type defaultMapEntry struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+
 	defaultMapsDir := filepath.Join(h.dataDir, "defaults", "maps")
-	maps := []map[string]string{}
+	maps := []defaultMapEntry{}
 
-	// This would typically read the directory, but we'll return empty for now
-	_ = defaultMapsDir
+	entries, err := os.ReadDir(defaultMapsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return c.JSON(http.StatusOK, map[string]interface{}{"maps": maps})
+		}
+		return NewInternalError("failed to list default maps", err)
+	}
 
-	return c.JSON(http.StatusOK, maps)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasSuffix(strings.ToLower(name), ".xml") {
+			maps = append(maps, defaultMapEntry{
+				ID:   "default:" + name,
+				Name: name,
+			})
+		}
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{"maps": maps})
 }
 
 // HandleLoadDefaultMap loads a default map by name

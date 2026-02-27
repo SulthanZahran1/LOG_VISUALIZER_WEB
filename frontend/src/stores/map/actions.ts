@@ -43,7 +43,7 @@ export async function fetchMapLayout(): Promise<void> {
             //     'with unitId:', withUnitId.length,
             //     'sample unitIds:', withUnitId.slice(0, 5).map((o: MapObject) => o.unitId));
         }
-        mapLayout.value = layoutData as MapLayout;
+        mapLayout.value = { ...(layoutData as MapLayout), name: data.name } as MapLayout;
     } catch (err: unknown) {
         mapError.value = err instanceof Error ? err.message : 'Failed to fetch map layout';
     } finally {

@@ -121,6 +121,7 @@ export {
 // Utilities
 // ======================
 export {
+    fitMapToView,
     centerOnUnit,
     centerOnCarrier,
     getCarriersAtUnit,
