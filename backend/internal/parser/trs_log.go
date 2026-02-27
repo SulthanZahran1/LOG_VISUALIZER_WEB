@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/plc-visualizer/backend/internal/models"
 )
@@ -117,7 +116,7 @@ func (p *TRSLogParser) ParseWithProgress(filePath string, onProgress ProgressCal
 		// Format: CommandID|Status|Source|Dest|CurrLoc|Result
 		val := strings.Join([]string{cmdID, status, source, dest, currLoc, result}, "|")
 		
-		*entries = append(*entries, models.LogEntry{
+		entries = append(entries, models.LogEntry{
 			DeviceID:   deviceID,
 			SignalName: intern.Intern("Transfer"),
 			Timestamp:  ts,
@@ -145,16 +144,4 @@ func (p *TRSLogParser) ParseWithProgress(filePath string, onProgress ProgressCal
 		Devices:   devices,
 		TimeRange: timeRange,
 	}, errors, nil
-}
-
-func (p *TRSLogParser) addEntry(entries *[]models.LogEntry, signals map[string]struct{}, deviceID, name string, ts time.Time, val interface{}, stype models.SignalType, intern *StringIntern) {
-	name = intern.Intern(name)
-	*entries = append(*entries, models.LogEntry{
-		DeviceID:   deviceID,
-		SignalName: name,
-		Timestamp:  ts,
-		Value:      val,
-		SignalType: stype,
-	})
-	signals[deviceID+"::"+name] = struct{}{}
 }

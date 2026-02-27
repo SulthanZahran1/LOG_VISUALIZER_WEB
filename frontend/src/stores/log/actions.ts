@@ -7,7 +7,7 @@
 import { streamParseEntries, getParseCategories, getParseSignals } from '../../api/client';
 import { deleteSession } from '../../utils/persistence';
 import type { LogEntry, ParseSession } from '../../models/types';
-import type { ViewType, ServerPageCache, FetchFilters } from './types';
+import type { ViewType, FetchFilters } from './types';
 // saveSession is used via dynamic import in finalizeSessionLoad
 import {
     currentSession, logEntries, totalEntries, serverPageOffset,
@@ -22,7 +22,6 @@ import {
     filteredEntries as filteredComputed
 } from './state';
 import { selectedSignals } from '../selectionStore';
-import type { FetchFilters } from './types';
 
 function isGenericLogSession(session: ParseSession | null | undefined): boolean {
     return (session as ParseSession & { parserName?: string } | null | undefined)?.parserName === 'generic_log';
