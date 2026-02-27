@@ -4,23 +4,18 @@
  */
 import { useEffect } from 'preact/hooks';
 import {
-    transitionRules,
-    statisticsByRule,
+    transitionConfig,
+    transitionStats,
     viewMode,
     resultFilter,
-    selectedRuleId,
     isCalculating,
     initTransitionStore,
     calculateTransitions,
-    addRule,
-    updateRule,
-    deleteRule,
-    selectRule,
-    type TransitionRule,
+    setTransitionConfig,
+    type TransitionConfig,
     type ViewMode
 } from '../../stores/transitionStore';
-import { currentSession } from '../../stores/logStore';
-import { TransitionRuleList } from './TransitionRuleList';
+import { currentSession, logEntries, isStreaming } from '../../stores/logStore';
 import { TransitionRuleEditor } from './TransitionRuleEditor';
 import { TransitionTable } from './TransitionTable';
 import { TransitionStats } from './TransitionStats';
@@ -28,60 +23,96 @@ import { TransitionTrend } from './TransitionTrend';
 import { TransitionHistogram } from './TransitionHistogram';
 import { useSignal } from '@preact/signals';
 
+const VIEW_HELP_CONTENT: Record<ViewMode, { title: string; intuition: string; points: string[] }> = {
+    table: {
+        title: 'Table View',
+        intuition: 'Use this when you need exact events and durations.',
+        points: [
+            'Each row is one detected transition in time order.',
+            'Status helps spot outliers against your configured target/tolerance.',
+            'Best view for auditing and exporting detailed records.'
+        ]
+    },
+    stats: {
+        title: 'Stats View',
+        intuition: 'Use this to understand overall process stability.',
+        points: [
+            'Average and standard deviation summarize typical behavior and spread.',
+            'Min/Max expose extreme fast/slow cycles.',
+            'Target compliance shows how often process performance meets expectation.'
+        ]
+    },
+    histogram: {
+        title: 'Histogram View',
+        intuition: 'Use this to see distribution shape at a glance.',
+        points: [
+            'Tall bars show the most frequent duration ranges.',
+            'Wide spread indicates inconsistent timing.',
+            'Target marker helps you judge where normal behavior sits versus goal.'
+        ]
+    },
+    trend: {
+        title: 'Trend View',
+        intuition: 'Use this to track behavior over time.',
+        points: [
+            'Upward drift means cycle times are gradually getting slower.',
+            'Step changes can indicate event/context shifts in production.',
+            'Aggregation smooths noise so underlying trends are easier to read.'
+        ]
+    }
+};
+
 export function TransitionView() {
     const showEditor = useSignal(false);
-    const editingRule = useSignal<TransitionRule | null>(null);
+    const editingConfig = useSignal<TransitionConfig | null>(null);
+    const showHelp = useSignal(false);
 
     useEffect(() => {
+        // A transition view session is a single implicit configuration.
+        // Reset state each time this view mounts.
         initTransitionStore();
+        editingConfig.value = null;
+        showEditor.value = !!currentSession.value;
     }, []);
 
-    // Recalculate when session completes
+    // Recalculate when session/data/rules change and session is ready
     useEffect(() => {
-        if (currentSession.value?.status === 'complete') {
+        if (currentSession.value?.status === 'complete' && !isStreaming.value) {
             calculateTransitions();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [
+        currentSession.value?.id,
+        currentSession.value?.status,
+        isStreaming.value,
+        logEntries.value,
+        transitionConfig.value
+    ]);
 
-    const handleAddRule = () => {
-        editingRule.value = null;
+    const handleOpenConfig = () => {
+        editingConfig.value = transitionConfig.value;
         showEditor.value = true;
     };
 
-    const handleEditRule = (rule: TransitionRule) => {
-        editingRule.value = rule;
-        showEditor.value = true;
-    };
-
-    const handleSaveRule = (rule: Omit<TransitionRule, 'id'> | TransitionRule) => {
-        if ('id' in rule) {
-            // Update existing rule
-            updateRule(rule.id, rule);
-        } else {
-            // Add new rule
-            addRule(rule);
-        }
+    const handleSaveConfig = (config: TransitionConfig) => {
+        setTransitionConfig(config);
         showEditor.value = false;
-        editingRule.value = null;
+        editingConfig.value = null;
         // Recalculate after saving
         if (currentSession.value?.status === 'complete') {
             calculateTransitions();
         }
     };
 
-    const handleDeleteRule = (id: string) => {
-        deleteRule(id);
-    };
-
     const handleCloseEditor = () => {
         showEditor.value = false;
-        editingRule.value = null;
+        editingConfig.value = null;
     };
 
     const setViewMode = (mode: ViewMode) => {
         viewMode.value = mode;
     };
+
+    const activeHelp = VIEW_HELP_CONTENT[viewMode.value];
 
     const renderContent = () => {
         if (!currentSession.value) {
@@ -97,16 +128,16 @@ export function TransitionView() {
             );
         }
 
-        if (transitionRules.value.length === 0) {
+        if (!transitionConfig.value) {
             return (
                 <div class="empty-state">
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                         <path d="M12 5v14M5 12h14" />
                     </svg>
-                    <h3>No Transition Rules</h3>
-                    <p>Create a rule to start measuring tact times.</p>
-                    <button class="primary-btn" onClick={handleAddRule}>
-                        Add Rule
+                    <h3>Configure Transition</h3>
+                    <p>This transition view starts with a fresh single configuration.</p>
+                    <button class="primary-btn" onClick={handleOpenConfig}>
+                        Configure
                     </button>
                 </div>
             );
@@ -125,7 +156,7 @@ export function TransitionView() {
             case 'table':
                 return <TransitionTable />;
             case 'stats':
-                return <TransitionStats stats={statisticsByRule.value} />;
+                return <TransitionStats stats={transitionStats.value} />;
             case 'histogram':
                 return <TransitionHistogram />;
             case 'trend':
@@ -137,24 +168,6 @@ export function TransitionView() {
 
     return (
         <div class="transition-view">
-            <div class="transition-sidebar">
-                <div class="sidebar-header">
-                    <h3>Transition Rules</h3>
-                    <button class="icon-btn" onClick={handleAddRule} title="Add Rule">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 5v14M5 12h14" />
-                        </svg>
-                    </button>
-                </div>
-                <TransitionRuleList
-                    rules={transitionRules.value}
-                    selectedId={selectedRuleId.value}
-                    onSelect={selectRule}
-                    onEdit={handleEditRule}
-                    onDelete={handleDeleteRule}
-                />
-            </div>
-
             <div class="transition-main">
                 <div class="view-toolbar">
                     <div class="view-tabs">
@@ -199,7 +212,40 @@ export function TransitionView() {
                         </button>
                     </div>
 
-                    <div class="filter-controls">
+                    <div class="toolbar-right">
+                        <div class="view-help">
+                            <button
+                                class="help-btn"
+                                title={`Help: ${activeHelp.title}`}
+                                aria-label={`Help for ${activeHelp.title}`}
+                                onClick={() => showHelp.value = !showHelp.value}
+                            >
+                                ?
+                            </button>
+                            {showHelp.value && (
+                                <div class="help-popover" role="dialog" aria-label={`${activeHelp.title} intuition`}>
+                                    <div class="help-header">
+                                        <h4>{activeHelp.title}</h4>
+                                        <button
+                                            class="help-close-btn"
+                                            aria-label="Close help"
+                                            onClick={() => showHelp.value = false}
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                    <p>{activeHelp.intuition}</p>
+                                    <ul>
+                                        {activeHelp.points.map(point => (
+                                            <li key={point}>{point}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+                        <button class="configure-btn" onClick={handleOpenConfig}>
+                            {transitionConfig.value ? 'Edit Configuration' : 'Configure Transition'}
+                        </button>
                         <select
                             value={resultFilter.value}
                             onChange={(e) => resultFilter.value = (e.target as HTMLSelectElement).value as 'all' | 'ok' | 'above' | 'below'}
@@ -219,64 +265,22 @@ export function TransitionView() {
 
             {showEditor.value && (
                 <TransitionRuleEditor
-                    rule={editingRule.value}
-                    onSave={handleSaveRule}
+                    config={editingConfig.value}
+                    onSave={handleSaveConfig}
                     onClose={handleCloseEditor}
                 />
             )}
 
             <style>{`
                 .transition-view {
-                    display: flex;
                     height: 100%;
                     background: var(--bg-primary);
                 }
 
-                .transition-sidebar {
-                    width: 280px;
-                    flex-shrink: 0;
-                    background: var(--bg-secondary);
-                    border-right: 1px solid var(--border-color);
-                    display: flex;
-                    flex-direction: column;
-                }
-
-                .sidebar-header {
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    padding: var(--spacing-md);
-                    border-bottom: 1px solid var(--border-color);
-                }
-
-                .sidebar-header h3 {
-                    margin: 0;
-                    font-size: 13px;
-                    font-weight: 600;
-                    color: var(--text-primary);
-                }
-
-                .icon-btn {
-                    background: transparent;
-                    border: 1px solid var(--border-color);
-                    border-radius: 4px;
-                    padding: 4px;
-                    cursor: pointer;
-                    color: var(--text-secondary);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                }
-
-                .icon-btn:hover {
-                    background: var(--bg-tertiary);
-                    color: var(--primary-accent);
-                }
-
                 .transition-main {
-                    flex: 1;
                     display: flex;
                     flex-direction: column;
+                    height: 100%;
                     min-width: 0;
                 }
 
@@ -319,7 +323,110 @@ export function TransitionView() {
                     border-color: var(--primary-accent);
                 }
 
-                .filter-controls select {
+                .toolbar-right {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                }
+
+                .view-help {
+                    position: relative;
+                }
+
+                .help-btn {
+                    background: transparent;
+                    border: 1px solid transparent;
+                    color: var(--text-secondary);
+                    cursor: pointer;
+                    font-size: 14px;
+                    font-weight: 700;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 4px;
+                    width: 32px;
+                    height: 32px;
+                    transition: all 0.15s;
+                }
+
+                .help-btn:hover {
+                    background: var(--bg-tertiary);
+                    color: var(--text-primary);
+                    border-color: var(--border-color);
+                }
+
+                .help-popover {
+                    position: absolute;
+                    right: 0;
+                    top: calc(100% + 8px);
+                    z-index: 20;
+                    width: min(360px, calc(100vw - 32px));
+                    background: var(--bg-primary);
+                    border: 1px solid var(--border-color);
+                    border-radius: 8px;
+                    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+                    padding: 12px;
+                }
+
+                .help-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 8px;
+                }
+
+                .help-header h4 {
+                    margin: 0;
+                    font-size: 13px;
+                    color: var(--text-primary);
+                }
+
+                .help-close-btn {
+                    background: transparent;
+                    border: none;
+                    color: var(--text-muted);
+                    cursor: pointer;
+                    font-size: 16px;
+                    line-height: 1;
+                    padding: 0 4px;
+                }
+
+                .help-close-btn:hover {
+                    color: var(--text-primary);
+                }
+
+                .help-popover p {
+                    margin: 0 0 8px 0;
+                    font-size: 12px;
+                    color: var(--text-secondary);
+                }
+
+                .help-popover ul {
+                    margin: 0;
+                    padding-left: 18px;
+                    color: var(--text-secondary);
+                    font-size: 12px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                }
+
+                .configure-btn {
+                    background: transparent;
+                    border: 1px solid var(--border-color);
+                    border-radius: 4px;
+                    padding: 6px 10px;
+                    color: var(--text-secondary);
+                    font-size: 12px;
+                    cursor: pointer;
+                }
+
+                .configure-btn:hover {
+                    background: var(--bg-tertiary);
+                    color: var(--text-primary);
+                }
+
+                .toolbar-right select {
                     background: var(--bg-primary);
                     border: 1px solid var(--border-color);
                     border-radius: 4px;

@@ -1,7 +1,7 @@
 /**
- * Transition Store - Manages transition rules and calculated results for tact time analysis
+ * Transition Store - Manages a single transition configuration and calculated results
  */
-import { signal, computed } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 import type { LogEntry } from '../models/types';
 import { logEntries } from './logStore';
 
@@ -13,19 +13,20 @@ export type RuleType = 'a-to-b' | 'cycle' | 'value-populated';
 export type ConditionType = 'equals' | 'not-equals' | 'greater' | 'less' | 'not-empty';
 export type ResultStatus = 'ok' | 'above' | 'below' | 'no-target';
 
-export interface TransitionRule {
-    id: string;
+export interface TransitionConfig {
     name: string;
     type: RuleType;
     enabled: boolean;
 
     // Start condition
-    startSignal: string;
+    startDeviceId: string;
+    startSignalName: string;
     startCondition: ConditionType;
     startValue: string | number | boolean;
 
     // End condition (not used for 'value-populated')
-    endSignal?: string;
+    endDeviceId?: string;
+    endSignalName?: string;
     endCondition?: ConditionType;
     endValue?: string | number | boolean;
 
@@ -35,8 +36,7 @@ export interface TransitionRule {
 }
 
 export interface TransitionResult {
-    ruleId: string;
-    ruleName: string;
+    configName: string;
     startTime: number;      // Unix timestamp ms
     endTime: number;        // Unix timestamp ms
     duration: number;       // milliseconds
@@ -44,8 +44,7 @@ export interface TransitionResult {
 }
 
 export interface TransitionStats {
-    ruleId: string;
-    ruleName: string;
+    configName: string;
     count: number;
     min: number;
     max: number;
@@ -74,11 +73,9 @@ export type ViewMode = 'table' | 'stats' | 'histogram' | 'trend';
 // Signals
 // ============================================================================
 
-// Rules
-export const transitionRules = signal<TransitionRule[]>([]);
-export const selectedRuleId = signal<string | null>(null);
+export const transitionConfig = signal<TransitionConfig | null>(null);
 
-// Results (computed from rules + log entries)
+// Results (computed from config + log entries)
 export const transitionResults = signal<TransitionResult[]>([]);
 export const isCalculating = signal(false);
 
@@ -94,14 +91,16 @@ export const trendSettings = signal<TrendSettings>({
     displayMode: 'line'
 });
 
+const DEFAULT_TREND_SETTINGS: TrendSettings = {
+    aggregationType: 'moving-average',
+    movingAverageWindow: 10,
+    timeBucketMinutes: 5,
+    displayMode: 'line'
+};
+
 // ============================================================================
 // Computed
 // ============================================================================
-
-export const selectedRule = computed(() => {
-    if (!selectedRuleId.value) return null;
-    return transitionRules.value.find(r => r.id === selectedRuleId.value) || null;
-});
 
 export const filteredResults = computed(() => {
     const filter = resultFilter.value;
@@ -109,101 +108,65 @@ export const filteredResults = computed(() => {
     return transitionResults.value.filter(r => r.status === filter);
 });
 
-export const resultsByRule = computed(() => {
-    const byRule = new Map<string, TransitionResult[]>();
-    for (const result of transitionResults.value) {
-        const list = byRule.get(result.ruleId) || [];
-        list.push(result);
-        byRule.set(result.ruleId, list);
-    }
-    return byRule;
-});
+export const transitionStats = computed((): TransitionStats | null => {
+    const config = transitionConfig.value;
+    if (!config) return null;
 
-export const statisticsByRule = computed((): TransitionStats[] => {
-    const stats: TransitionStats[] = [];
-
-    for (const rule of transitionRules.value) {
-        const results = resultsByRule.value.get(rule.id) || [];
-        if (results.length === 0) {
-            stats.push({
-                ruleId: rule.id,
-                ruleName: rule.name,
-                count: 0,
-                min: 0,
-                max: 0,
-                average: 0,
-                stdDev: 0,
-                withinTarget: 0,
-                aboveTarget: 0,
-                belowTarget: 0
-            });
-            continue;
-        }
-
-        const durations = results.map(r => r.duration);
-        const min = Math.min(...durations);
-        const max = Math.max(...durations);
-        const sum = durations.reduce((a, b) => a + b, 0);
-        const average = sum / durations.length;
-
-        // Standard deviation
-        const squaredDiffs = durations.map(d => Math.pow(d - average, 2));
-        const avgSquaredDiff = squaredDiffs.reduce((a, b) => a + b, 0) / durations.length;
-        const stdDev = Math.sqrt(avgSquaredDiff);
-
-        // Target compliance
-        const withinTarget = results.filter(r => r.status === 'ok').length;
-        const aboveTarget = results.filter(r => r.status === 'above').length;
-        const belowTarget = results.filter(r => r.status === 'below').length;
-
-        stats.push({
-            ruleId: rule.id,
-            ruleName: rule.name,
-            count: results.length,
-            min,
-            max,
-            average,
-            stdDev,
-            withinTarget,
-            aboveTarget,
-            belowTarget
-        });
+    const results = transitionResults.value;
+    if (results.length === 0) {
+        return {
+            configName: config.name,
+            count: 0,
+            min: 0,
+            max: 0,
+            average: 0,
+            stdDev: 0,
+            withinTarget: 0,
+            aboveTarget: 0,
+            belowTarget: 0
+        };
     }
 
-    return stats;
-});
+    const durations = results.map(r => r.duration);
+    const min = Math.min(...durations);
+    const max = Math.max(...durations);
+    const sum = durations.reduce((a, b) => a + b, 0);
+    const average = sum / durations.length;
 
-// ============================================================================
-// Rule CRUD Operations
-// ============================================================================
+    // Standard deviation
+    const squaredDiffs = durations.map(d => Math.pow(d - average, 2));
+    const avgSquaredDiff = squaredDiffs.reduce((a, b) => a + b, 0) / durations.length;
+    const stdDev = Math.sqrt(avgSquaredDiff);
 
-export function addRule(rule: Omit<TransitionRule, 'id'>): TransitionRule {
-    const newRule: TransitionRule = {
-        ...rule,
-        id: window.crypto.randomUUID()
+    // Target compliance
+    const withinTarget = results.filter(r => r.status === 'ok').length;
+    const aboveTarget = results.filter(r => r.status === 'above').length;
+    const belowTarget = results.filter(r => r.status === 'below').length;
+
+    return {
+        configName: config.name,
+        count: results.length,
+        min,
+        max,
+        average,
+        stdDev,
+        withinTarget,
+        aboveTarget,
+        belowTarget
     };
-    transitionRules.value = [...transitionRules.value, newRule];
-    saveRulesToStorage();
-    return newRule;
+});
+
+// ============================================================================
+// Config Operations
+// ============================================================================
+
+export function setTransitionConfig(config: TransitionConfig): void {
+    transitionConfig.value = { ...config };
 }
 
-export function updateRule(id: string, updates: Partial<TransitionRule>): void {
-    transitionRules.value = transitionRules.value.map(r =>
-        r.id === id ? { ...r, ...updates } : r
-    );
-    saveRulesToStorage();
-}
-
-export function deleteRule(id: string): void {
-    transitionRules.value = transitionRules.value.filter(r => r.id !== id);
-    if (selectedRuleId.value === id) {
-        selectedRuleId.value = null;
-    }
-    saveRulesToStorage();
-}
-
-export function selectRule(id: string | null): void {
-    selectedRuleId.value = id;
+export function clearTransitionConfig(): void {
+    transitionConfig.value = null;
+    transitionResults.value = [];
 }
 
 // ============================================================================
@@ -211,15 +174,15 @@ export function selectRule(id: string | null): void {
 // ============================================================================
 
 /**
- * Calculate transitions based on current rules and log entries.
+ * Calculate transitions based on current config and log entries.
  * This is done client-side for now; can be moved to backend for large datasets.
  */
 export function calculateTransitions(): void {
     isCalculating.value = true;
-    const results: TransitionResult[] = [];
+    const config = transitionConfig.value;
     const entries = logEntries.value;
 
-    if (entries.length === 0) {
+    if (!config || !config.enabled || entries.length === 0) {
         transitionResults.value = [];
         isCalculating.value = false;
         return;
@@ -232,12 +195,7 @@ export function calculateTransitions(): void {
         return timeA - timeB;
     });
 
-    for (const rule of transitionRules.value) {
-        if (!rule.enabled) continue;
-
-        const ruleResults = calculateRuleTransitions(rule, sortedEntries);
-        results.push(...ruleResults);
-    }
+    const results = calculateConfigTransitions(config, sortedEntries);
 
     // Sort results by start time
     results.sort((a, b) => a.startTime - b.startTime);
@@ -245,25 +203,27 @@ export function calculateTransitions(): void {
     isCalculating.value = false;
 }
 
-function calculateRuleTransitions(rule: TransitionRule, entries: LogEntry[]): TransitionResult[] {
-    const results: TransitionResult[] = [];
-
-    switch (rule.type) {
+function calculateConfigTransitions(config: TransitionConfig, entries: LogEntry[]): TransitionResult[] {
+    switch (config.type) {
         case 'cycle':
-            return calculateCycleTransitions(rule, entries);
+            return calculateCycleTransitions(config, entries);
         case 'a-to-b':
-            return calculateABTransitions(rule, entries);
+            return calculateABTransitions(config, entries);
         case 'value-populated':
-            return calculateValuePopulatedTransitions(rule, entries);
+            return calculateValuePopulatedTransitions(config, entries);
         default:
-            return results;
+            return [];
     }
 }
 
-function matchesCondition(entry: LogEntry, signal: string, condition: ConditionType, expectedValue: string | number | boolean): boolean {
-    // Check if signal matches (format: "deviceId::signalName" or just "signalName")
-    const signalKey = `${entry.deviceId}::${entry.signalName}`;
-    if (signalKey !== signal && entry.signalName !== signal) {
+function matchesCondition(
+    entry: LogEntry,
+    deviceId: string,
+    signalName: string,
+    condition: ConditionType,
+    expectedValue: string | number | boolean
+): boolean {
+    if (entry.deviceId !== deviceId || entry.signalName !== signalName) {
         return false;
     }
 
@@ -285,21 +245,20 @@ function matchesCondition(entry: LogEntry, signal: string, condition: ConditionT
     }
 }
 
-function calculateCycleTransitions(rule: TransitionRule, entries: LogEntry[]): TransitionResult[] {
+function calculateCycleTransitions(config: TransitionConfig, entries: LogEntry[]): TransitionResult[] {
     const results: TransitionResult[] = [];
     let lastMatchTime: number | null = null;
 
     for (const entry of entries) {
-        if (matchesCondition(entry, rule.startSignal, rule.startCondition, rule.startValue)) {
+        if (matchesCondition(entry, config.startDeviceId, config.startSignalName, config.startCondition, config.startValue)) {
             const currentTime = new Date(entry.timestamp).getTime();
 
             if (lastMatchTime !== null) {
                 const duration = currentTime - lastMatchTime;
-                const status = getStatus(duration, rule.targetDuration, rule.tolerance);
+                const status = getStatus(duration, config.targetDuration, config.tolerance);
 
                 results.push({
-                    ruleId: rule.id,
-                    ruleName: rule.name,
+                    configName: config.name,
                     startTime: lastMatchTime,
                     endTime: currentTime,
                     duration,
@@ -314,7 +273,7 @@ function calculateCycleTransitions(rule: TransitionRule, entries: LogEntry[]): T
     return results;
 }
 
-function calculateABTransitions(rule: TransitionRule, entries: LogEntry[]): TransitionResult[] {
+function calculateABTransitions(config: TransitionConfig, entries: LogEntry[]): TransitionResult[] {
     const results: TransitionResult[] = [];
     let waitingForEnd = false;
     let startTime: number | null = null;
@@ -322,21 +281,20 @@ function calculateABTransitions(rule: TransitionRule, entries: LogEntry[]): Tran
     for (const entry of entries) {
         if (!waitingForEnd) {
             // Looking for start condition
-            if (matchesCondition(entry, rule.startSignal, rule.startCondition, rule.startValue)) {
+            if (matchesCondition(entry, config.startDeviceId, config.startSignalName, config.startCondition, config.startValue)) {
                 startTime = new Date(entry.timestamp).getTime();
                 waitingForEnd = true;
             }
         } else {
             // Looking for end condition
-            if (rule.endSignal && rule.endCondition && rule.endValue !== undefined) {
-                if (matchesCondition(entry, rule.endSignal, rule.endCondition, rule.endValue)) {
+            if (config.endDeviceId && config.endSignalName && config.endCondition && config.endValue !== undefined) {
+                if (matchesCondition(entry, config.endDeviceId, config.endSignalName, config.endCondition, config.endValue)) {
                     const endTime = new Date(entry.timestamp).getTime();
                     const duration = endTime - startTime!;
-                    const status = getStatus(duration, rule.targetDuration, rule.tolerance);
+                    const status = getStatus(duration, config.targetDuration, config.tolerance);
 
                     results.push({
-                        ruleId: rule.id,
-                        ruleName: rule.name,
+                        configName: config.name,
                         startTime: startTime!,
                         endTime,
                         duration,
@@ -353,16 +311,15 @@ function calculateABTransitions(rule: TransitionRule, entries: LogEntry[]): Tran
     return results;
 }
 
-function calculateValuePopulatedTransitions(rule: TransitionRule, entries: LogEntry[]): TransitionResult[] {
+function calculateValuePopulatedTransitions(config: TransitionConfig, entries: LogEntry[]): TransitionResult[] {
     const results: TransitionResult[] = [];
     let waitingForValue = false;
     let startTime: number | null = null;
 
     for (const entry of entries) {
-        const signalKey = `${entry.deviceId}::${entry.signalName}`;
-        const isTargetSignal = signalKey === rule.startSignal || entry.signalName === rule.startSignal;
-
-        if (!isTargetSignal) continue;
+        if (entry.deviceId !== config.startDeviceId || entry.signalName !== config.startSignalName) {
+            continue;
+        }
 
         const isEmpty = entry.value === null || entry.value === undefined || entry.value === '';
 
@@ -374,11 +331,10 @@ function calculateValuePopulatedTransitions(rule: TransitionRule, entries: LogEn
             // Value became populated
             const endTime = new Date(entry.timestamp).getTime();
             const duration = endTime - startTime!;
-            const status = getStatus(duration, rule.targetDuration, rule.tolerance);
+            const status = getStatus(duration, config.targetDuration, config.tolerance);
 
             results.push({
-                ruleId: rule.id,
-                ruleName: rule.name,
+                configName: config.name,
                 startTime: startTime!,
                 endTime,
                 duration,
@@ -412,31 +368,6 @@ function getStatus(duration: number, target?: number, tolerance?: number): Resul
 }
 
 // ============================================================================
-// Persistence
-// ============================================================================
-
-const STORAGE_KEY = 'plc-visualizer-transition-rules';
-
-export function saveRulesToStorage(): void {
-    try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(transitionRules.value));
-    } catch (e) {
-        console.error('Failed to save transition rules:', e);
-    }
-}
-
-export function loadRulesFromStorage(): void {
-    try {
-        const stored = window.localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-            transitionRules.value = JSON.parse(stored);
-        }
-    } catch (e) {
-        console.error('Failed to load transition rules:', e);
-    }
-}
-
-// ============================================================================
 // Trend Data Aggregation
 // ============================================================================
 
@@ -446,8 +377,8 @@ export interface TrendDataPoint {
     count?: number;  // For aggregated points
 }
 
-export function getAggregatedTrendData(ruleId: string): TrendDataPoint[] {
-    const results = resultsByRule.value.get(ruleId) || [];
+export function getAggregatedTrendData(): TrendDataPoint[] {
+    const results = transitionResults.value;
     if (results.length === 0) return [];
 
     const settings = trendSettings.value;
@@ -517,5 +448,10 @@ function calculateTimeBuckets(results: TransitionResult[], bucketMinutes: number
 // ============================================================================
 
 export function initTransitionStore(): void {
-    loadRulesFromStorage();
+    transitionConfig.value = null;
+    transitionResults.value = [];
+    isCalculating.value = false;
+    viewMode.value = 'table';
+    resultFilter.value = 'all';
+    trendSettings.value = { ...DEFAULT_TREND_SETTINGS };
 }

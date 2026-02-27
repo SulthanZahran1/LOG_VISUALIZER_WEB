@@ -3,8 +3,8 @@
  */
 import { useMemo } from 'preact/hooks';
 import {
-    transitionRules,
-    selectedRuleId,
+    transitionConfig,
+    transitionResults,
     trendSettings,
     getAggregatedTrendData,
     type AggregationType,
@@ -12,19 +12,19 @@ import {
 } from '../../stores/transitionStore';
 
 export function TransitionTrend() {
-    const rules = transitionRules.value;
+    const config = transitionConfig.value;
     const settings = trendSettings.value;
-    const selectedId = selectedRuleId.value;
-
-    // Get the rule to display (selected or first)
-    const displayRuleId = selectedId || (rules.length > 0 ? rules[0].id : null);
-    const displayRule = rules.find(r => r.id === displayRuleId);
 
     const trendData = useMemo(() => {
-        if (!displayRuleId) return [];
-        return getAggregatedTrendData(displayRuleId);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [displayRuleId]);
+        if (!config) return [];
+        return getAggregatedTrendData();
+    }, [
+        config,
+        transitionResults.value,
+        settings.aggregationType,
+        settings.movingAverageWindow,
+        settings.timeBucketMinutes
+    ]);
 
     const chartMetrics = useMemo(() => {
         if (trendData.length === 0) return { minY: 0, maxY: 100, minX: 0, maxX: 1, rangeY: 100 };
@@ -70,10 +70,10 @@ export function TransitionTrend() {
         trendSettings.value = { ...settings, ...updates };
     };
 
-    if (rules.length === 0) {
+    if (!config) {
         return (
             <div class="trend-empty">
-                <p>No rules defined. Create a rule to see the trend chart.</p>
+                <p>No transition configuration found.</p>
             </div>
         );
     }
@@ -81,7 +81,7 @@ export function TransitionTrend() {
     if (trendData.length === 0) {
         return (
             <div class="trend-empty">
-                <p>No data for the selected rule.</p>
+                <p>No data for the current configuration.</p>
             </div>
         );
     }
@@ -108,23 +108,13 @@ export function TransitionTrend() {
         return i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
     }).join(' ');
 
-    const targetY = displayRule?.targetDuration ? scaleY(displayRule.targetDuration) : null;
+    const targetY = config.targetDuration ? scaleY(config.targetDuration) : null;
 
     return (
         <div class="trend-container">
             <div class="trend-header">
                 <div class="trend-title">
-                    <h3>Trend: {displayRule?.name}</h3>
-                    {rules.length > 1 && (
-                        <select
-                            value={displayRuleId || ''}
-                            onChange={(e) => selectedRuleId.value = (e.target as HTMLSelectElement).value}
-                        >
-                            {rules.map(rule => (
-                                <option key={rule.id} value={rule.id}>{rule.name}</option>
-                            ))}
-                        </select>
-                    )}
+                    <h3>Trend: {config.name}</h3>
                 </div>
 
                 <div class="trend-controls">
@@ -325,7 +315,6 @@ export function TransitionTrend() {
                     color: var(--text-primary);
                 }
 
-                .trend-title select,
                 .trend-controls select,
                 .trend-controls input {
                     background: var(--bg-secondary);

@@ -1,81 +1,225 @@
 /**
- * TransitionRuleEditor - Modal for creating/editing transition rules
+ * TransitionRuleEditor - Modal for configuring a single transition definition
  */
-import { useSignal, useComputed } from '@preact/signals';
-import type { TransitionRule, RuleType, ConditionType } from '../../stores/transitionStore';
+import { useComputed, useSignal } from '@preact/signals';
+import { useEffect } from 'preact/hooks';
+import type { SignalType } from '../../models/types';
+import type { TransitionConfig, RuleType, ConditionType } from '../../stores/transitionStore';
 import { logEntries } from '../../stores/logStore';
 
 interface TransitionRuleEditorProps {
-    rule: TransitionRule | null;
-    onSave: (rule: Omit<TransitionRule, 'id'> | TransitionRule) => void;
+    config: TransitionConfig | null;
+    onSave: (config: TransitionConfig) => void;
     onClose: () => void;
 }
 
-export function TransitionRuleEditor({ rule, onSave, onClose }: TransitionRuleEditorProps) {
-    const isEditing = !!rule;
+interface ConditionOption {
+    value: ConditionType;
+    label: string;
+}
+
+function getConditionOptions(signalType?: SignalType): ConditionOption[] {
+    if (signalType === 'boolean') {
+        return [
+            { value: 'equals', label: '=' },
+            { value: 'not-equals', label: '≠' }
+        ];
+    }
+
+    if (signalType === 'integer') {
+        return [
+            { value: 'equals', label: '=' },
+            { value: 'not-equals', label: '≠' },
+            { value: 'greater', label: '>' },
+            { value: 'less', label: '<' }
+        ];
+    }
+
+    return [
+        { value: 'equals', label: '=' },
+        { value: 'not-equals', label: '≠' },
+        { value: 'not-empty', label: 'Not Empty' }
+    ];
+}
+
+function parseTypedValue(value: string, signalType?: SignalType): string | number | boolean {
+    if (signalType === 'boolean') {
+        return value === 'true';
+    }
+
+    if (signalType === 'integer') {
+        const num = parseFloat(value);
+        return Number.isNaN(num) ? 0 : num;
+    }
+
+    return value;
+}
+
+export function TransitionRuleEditor({ config, onSave, onClose }: TransitionRuleEditorProps) {
+    const isEditing = !!config;
 
     // Form state
-    const name = useSignal(rule?.name ?? '');
-    const type = useSignal<RuleType>(rule?.type ?? 'cycle');
-    const enabled = useSignal(rule?.enabled ?? true);
+    const name = useSignal(config?.name ?? '');
+    const type = useSignal<RuleType>(config?.type ?? 'cycle');
+    const enabled = useSignal(config?.enabled ?? true);
 
-    const startSignal = useSignal(rule?.startSignal ?? '');
-    const startCondition = useSignal<ConditionType>(rule?.startCondition ?? 'equals');
-    const startValue = useSignal<string>(String(rule?.startValue ?? 'true'));
+    const startDeviceId = useSignal(config?.startDeviceId ?? '');
+    const startSignalName = useSignal(config?.startSignalName ?? '');
+    const startCondition = useSignal<ConditionType>(config?.startCondition ?? 'equals');
+    const startValue = useSignal<string>(String(config?.startValue ?? 'true'));
 
-    const endSignal = useSignal(rule?.endSignal ?? '');
-    const endCondition = useSignal<ConditionType>(rule?.endCondition ?? 'equals');
-    const endValue = useSignal<string>(String(rule?.endValue ?? 'true'));
+    const endDeviceId = useSignal(config?.endDeviceId ?? '');
+    const endSignalName = useSignal(config?.endSignalName ?? '');
+    const endCondition = useSignal<ConditionType>(config?.endCondition ?? 'equals');
+    const endValue = useSignal<string>(String(config?.endValue ?? 'true'));
 
-    const targetDuration = useSignal(rule?.targetDuration ? String(rule.targetDuration / 1000) : '');
-    const tolerance = useSignal(rule?.tolerance ? String(rule.tolerance / 1000) : '');
+    const targetDuration = useSignal(config?.targetDuration ? String(config.targetDuration / 1000) : '');
+    const tolerance = useSignal(config?.tolerance ? String(config.tolerance / 1000) : '');
 
-    // Get available signals from log entries
-    const availableSignals = useComputed(() => {
-        const signals = new Set<string>();
+    // Build device -> signal -> type catalog from currently loaded log entries
+    const signalCatalog = useComputed(() => {
+        const byDevice = new Map<string, Map<string, SignalType>>();
+
         for (const entry of logEntries.value) {
-            signals.add(`${entry.deviceId}::${entry.signalName}`);
+            const deviceSignals = byDevice.get(entry.deviceId) || new Map<string, SignalType>();
+            if (!deviceSignals.has(entry.signalName)) {
+                deviceSignals.set(entry.signalName, entry.signalType);
+            }
+            byDevice.set(entry.deviceId, deviceSignals);
         }
-        return Array.from(signals).sort();
+
+        return byDevice;
     });
+
+    const availableDevices = useComputed(() => {
+        return Array.from(signalCatalog.value.keys()).sort();
+    });
+
+    const startSignalOptions = useComputed(() => {
+        if (!startDeviceId.value) return [] as Array<{ name: string; type: SignalType }>;
+
+        const deviceSignals = signalCatalog.value.get(startDeviceId.value);
+        if (!deviceSignals) return [] as Array<{ name: string; type: SignalType }>;
+
+        return Array.from(deviceSignals.entries())
+            .map(([name, type]) => ({ name, type }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    });
+
+    const endSignalOptions = useComputed(() => {
+        if (!endDeviceId.value) return [] as Array<{ name: string; type: SignalType }>;
+
+        const deviceSignals = signalCatalog.value.get(endDeviceId.value);
+        if (!deviceSignals) return [] as Array<{ name: string; type: SignalType }>;
+
+        return Array.from(deviceSignals.entries())
+            .map(([name, type]) => ({ name, type }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    });
+
+    const startSignalType = useComputed(() => {
+        const signal = startSignalOptions.value.find(s => s.name === startSignalName.value);
+        return signal?.type;
+    });
+
+    const endSignalType = useComputed(() => {
+        const signal = endSignalOptions.value.find(s => s.name === endSignalName.value);
+        return signal?.type;
+    });
+
+    // Keep signal selection valid when device changes.
+    useEffect(() => {
+        if (!startSignalOptions.value.some(s => s.name === startSignalName.value)) {
+            startSignalName.value = '';
+        }
+    }, [startDeviceId.value, startSignalOptions.value]);
+
+    useEffect(() => {
+        if (!endSignalOptions.value.some(s => s.name === endSignalName.value)) {
+            endSignalName.value = '';
+        }
+    }, [endDeviceId.value, endSignalOptions.value]);
+
+    // Keep condition valid when signal type changes.
+    useEffect(() => {
+        const allowed = getConditionOptions(startSignalType.value);
+        if (!allowed.some(option => option.value === startCondition.value)) {
+            startCondition.value = allowed[0]?.value ?? 'equals';
+        }
+    }, [startSignalType.value]);
+
+    useEffect(() => {
+        const allowed = getConditionOptions(endSignalType.value);
+        if (!allowed.some(option => option.value === endCondition.value)) {
+            endCondition.value = allowed[0]?.value ?? 'equals';
+        }
+    }, [endSignalType.value]);
 
     const handleSubmit = (e: Event) => {
         e.preventDefault();
 
-        const ruleData: Omit<TransitionRule, 'id'> = {
-            name: name.value || 'Unnamed Rule',
+        const configData: TransitionConfig = {
+            name: name.value || 'Transition Config',
             type: type.value,
             enabled: enabled.value,
-            startSignal: startSignal.value,
+            startDeviceId: startDeviceId.value,
+            startSignalName: startSignalName.value,
             startCondition: startCondition.value,
-            startValue: parseValue(startValue.value),
-            endSignal: type.value === 'a-to-b' ? endSignal.value : undefined,
+            startValue: parseTypedValue(startValue.value, startSignalType.value),
+            endDeviceId: type.value === 'a-to-b' ? endDeviceId.value : undefined,
+            endSignalName: type.value === 'a-to-b' ? endSignalName.value : undefined,
             endCondition: type.value === 'a-to-b' ? endCondition.value : undefined,
-            endValue: type.value === 'a-to-b' ? parseValue(endValue.value) : undefined,
+            endValue: type.value === 'a-to-b' ? parseTypedValue(endValue.value, endSignalType.value) : undefined,
             targetDuration: targetDuration.value ? parseFloat(targetDuration.value) * 1000 : undefined,
             tolerance: tolerance.value ? parseFloat(tolerance.value) * 1000 : undefined
         };
 
-        if (isEditing && rule) {
-            onSave({ ...ruleData, id: rule.id });
-        } else {
-            onSave(ruleData);
-        }
+        onSave(configData);
     };
 
-    const parseValue = (val: string): string | number | boolean => {
-        if (val === 'true') return true;
-        if (val === 'false') return false;
-        const num = parseFloat(val);
-        if (!isNaN(num)) return num;
-        return val;
+    const renderValueInput = (
+        value: string,
+        setValue: (next: string) => void,
+        ariaLabel: string,
+        signalType?: SignalType
+    ) => {
+        if (signalType === 'boolean') {
+            return (
+                <select aria-label={ariaLabel} value={value} onChange={(e) => setValue((e.target as HTMLSelectElement).value)}>
+                    <option value="true">true</option>
+                    <option value="false">false</option>
+                </select>
+            );
+        }
+
+        if (signalType === 'integer') {
+            return (
+                <input
+                    aria-label={ariaLabel}
+                    type="number"
+                    value={value}
+                    onInput={(e) => setValue((e.target as HTMLInputElement).value)}
+                    placeholder="0"
+                />
+            );
+        }
+
+        return (
+            <input
+                aria-label={ariaLabel}
+                type="text"
+                value={value}
+                onInput={(e) => setValue((e.target as HTMLInputElement).value)}
+                placeholder="value"
+            />
+        );
     };
 
     return (
         <div class="modal-overlay" onClick={onClose}>
             <div class="modal-content" onClick={(e) => e.stopPropagation()}>
                 <div class="modal-header">
-                    <h2>{isEditing ? 'Edit Rule' : 'Create Transition Rule'}</h2>
+                    <h2>{isEditing ? 'Edit Configuration' : 'Configure Transition'}</h2>
                     <button class="close-btn" onClick={onClose}>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M18 6L6 18M6 6l12 12" />
@@ -85,17 +229,17 @@ export function TransitionRuleEditor({ rule, onSave, onClose }: TransitionRuleEd
 
                 <form onSubmit={handleSubmit}>
                     <div class="form-group">
-                        <label>Rule Name</label>
+                        <label>Name</label>
                         <input
                             type="text"
                             value={name.value}
                             onInput={(e) => name.value = (e.target as HTMLInputElement).value}
-                            placeholder="e.g., Cycle Time"
+                            placeholder="e.g., Cycle Time Config"
                         />
                     </div>
 
                     <div class="form-group">
-                        <label>Rule Type</label>
+                        <label>Transition Type</label>
                         <div class="radio-group">
                             <label class={`radio-option ${type.value === 'cycle' ? 'selected' : ''}`}>
                                 <input
@@ -143,14 +287,31 @@ export function TransitionRuleEditor({ rule, onSave, onClose }: TransitionRuleEd
                         <legend>{type.value === 'a-to-b' ? 'Start Condition' : 'Signal Condition'}</legend>
                         <div class="condition-row">
                             <div class="form-group">
+                                <label>Device</label>
+                                <select
+                                    aria-label="Start Device"
+                                    required
+                                    value={startDeviceId.value}
+                                    onChange={(e) => startDeviceId.value = (e.target as HTMLSelectElement).value}
+                                >
+                                    <option value="">Select device...</option>
+                                    {availableDevices.value.map(device => (
+                                        <option key={device} value={device}>{device}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div class="form-group">
                                 <label>Signal</label>
                                 <select
-                                    value={startSignal.value}
-                                    onChange={(e) => startSignal.value = (e.target as HTMLSelectElement).value}
+                                    aria-label="Start Signal"
+                                    required
+                                    value={startSignalName.value}
+                                    disabled={!startDeviceId.value}
+                                    onChange={(e) => startSignalName.value = (e.target as HTMLSelectElement).value}
                                 >
                                     <option value="">Select signal...</option>
-                                    {availableSignals.value.map(sig => (
-                                        <option key={sig} value={sig}>{sig}</option>
+                                    {startSignalOptions.value.map(signal => (
+                                        <option key={signal.name} value={signal.name}>{signal.name}</option>
                                     ))}
                                 </select>
                             </div>
@@ -159,23 +320,18 @@ export function TransitionRuleEditor({ rule, onSave, onClose }: TransitionRuleEd
                                     <div class="form-group condition-select">
                                         <label>Condition</label>
                                         <select
+                                            aria-label="Start Condition"
                                             value={startCondition.value}
                                             onChange={(e) => startCondition.value = (e.target as HTMLSelectElement).value as ConditionType}
                                         >
-                                            <option value="equals">=</option>
-                                            <option value="not-equals">≠</option>
-                                            <option value="greater">&gt;</option>
-                                            <option value="less">&lt;</option>
+                                            {getConditionOptions(startSignalType.value).map(option => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
                                         </select>
                                     </div>
                                     <div class="form-group">
                                         <label>Value</label>
-                                        <input
-                                            type="text"
-                                            value={startValue.value}
-                                            onInput={(e) => startValue.value = (e.target as HTMLInputElement).value}
-                                            placeholder="true"
-                                        />
+                                        {renderValueInput(startValue.value, (next) => startValue.value = next, 'Start Value', startSignalType.value)}
                                     </div>
                                 </>
                             )}
@@ -187,37 +343,49 @@ export function TransitionRuleEditor({ rule, onSave, onClose }: TransitionRuleEd
                             <legend>End Condition</legend>
                             <div class="condition-row">
                                 <div class="form-group">
+                                    <label>Device</label>
+                                    <select
+                                        aria-label="End Device"
+                                        required
+                                        value={endDeviceId.value}
+                                        onChange={(e) => endDeviceId.value = (e.target as HTMLSelectElement).value}
+                                    >
+                                        <option value="">Select device...</option>
+                                        {availableDevices.value.map(device => (
+                                            <option key={device} value={device}>{device}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div class="form-group">
                                     <label>Signal</label>
                                     <select
-                                        value={endSignal.value}
-                                        onChange={(e) => endSignal.value = (e.target as HTMLSelectElement).value}
+                                        aria-label="End Signal"
+                                        required
+                                        value={endSignalName.value}
+                                        disabled={!endDeviceId.value}
+                                        onChange={(e) => endSignalName.value = (e.target as HTMLSelectElement).value}
                                     >
                                         <option value="">Select signal...</option>
-                                        {availableSignals.value.map(sig => (
-                                            <option key={sig} value={sig}>{sig}</option>
+                                        {endSignalOptions.value.map(signal => (
+                                            <option key={signal.name} value={signal.name}>{signal.name}</option>
                                         ))}
                                     </select>
                                 </div>
                                 <div class="form-group condition-select">
                                     <label>Condition</label>
                                     <select
+                                        aria-label="End Condition"
                                         value={endCondition.value}
                                         onChange={(e) => endCondition.value = (e.target as HTMLSelectElement).value as ConditionType}
                                     >
-                                        <option value="equals">=</option>
-                                        <option value="not-equals">≠</option>
-                                        <option value="greater">&gt;</option>
-                                        <option value="less">&lt;</option>
+                                        {getConditionOptions(endSignalType.value).map(option => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div class="form-group">
                                     <label>Value</label>
-                                    <input
-                                        type="text"
-                                        value={endValue.value}
-                                        onInput={(e) => endValue.value = (e.target as HTMLInputElement).value}
-                                        placeholder="true"
-                                    />
+                                    {renderValueInput(endValue.value, (next) => endValue.value = next, 'End Value', endSignalType.value)}
                                 </div>
                             </div>
                         </fieldset>
@@ -256,7 +424,7 @@ export function TransitionRuleEditor({ rule, onSave, onClose }: TransitionRuleEd
                                 checked={enabled.value}
                                 onChange={(e) => enabled.value = (e.target as HTMLInputElement).checked}
                             />
-                            Rule Enabled
+                            Configuration Enabled
                         </label>
                     </div>
 
@@ -265,7 +433,7 @@ export function TransitionRuleEditor({ rule, onSave, onClose }: TransitionRuleEd
                             Cancel
                         </button>
                         <button type="submit" class="save-btn">
-                            {isEditing ? 'Update Rule' : 'Create Rule'}
+                            {isEditing ? 'Save Configuration' : 'Apply Configuration'}
                         </button>
                     </div>
                 </form>
@@ -285,8 +453,8 @@ export function TransitionRuleEditor({ rule, onSave, onClose }: TransitionRuleEd
                         background: var(--bg-secondary);
                         border: 1px solid var(--border-color);
                         border-radius: 8px;
-                        width: 480px;
-                        max-width: 90vw;
+                        width: 640px;
+                        max-width: 95vw;
                         max-height: 90vh;
                         overflow-y: auto;
                     }
@@ -413,18 +581,20 @@ export function TransitionRuleEditor({ rule, onSave, onClose }: TransitionRuleEd
                         padding: 0 8px;
                     }
 
-                    .condition-row, .target-row {
+                    .condition-row,
+                    .target-row {
                         display: flex;
+                        flex-wrap: wrap;
                         gap: var(--spacing-md);
                     }
 
                     .condition-row .form-group {
-                        flex: 1;
+                        flex: 1 1 140px;
                         margin-bottom: 0;
                     }
 
                     .condition-row .condition-select {
-                        flex: 0 0 80px;
+                        flex: 0 0 110px;
                     }
 
                     .target-row .form-group {

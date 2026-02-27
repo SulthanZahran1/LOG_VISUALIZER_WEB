@@ -4,7 +4,7 @@
 import type { TransitionStats as Stats } from '../../stores/transitionStore';
 
 interface TransitionStatsProps {
-    stats: Stats[];
+    stats: Stats | null;
 }
 
 export function TransitionStats({ stats }: TransitionStatsProps) {
@@ -19,93 +19,89 @@ export function TransitionStats({ stats }: TransitionStatsProps) {
         return (value / total) * 100;
     };
 
-    if (stats.length === 0 || stats.every(s => s.count === 0)) {
+    if (!stats || stats.count === 0) {
         return (
             <div class="stats-empty">
-                <p>No statistics available. Define and enable rules to see results.</p>
+                <p>No statistics available. Configure and enable a transition to see results.</p>
             </div>
         );
     }
 
     return (
         <div class="stats-container">
-            {stats.filter(s => s.count > 0).map(stat => (
-                <div key={stat.ruleId} class="stat-card">
-                    <div class="stat-header">
-                        <h3>{stat.ruleName}</h3>
-                        <span class="stat-count">{stat.count} transitions</span>
-                    </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <h3>{stats.configName}</h3>
+                    <span class="stat-count">{stats.count} transitions</span>
+                </div>
 
-                    <div class="stat-grid">
-                        <div class="stat-item">
-                            <span class="stat-label">Min</span>
-                            <span class="stat-value">{formatDuration(stat.min)}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Max</span>
-                            <span class="stat-value">{formatDuration(stat.max)}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Average</span>
-                            <span class="stat-value highlight">{formatDuration(stat.average)}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Std Dev</span>
-                            <span class="stat-value">{formatDuration(stat.stdDev)}</span>
-                        </div>
+                <div class="stat-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Min</span>
+                        <span class="stat-value">{formatDuration(stats.min)}</span>
                     </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Max</span>
+                        <span class="stat-value">{formatDuration(stats.max)}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Average</span>
+                        <span class="stat-value highlight">{formatDuration(stats.average)}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Std Dev</span>
+                        <span class="stat-value">{formatDuration(stats.stdDev)}</span>
+                    </div>
+                </div>
 
-                    {(stat.withinTarget + stat.aboveTarget + stat.belowTarget) > 0 && (
-                        <div class="target-compliance">
-                            <h4>Target Compliance</h4>
-                            <div class="compliance-bars">
-                                <div class="compliance-row">
-                                    <span class="compliance-label ok">Within Target</span>
-                                    <div class="compliance-bar">
-                                        <div
-                                            class="compliance-fill ok"
-                                            style={{ width: `${getPercentage(stat.withinTarget, stat.count)}%` }}
-                                        />
-                                    </div>
-                                    <span class="compliance-value">
-                                        {stat.withinTarget} ({getPercentage(stat.withinTarget, stat.count).toFixed(1)}%)
-                                    </span>
+                {(stats.withinTarget + stats.aboveTarget + stats.belowTarget) > 0 && (
+                    <div class="target-compliance">
+                        <h4>Target Compliance</h4>
+                        <div class="compliance-bars">
+                            <div class="compliance-row">
+                                <span class="compliance-label ok">Within Target</span>
+                                <div class="compliance-bar">
+                                    <div
+                                        class="compliance-fill ok"
+                                        style={{ width: `${getPercentage(stats.withinTarget, stats.count)}%` }}
+                                    />
                                 </div>
-                                <div class="compliance-row">
-                                    <span class="compliance-label above">Above Target</span>
-                                    <div class="compliance-bar">
-                                        <div
-                                            class="compliance-fill above"
-                                            style={{ width: `${getPercentage(stat.aboveTarget, stat.count)}%` }}
-                                        />
-                                    </div>
-                                    <span class="compliance-value">
-                                        {stat.aboveTarget} ({getPercentage(stat.aboveTarget, stat.count).toFixed(1)}%)
-                                    </span>
+                                <span class="compliance-value">
+                                    {stats.withinTarget} ({getPercentage(stats.withinTarget, stats.count).toFixed(1)}%)
+                                </span>
+                            </div>
+                            <div class="compliance-row">
+                                <span class="compliance-label above">Above Target</span>
+                                <div class="compliance-bar">
+                                    <div
+                                        class="compliance-fill above"
+                                        style={{ width: `${getPercentage(stats.aboveTarget, stats.count)}%` }}
+                                    />
                                 </div>
-                                <div class="compliance-row">
-                                    <span class="compliance-label below">Below Target</span>
-                                    <div class="compliance-bar">
-                                        <div
-                                            class="compliance-fill below"
-                                            style={{ width: `${getPercentage(stat.belowTarget, stat.count)}%` }}
-                                        />
-                                    </div>
-                                    <span class="compliance-value">
-                                        {stat.belowTarget} ({getPercentage(stat.belowTarget, stat.count).toFixed(1)}%)
-                                    </span>
+                                <span class="compliance-value">
+                                    {stats.aboveTarget} ({getPercentage(stats.aboveTarget, stats.count).toFixed(1)}%)
+                                </span>
+                            </div>
+                            <div class="compliance-row">
+                                <span class="compliance-label below">Below Target</span>
+                                <div class="compliance-bar">
+                                    <div
+                                        class="compliance-fill below"
+                                        style={{ width: `${getPercentage(stats.belowTarget, stats.count)}%` }}
+                                    />
                                 </div>
+                                <span class="compliance-value">
+                                    {stats.belowTarget} ({getPercentage(stats.belowTarget, stats.count).toFixed(1)}%)
+                                </span>
                             </div>
                         </div>
-                    )}
-                </div>
-            ))}
+                    </div>
+                )}
+            </div>
 
             <style>{`
                 .stats-container {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-                    gap: var(--spacing-lg);
+                    max-width: 560px;
                 }
 
                 .stats-empty {

@@ -2,23 +2,17 @@
  * TransitionHistogram - Histogram visualization of duration distribution
  */
 import { useMemo } from 'preact/hooks';
-import { transitionRules, resultsByRule, selectedRuleId } from '../../stores/transitionStore';
+import { transitionConfig, transitionResults } from '../../stores/transitionStore';
 
 export function TransitionHistogram() {
-    const rules = transitionRules.value;
-    const results = resultsByRule.value;
-    const selectedId = selectedRuleId.value;
-
-    // Get the rule to display (selected or first)
-    const displayRuleId = selectedId || (rules.length > 0 ? rules[0].id : null);
-    const displayRule = rules.find(r => r.id === displayRuleId);
+    const config = transitionConfig.value;
+    const results = transitionResults.value;
 
     // Calculate histogram data
     const histogramData = useMemo(() => {
-        const ruleResults = displayRuleId ? results.get(displayRuleId) || [] : [];
-        if (ruleResults.length === 0) return { bins: [], maxCount: 0, binWidth: 0, minValue: 0, count: 0 };
+        if (results.length === 0) return { bins: [], maxCount: 0, binWidth: 0, minValue: 0, count: 0 };
 
-        const durations = ruleResults.map(r => r.duration);
+        const durations = results.map(r => r.duration);
         const minValue = Math.min(...durations);
         const maxValue = Math.max(...durations);
         const range = maxValue - minValue;
@@ -47,8 +41,8 @@ export function TransitionHistogram() {
 
         const maxCount = Math.max(...bins.map(b => b.count));
 
-        return { bins, maxCount, binWidth, minValue, count: ruleResults.length };
-    }, [displayRuleId, results]);
+        return { bins, maxCount, binWidth, minValue, count: results.length };
+    }, [results]);
 
     const formatDuration = (ms: number) => {
         if (ms >= 60000) return `${(ms / 60000).toFixed(1)}m`;
@@ -56,10 +50,10 @@ export function TransitionHistogram() {
         return `${ms.toFixed(0)}ms`;
     };
 
-    if (rules.length === 0) {
+    if (!config) {
         return (
             <div class="histogram-empty">
-                <p>No rules defined. Create a rule to see the histogram.</p>
+                <p>No transition configuration found.</p>
             </div>
         );
     }
@@ -67,7 +61,7 @@ export function TransitionHistogram() {
     if (histogramData.count === 0) {
         return (
             <div class="histogram-empty">
-                <p>No data for the selected rule.</p>
+                <p>No data for the current configuration.</p>
             </div>
         );
     }
@@ -75,17 +69,7 @@ export function TransitionHistogram() {
     return (
         <div class="histogram-container">
             <div class="histogram-header">
-                <h3>Duration Distribution: {displayRule?.name}</h3>
-                {rules.length > 1 && (
-                    <select
-                        value={displayRuleId || ''}
-                        onChange={(e) => selectedRuleId.value = (e.target as HTMLSelectElement).value}
-                    >
-                        {rules.map(rule => (
-                            <option key={rule.id} value={rule.id}>{rule.name}</option>
-                        ))}
-                    </select>
-                )}
+                <h3>Duration Distribution: {config.name}</h3>
             </div>
 
             <div class="histogram-chart">
@@ -101,7 +85,7 @@ export function TransitionHistogram() {
                             : 0;
 
                         // Check if this bin contains the target
-                        const targetMs = displayRule?.targetDuration;
+                        const targetMs = config.targetDuration;
                         const isTargetBin = targetMs && bin.start <= targetMs && bin.end >= targetMs;
 
                         return (
@@ -119,12 +103,12 @@ export function TransitionHistogram() {
                 </div>
             </div>
 
-            {displayRule?.targetDuration && (
+            {config.targetDuration && (
                 <div class="histogram-legend">
                     <span class="legend-item">
                         <span class="legend-marker target"></span>
-                        Target: {formatDuration(displayRule.targetDuration)}
-                        {displayRule.tolerance && ` ±${formatDuration(displayRule.tolerance)}`}
+                        Target: {formatDuration(config.targetDuration)}
+                        {config.tolerance && ` ±${formatDuration(config.tolerance)}`}
                     </span>
                 </div>
             )}
@@ -148,7 +132,6 @@ export function TransitionHistogram() {
                 .histogram-header {
                     display: flex;
                     align-items: center;
-                    justify-content: space-between;
                     margin-bottom: var(--spacing-lg);
                 }
 
@@ -157,15 +140,6 @@ export function TransitionHistogram() {
                     font-size: 14px;
                     font-weight: 600;
                     color: var(--text-primary);
-                }
-
-                .histogram-header select {
-                    background: var(--bg-secondary);
-                    border: 1px solid var(--border-color);
-                    border-radius: 4px;
-                    padding: 6px 10px;
-                    color: var(--text-primary);
-                    font-size: 12px;
                 }
 
                 .histogram-chart {
