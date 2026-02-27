@@ -192,6 +192,8 @@ export async function getParseEntries(
     filters?: {
         search?: string;
         category?: string;
+        signalName?: string;
+        deviceId?: string;
         sort?: string;
         order?: string;
         type?: string;
@@ -205,6 +207,8 @@ export async function getParseEntries(
     if (filters) {
         if (filters.search) url += `&search=${encodeURIComponent(filters.search)}`;
         if (filters.category) url += `&categories=${encodeURIComponent(filters.category)}`;
+        if (filters.signalName) url += `&signalNames=${encodeURIComponent(filters.signalName)}`;
+        if (filters.deviceId) url += `&deviceIds=${encodeURIComponent(filters.deviceId)}`;
         if (filters.sort) url += `&sortColumn=${encodeURIComponent(filters.sort)}`;
         if (filters.order) url += `&sortDirection=${encodeURIComponent(filters.order)}`;
         if (filters.type) url += `&signalType=${encodeURIComponent(filters.type)}`;
@@ -226,6 +230,8 @@ export async function getIndexOfTime(
     filters?: {
         search?: string;
         category?: string;
+        signalName?: string;
+        deviceId?: string;
         sort?: string;
         order?: string;
         type?: string;
@@ -238,6 +244,8 @@ export async function getIndexOfTime(
     if (filters) {
         if (filters.search) url += `&search=${encodeURIComponent(filters.search)}`;
         if (filters.category) url += `&categories=${encodeURIComponent(filters.category)}`;
+        if (filters.signalName) url += `&signalNames=${encodeURIComponent(filters.signalName)}`;
+        if (filters.deviceId) url += `&deviceIds=${encodeURIComponent(filters.deviceId)}`;
         if (filters.sort) url += `&sortColumn=${encodeURIComponent(filters.sort)}`;
         if (filters.order) url += `&sortDirection=${encodeURIComponent(filters.order)}`;
         if (filters.type) url += `&signalType=${encodeURIComponent(filters.type)}`;
@@ -262,6 +270,8 @@ export async function getTimeTree(
     filters?: {
         search?: string;
         category?: string;
+        signalName?: string;
+        deviceId?: string;
         sort?: string;
         order?: string;
         type?: string;
@@ -275,6 +285,8 @@ export async function getTimeTree(
     if (filters) {
         if (filters.search) params.push(`search=${encodeURIComponent(filters.search)}`);
         if (filters.category) params.push(`categories=${encodeURIComponent(filters.category)}`);
+        if (filters.signalName) params.push(`signalNames=${encodeURIComponent(filters.signalName)}`);
+        if (filters.deviceId) params.push(`deviceIds=${encodeURIComponent(filters.deviceId)}`);
         if (filters.sort) params.push(`sortColumn=${encodeURIComponent(filters.sort)}`);
         if (filters.order) params.push(`sortDirection=${encodeURIComponent(filters.order)}`);
         if (filters.type) params.push(`signalType=${encodeURIComponent(filters.type)}`);

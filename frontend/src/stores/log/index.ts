@@ -53,7 +53,11 @@ export {
     showChangedOnly,
     searchHighlightMode,
     categoryFilter,
+    signalNameFilter,
+    deviceIdFilter,
     allCategories,
+    allSignalNames,
+    allDeviceIds,
     // View
     openViews,
     activeTab,
@@ -68,6 +72,8 @@ export {
     isParsing,
     useServerSide,
     availableCategories,
+    availableSignalNames,
+    availableDeviceIds,
     filteredEntries
 } from './state';
 

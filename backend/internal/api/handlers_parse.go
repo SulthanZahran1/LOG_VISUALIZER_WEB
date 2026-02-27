@@ -513,6 +513,8 @@ func (h *ParseHandlerImpl) buildQueryParams(c echo.Context) parser.QueryParams {
 		SearchCaseSensitive: c.QueryParam("caseSensitive") == "true",
 		ShowChanged:         c.QueryParam("showChangedOnly") == "true",
 		Categories:          parseListParam("categories", "category"),
+		SignalNames:         parseListParam("signalNames", "signalName"),
+		DeviceIDs:           parseListParam("deviceIds", "deviceId"),
 		Signals:             parseListParam("signals", "signal"),
 		SignalType:          queryParamFirst("signalType", "type"),
 		SortColumn:          queryParamFirst("sortColumn", "sort"),

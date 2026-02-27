@@ -73,6 +73,10 @@ export const searchHighlightMode = signal(false);
 // Category filter - Set of selected categories
 export const categoryFilter = signal<Set<string>>(new Set());
 export const allCategories = signal<string[]>([]);
+export const signalNameFilter = signal<Set<string>>(new Set());
+export const allSignalNames = signal<string[]>([]);
+export const deviceIdFilter = signal<Set<string>>(new Set());
+export const allDeviceIds = signal<string[]>([]);
 
 // ======================
 // View State
@@ -106,11 +110,13 @@ export const useServerSide = computed(() =>
 );
 
 export const availableCategories = computed(() => allCategories.value);
+export const availableSignalNames = computed(() => allSignalNames.value);
+export const availableDeviceIds = computed(() => allDeviceIds.value);
 
 export const filteredEntries = computed(() => {
     let entries = logEntries.value;
 
-    // In server-side mode, backend handles search/category/sort/type/signals
+    // In server-side mode, backend handles search/category/signal/device/sort/type/signals
     if (useServerSide.value) {
         if (showChangedOnly.value) {
             const lastValues = new Map<string, string | number | boolean>();
@@ -139,12 +145,24 @@ export const filteredEntries = computed(() => {
         entries = entries.filter(e => catFilter.has(e.category || ''));
     }
 
-    // 3. Signal Type Filter
+    // 3. Signal Name Filter
+    const sigFilter = signalNameFilter.value;
+    if (sigFilter.size > 0) {
+        entries = entries.filter(e => sigFilter.has(e.signalName));
+    }
+
+    // 4. Device ID Filter
+    const devFilter = deviceIdFilter.value;
+    if (devFilter.size > 0) {
+        entries = entries.filter(e => devFilter.has(e.deviceId));
+    }
+
+    // 5. Signal Type Filter
     if (signalTypeFilter.value) {
         entries = entries.filter(e => e.signalType === signalTypeFilter.value);
     }
 
-    // 4. Show Changed Only
+    // 6. Show Changed Only
     if (showChangedOnly.value) {
         const lastValues = new Map<string, string | number | boolean>();
         entries = entries.filter(e => {
@@ -156,7 +174,7 @@ export const filteredEntries = computed(() => {
         });
     }
 
-    // 5. Search Filter
+    // 7. Search Filter
     if (searchQuery.value && !searchHighlightMode.value) {
         let matcher: (text: string) => boolean;
 
@@ -183,7 +201,7 @@ export const filteredEntries = computed(() => {
         );
     }
 
-    // 6. Final Sort
+    // 8. Final Sort
     if (sortColumn.value) {
         const col = sortColumn.value;
         const dir = sortDirection.value === 'asc' ? 1 : -1;

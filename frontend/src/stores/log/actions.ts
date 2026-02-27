@@ -4,7 +4,7 @@
  * Action functions for log operations.
  */
 
-import { streamParseEntries, getParseCategories } from '../../api/client';
+import { streamParseEntries, getParseCategories, getParseSignals } from '../../api/client';
 import { deleteSession } from '../../utils/persistence';
 import type { LogEntry, ParseSession } from '../../models/types';
 // saveSession is used via dynamic import in finalizeSessionLoad
@@ -13,7 +13,8 @@ import {
     isLoadingLog, logError, streamProgress, isStreaming,
     setPollAbortController, setFetchAbortController,
     serverPageCache, getCacheKey, CACHE_MAX_SIZE,
-    allCategories, sortColumn, sortDirection, searchQuery, categoryFilter,
+    allCategories, allSignalNames, allDeviceIds,
+    sortColumn, sortDirection, searchQuery, categoryFilter, signalNameFilter, deviceIdFilter,
     signalTypeFilter, searchRegex, searchCaseSensitive,
     SERVER_PAGE_SIZE, openViews, activeTab, useServerSide,
     currentPollAbortController, currentFetchAbortController,
@@ -69,11 +70,14 @@ export function setupSessionWithPolling(session: ParseSession): void {
     }
     setPollAbortController(new AbortController());
 
+    console.log(`[LogStore] Setting up session ${session.id.substring(0, 8)}, status: ${session.status}`);
     currentSession.value = session;
 
     if (session.status === 'complete') {
+        console.log(`[LogStore] Session ${session.id.substring(0, 8)} already complete, handling completion`);
         handleSessionComplete(session);
     } else {
+        console.log(`[LogStore] Session ${session.id.substring(0, 8)} not complete, starting polling`);
         pollStatus(session.id, currentPollAbortController!.signal);
     }
 }
@@ -171,6 +175,35 @@ async function handleSessionComplete(session: ParseSession): Promise<void> {
             }
         });
 
+    // Fetch all available signal names and device IDs.
+    getParseSignals(session.id)
+        .then(signals => {
+            const signalNames = new Set<string>();
+            const deviceIds = new Set<string>();
+
+            for (const signalKey of signals) {
+                const separatorIndex = signalKey.indexOf('::');
+                if (separatorIndex > -1) {
+                    deviceIds.add(signalKey.slice(0, separatorIndex));
+                    signalNames.add(signalKey.slice(separatorIndex + 2));
+                } else if (signalKey) {
+                    signalNames.add(signalKey);
+                }
+            }
+
+            allSignalNames.value = Array.from(signalNames).sort();
+            allDeviceIds.value = Array.from(deviceIds).sort();
+        })
+        .catch((err: unknown) => {
+            if ((err as { status?: number }).status === 404) {
+                console.warn('Session not found when fetching signals, clearing state');
+                void deleteSession(session.id);
+                clearSession();
+            } else {
+                console.error('Failed to fetch signals:', err);
+            }
+        });
+
     // Load data
     if (useServerSide.value) {
         const { fetchEntries } = await import('./actions');
@@ -202,9 +235,18 @@ async function handleSessionComplete(session: ParseSession): Promise<void> {
     }
 
     finalizeSessionLoad(session);
+
+    // Auto-open log table for generic logs
+    if (session.parserName === 'generic_log') {
+        openView('log-table');
+    }
 }
 
 async function finalizeSessionLoad(session: ParseSession): Promise<void> {
+    if (session.parserName === 'generic_log') {
+        return;
+    }
+
     const mapStore = await import('../mapStore');
 
     await Promise.all([
@@ -234,6 +276,12 @@ export async function fetchEntries(page: number, pageSize: number): Promise<void
         search: searchQuery.value,
         category: categoryFilter.value.size > 0
             ? Array.from(categoryFilter.value).join(',')
+            : undefined,
+        signalName: signalNameFilter.value.size > 0
+            ? Array.from(signalNameFilter.value).join(',')
+            : undefined,
+        deviceId: deviceIdFilter.value.size > 0
+            ? Array.from(deviceIdFilter.value).join(',')
             : undefined,
         sort: sortColumn.value || undefined,
         order: sortDirection.value,
@@ -342,6 +390,12 @@ export async function jumpToTime(timestamp: number): Promise<number | null> {
             search: searchQuery.value,
             category: categoryFilter.value.size > 0
                 ? Array.from(categoryFilter.value).join(',')
+                : undefined,
+            signalName: signalNameFilter.value.size > 0
+                ? Array.from(signalNameFilter.value).join(',')
+                : undefined,
+            deviceId: deviceIdFilter.value.size > 0
+                ? Array.from(deviceIdFilter.value).join(',')
                 : undefined,
             sort: sortColumn.value || undefined,
             order: sortDirection.value,

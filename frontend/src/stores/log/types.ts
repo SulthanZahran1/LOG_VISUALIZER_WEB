@@ -18,6 +18,8 @@ export interface ServerPageCache {
 export interface FetchFilters {
     search?: string;
     category?: string;
+    signalName?: string;
+    deviceId?: string;
     sort?: string;
     order?: 'asc' | 'desc';
     type?: string;

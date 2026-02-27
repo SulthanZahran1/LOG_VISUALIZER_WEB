@@ -369,6 +369,8 @@ func (ds *DuckStore) GetEntry(i int) (models.LogEntry, error) {
 type QueryParams struct {
 	Search              string
 	Categories          []string // Multiple categories supported (IN clause)
+	SignalNames         []string // Filter by signal name (match any device)
+	DeviceIDs           []string // Filter by device id
 	Signals             []string // Filter to specific signals (format: "deviceId::signalName")
 	SortColumn          string
 	SortDirection       string // "asc" or "desc"
@@ -691,6 +693,30 @@ func (ds *DuckStore) buildWhereClause(params QueryParams) (string, []interface{}
 			args = append(args, cat)
 		}
 		clauses = append(clauses, "category IN ("+strings.Join(placeholders, ", ")+")")
+	}
+
+	if len(params.SignalNames) == 1 {
+		clauses = append(clauses, "signal = ?")
+		args = append(args, params.SignalNames[0])
+	} else if len(params.SignalNames) > 1 {
+		placeholders := make([]string, len(params.SignalNames))
+		for i, signalName := range params.SignalNames {
+			placeholders[i] = "?"
+			args = append(args, signalName)
+		}
+		clauses = append(clauses, "signal IN ("+strings.Join(placeholders, ", ")+")")
+	}
+
+	if len(params.DeviceIDs) == 1 {
+		clauses = append(clauses, "device_id = ?")
+		args = append(args, params.DeviceIDs[0])
+	} else if len(params.DeviceIDs) > 1 {
+		placeholders := make([]string, len(params.DeviceIDs))
+		for i, deviceID := range params.DeviceIDs {
+			placeholders[i] = "?"
+			args = append(args, deviceID)
+		}
+		clauses = append(clauses, "device_id IN ("+strings.Join(placeholders, ", ")+")")
 	}
 
 	if params.SignalType != "" {

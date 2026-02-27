@@ -452,7 +452,7 @@ func TestParseTimestamp(t *testing.T) {
 
 func TestParseHandler_BuildQueryParams_BackwardCompatible(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/api/parse/test/entries?search=q&regex=true&caseSensitive=true&showChangedOnly=true&category=ALARM,WARNING&categories=INFO&sort=timestamp&order=desc&type=boolean&signals=PLC1::S1,PLC1::S2&signal=PLC2::S3", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/parse/test/entries?search=q&regex=true&caseSensitive=true&showChangedOnly=true&category=ALARM,WARNING&categories=INFO&signalName=SignalA,SignalB&signalNames=SignalC&deviceId=PLC1&deviceIds=PLC2,PLC3&sort=timestamp&order=desc&type=boolean&signals=PLC1::S1,PLC1::S2&signal=PLC2::S3", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -480,6 +480,16 @@ func TestParseHandler_BuildQueryParams_BackwardCompatible(t *testing.T) {
 	wantSignals := []string{"PLC1::S1", "PLC1::S2", "PLC2::S3"}
 	if !slices.Equal(params.Signals, wantSignals) {
 		t.Fatalf("expected signals %v, got %v", wantSignals, params.Signals)
+	}
+
+	wantSignalNames := []string{"SignalC", "SignalA", "SignalB"}
+	if !slices.Equal(params.SignalNames, wantSignalNames) {
+		t.Fatalf("expected signal names %v, got %v", wantSignalNames, params.SignalNames)
+	}
+
+	wantDeviceIDs := []string{"PLC2", "PLC3", "PLC1"}
+	if !slices.Equal(params.DeviceIDs, wantDeviceIDs) {
+		t.Fatalf("expected device IDs %v, got %v", wantDeviceIDs, params.DeviceIDs)
 	}
 
 	if params.SortColumn != "timestamp" {

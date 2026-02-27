@@ -20,7 +20,11 @@ import {
     isStreaming,
     streamProgress,
     categoryFilter,
+    signalNameFilter,
+    deviceIdFilter,
     availableCategories,
+    availableSignalNames,
+    availableDeviceIds,
     jumpToTime,
 } from '../../stores/logStore';
 import { getTimeTree } from '../../api/client';
@@ -43,7 +47,8 @@ import {
     useSearchFilter,
     useKeyboardShortcuts,
     DEFAULT_COLUMNS,
-    DEFAULT_COLUMN_ORDER
+    DEFAULT_COLUMN_ORDER,
+    type ColumnKey
 } from './hooks';
 
 // Utils
@@ -56,6 +61,15 @@ const BUFFER = 15;
 const SERVER_PAGE_SIZE = 200;
 const MAX_SCROLL_HEIGHT = 15_000_000;
 
+const GENERIC_COLUMNS = [
+    { key: 'timestamp', id: 'ts', label: 'TIMESTAMP', sortable: true, resizable: true },
+    { key: 'deviceId', id: 'dev', label: 'SOURCE', sortable: true, resizable: true },
+    { key: 'signalName', id: 'sig', label: 'LEVEL', sortable: true, resizable: true },
+    { key: 'value', id: 'val', label: 'MESSAGE', sortable: false, resizable: true },
+];
+
+const GENERIC_COLUMN_ORDER: ColumnKey[] = ['timestamp', 'deviceId', 'signalName', 'value'];
+
 /** Compute scroll scale factor when virtual height exceeds browser max */
 function getScrollScale(): number {
     if (!useServerSide.value) return 1;
@@ -65,32 +79,54 @@ function getScrollScale(): number {
 }
 
 /**
- * Category Filter Popover Component (uses logStore)
+ * Column Filter Popover Component (uses logStore)
  */
-function CategoryFilterPopoverContainer({ onClose }: { onClose: () => void }) {
-    const categories = availableCategories.value;
+type FilterableColumn = 'category' | 'signalName' | 'deviceId';
+
+function ColumnFilterPopoverContainer({ column, onClose }: { column: FilterableColumn; onClose: () => void }) {
+    const options = column === 'category'
+        ? availableCategories.value
+        : column === 'signalName'
+            ? availableSignalNames.value
+            : availableDeviceIds.value;
+    const selectedFilter = column === 'category'
+        ? categoryFilter.value
+        : column === 'signalName'
+            ? signalNameFilter.value
+            : deviceIdFilter.value;
     const [localSearchQuery, setLocalSearchQuery] = useState('');
 
-    const filteredCategories = localSearchQuery.trim() === ''
-        ? categories
-        : categories.filter(cat =>
-            (cat || '(Uncategorized)').toLowerCase().includes(localSearchQuery.toLowerCase())
+    const filteredOptions = localSearchQuery.trim() === ''
+        ? options
+        : options.filter(option =>
+            (column === 'category' ? (option || '(Uncategorized)') : option)
+                .toLowerCase()
+                .includes(localSearchQuery.toLowerCase())
         );
 
-    const handleToggle = (cat: string) => {
-        const normalizedCat = cat ?? '';
-        const currentFilter = categoryFilter.value;
-        const newFilter = new Set(currentFilter);
-        if (newFilter.has(normalizedCat)) {
-            newFilter.delete(normalizedCat);
+    const applyFilter = (nextFilter: Set<string>) => {
+        if (column === 'category') {
+            categoryFilter.value = nextFilter;
+        } else if (column === 'signalName') {
+            signalNameFilter.value = nextFilter;
         } else {
-            newFilter.add(normalizedCat);
+            deviceIdFilter.value = nextFilter;
         }
-        categoryFilter.value = newFilter;
+    };
+
+    const handleToggle = (rawValue: string) => {
+        const normalizedValue = column === 'category' ? (rawValue ?? '') : rawValue;
+        const newFilter = new Set(selectedFilter);
+        if (newFilter.has(normalizedValue)) {
+            newFilter.delete(normalizedValue);
+        } else {
+            newFilter.add(normalizedValue);
+        }
+        applyFilter(newFilter);
     };
 
     const handleClearAll = () => {
-        categoryFilter.value = new Set();
+        applyFilter(new Set());
     };
 
     const popoverRef = useRef<HTMLDivElement>(null);
@@ -116,7 +152,9 @@ function CategoryFilterPopoverContainer({ onClose }: { onClose: () => void }) {
     return (
         <div ref={popoverRef} className="category-filter-popover">
             <div className="popover-header">
-                <span>Filter by Category</span>
+                <span>
+                    {column === 'category' ? 'Filter by Category' : column === 'signalName' ? 'Filter by Signal Name' : 'Filter by Device ID'}
+                </span>
                 <div className="popover-actions">
                     <button className="popover-btn" onClick={handleClearAll}>Clear</button>
                 </div>
@@ -130,27 +168,32 @@ function CategoryFilterPopoverContainer({ onClose }: { onClose: () => void }) {
                 </span>
                 <input
                     type="text"
-                    placeholder="Search categories..."
+                    placeholder={column === 'category' ? 'Search categories...' : column === 'signalName' ? 'Search signal names...' : 'Search device IDs...'}
                     value={localSearchQuery}
                     onInput={(e) => setLocalSearchQuery((e.target as HTMLInputElement).value)}
                 />
             </div>
             <div className="popover-list">
-                {categories.length === 0 ? (
-                    <div className="popover-empty">No categories available</div>
-                ) : filteredCategories.length === 0 ? (
-                    <div className="popover-empty">No matching categories</div>
+                {options.length === 0 ? (
+                    <div className="popover-empty">
+                        {column === 'category' ? 'No categories available' : column === 'signalName' ? 'No signal names available' : 'No device IDs available'}
+                    </div>
+                ) : filteredOptions.length === 0 ? (
+                    <div className="popover-empty">
+                        {column === 'category' ? 'No matching categories' : column === 'signalName' ? 'No matching signal names' : 'No matching device IDs'}
+                    </div>
                 ) : (
-                    filteredCategories.map(cat => {
-                        const normalizedCat = cat ?? '';
+                    filteredOptions.map(option => {
+                        const normalizedValue = column === 'category' ? (option ?? '') : option;
+                        const label = column === 'category' ? (normalizedValue || '(Uncategorized)') : normalizedValue;
                         return (
-                            <label key={normalizedCat || '__uncategorized__'} className="filter-item">
+                            <label key={normalizedValue || '__uncategorized__'} className="filter-item">
                                 <input
                                     type="checkbox"
-                                    checked={categoryFilter.value.has(normalizedCat)}
-                                    onChange={() => handleToggle(normalizedCat)}
+                                    checked={selectedFilter.has(normalizedValue)}
+                                    onChange={() => handleToggle(normalizedValue)}
                                 />
-                                <span className="filter-label">{normalizedCat || '(Uncategorized)'}</span>
+                                <span className="filter-label">{label}</span>
                             </label>
                         );
                     })
@@ -203,6 +246,12 @@ function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (
             search: searchQuery.value || undefined,
             category: categoryFilter.value.size > 0
                 ? Array.from(categoryFilter.value).join(',')
+                : undefined,
+            signalName: signalNameFilter.value.size > 0
+                ? Array.from(signalNameFilter.value).join(',')
+                : undefined,
+            deviceId: deviceIdFilter.value.size > 0
+                ? Array.from(deviceIdFilter.value).join(',')
                 : undefined,
             type: undefined as string | undefined,
         };
@@ -262,7 +311,7 @@ function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (
     }, [onClose]);
 
     return (
-        <div ref={popoverRef} className="jump-to-time-popover" onKeyDown={handleKeyDown}>
+        <div ref={popoverRef} className="jump-to-time-popover" onKeyDown={handleKeyDown} tabIndex={0}>
             <div className="popover-header">
                 <span>Jump to Time</span>
             </div>
@@ -332,17 +381,19 @@ export function LogTable() {
     const tableRef = useRef<HTMLDivElement>(null);
     const scrollSignal = useSignal(0);
     const contextMenu = useSignal<{ x: number, y: number, visible: boolean }>({ x: 0, y: 0, visible: false });
-    const categoryFilterOpen = useSignal(false);
+    const categoryFilterOpenColumn = useSignal<ColumnKey | null>(null);
     const jumpToTimeOpen = useSignal(false);
     const [isFetchingPage, setIsFetchingPage] = useState(false);
     const fetchTimeoutRef = useRef<number | null>(null);
+
+    const isGenericLog = currentSession.value?.parserName === 'generic_log';
 
     // ===== HOOKS =====
 
     // Column management
     const { state: columnState, actions: columnActions } = useColumnManagement(
-        DEFAULT_COLUMN_ORDER,
-        { ts: 220, dev: 180, sig: 250, cat: 120, val: 150, type: 100 }
+        isGenericLog ? GENERIC_COLUMN_ORDER : DEFAULT_COLUMN_ORDER,
+        isGenericLog ? { ts: 220, dev: 120, sig: 100, val: 500 } : { ts: 220, dev: 180, sig: 250, cat: 120, val: 150, type: 100 }
     );
 
     // Row selection
@@ -415,7 +466,16 @@ export function LogTable() {
             virtualActions.onScroll(0);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentSession.value?.id, searchQuery.value, categoryFilter.value, sortColumn.value, sortDirection.value, virtualActions.onScroll]);
+    }, [
+        currentSession.value?.id,
+        searchQuery.value,
+        categoryFilter.value,
+        signalNameFilter.value,
+        deviceIdFilter.value,
+        sortColumn.value,
+        sortDirection.value,
+        virtualActions.onScroll
+    ]);
 
     // Cleanup
     useEffect(() => {
@@ -614,7 +674,7 @@ export function LogTable() {
                 selectionCount={selectionState.selectionCount}
                 jumpToTimeOpen={jumpToTimeOpen.value}
                 onToggleJumpToTime={() => jumpToTimeOpen.value = !jumpToTimeOpen.value}
-                onOpenWaveform={() => openView('waveform')}
+                onOpenWaveform={isGenericLog ? undefined : () => openView('waveform')}
                 onCopy={handleCopy}
                 onReload={handleReload}
             />
@@ -626,60 +686,29 @@ export function LogTable() {
                     {/* Header */}
                     <div className="log-table-header">
                         {columnState.columnOrder.map((colKey) => {
-                            const colDef = DEFAULT_COLUMNS.find(c => c.key === colKey)!;
+                            const columns = isGenericLog ? GENERIC_COLUMNS : DEFAULT_COLUMNS;
+                            const colDef = columns.find(c => c.key === colKey)!;
                             const isDragOver = columnActions.isDragOver(colKey);
                             const isDraggingCol = columnActions.isDragging(colKey);
                             const width = columnActions.getColumnWidth(colDef.id);
-
-                            if (colDef.key === 'category') {
-                                return (
-                                    <div
-                                        key={colDef.key}
-                                        className={`log-col col-cat ${categoryFilter.value.size > 0 ? 'filter-active' : ''} ${isDragOver ? 'drag-over' : ''} ${isDraggingCol ? 'dragging' : ''}`}
-                                        style={{ width }}
-                                        draggable
-                                        onDragStart={(e) => columnActions.handleDragStart(colDef.key, e)}
-                                        onDragEnd={columnActions.handleDragEnd}
-                                        onDragOver={(e) => columnActions.handleDragOver(colDef.key, e)}
-                                        onDragLeave={columnActions.handleDragLeave}
-                                        onDrop={(e) => columnActions.handleDrop(colDef.key, e)}
-                                        title="Drag to reorder"
-                                    >
-                                        <span className="col-header-text" onClick={() => handleHeaderClick('category')}>
-                                            {colDef.label}
-                                            {sortColumn.value === 'category' && (
-                                                sortDirection.value === 'asc' ? <span>▲</span> : <span>▼</span>
-                                            )}
-                                        </span>
-                                        <button
-                                            className={`category-filter-btn ${categoryFilter.value.size > 0 ? 'active' : ''}`}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                categoryFilterOpen.value = !categoryFilterOpen.value;
-                                            }}
-                                            title="Filter by category"
-                                        >
-                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-                                            </svg>
-                                            {categoryFilter.value.size > 0 && (
-                                                <span className="filter-badge">{categoryFilter.value.size}</span>
-                                            )}
-                                        </button>
-                                        {categoryFilterOpen.value && (
-                                            <CategoryFilterPopoverContainer onClose={() => categoryFilterOpen.value = false} />
-                                        )}
-                                        {colDef.resizable && (
-                                            <div className="resize-handle" onMouseDown={(e) => columnActions.handleResize(colDef.id, e)} />
-                                        )}
-                                    </div>
-                                );
-                            }
+                            const filterColumn: FilterableColumn | null = (colDef.key === 'category' || colDef.key === 'signalName' || colDef.key === 'deviceId')
+                                ? colDef.key
+                                : null;
+                            const canShowColumnFilterToggle = filterColumn !== null;
+                            const isFilterOpen = categoryFilterOpenColumn.value === colDef.key;
+                            const activeFilterCount = filterColumn === 'category'
+                                ? categoryFilter.value.size
+                                : filterColumn === 'signalName'
+                                    ? signalNameFilter.value.size
+                                    : filterColumn === 'deviceId'
+                                        ? deviceIdFilter.value.size
+                                        : 0;
+                            const hasActiveColumnFilter = activeFilterCount > 0;
 
                             return (
                                 <div
                                     key={colDef.key}
-                                    className={`log-col col-${colDef.id} ${isDragOver ? 'drag-over' : ''} ${isDraggingCol ? 'dragging' : ''}`}
+                                    className={`log-col col-${colDef.id} ${canShowColumnFilterToggle ? 'col-filterable' : ''} ${hasActiveColumnFilter && canShowColumnFilterToggle ? 'filter-active' : ''} ${isDragOver ? 'drag-over' : ''} ${isDraggingCol ? 'dragging' : ''}`}
                                     style={{ width }}
                                     onClick={() => colDef.sortable && handleHeaderClick(colDef.key as keyof LogEntry)}
                                     draggable
@@ -690,9 +719,34 @@ export function LogTable() {
                                     onDrop={(e) => columnActions.handleDrop(colDef.key, e)}
                                     title="Drag to reorder"
                                 >
-                                    {colDef.label}
+                                    <span className="col-header-text">
+                                        {colDef.label}
+                                    </span>
                                     {colDef.sortable && sortColumn.value === colDef.key && (
                                         sortDirection.value === 'asc' ? <span>▲</span> : <span>▼</span>
+                                    )}
+                                    {canShowColumnFilterToggle && (
+                                        <button
+                                            className={`category-filter-btn ${hasActiveColumnFilter ? 'active' : ''}`}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                categoryFilterOpenColumn.value = isFilterOpen ? null : colDef.key;
+                                            }}
+                                            title={filterColumn === 'category' ? 'Filter by category' : filterColumn === 'signalName' ? 'Filter by signal name' : 'Filter by device ID'}
+                                        >
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                                            </svg>
+                                            {hasActiveColumnFilter && (
+                                                <span className="filter-badge">{activeFilterCount}</span>
+                                            )}
+                                        </button>
+                                    )}
+                                    {isFilterOpen && filterColumn && (
+                                        <ColumnFilterPopoverContainer
+                                            column={filterColumn}
+                                            onClose={() => categoryFilterOpenColumn.value = null}
+                                        />
                                     )}
                                     {colDef.resizable && (
                                         <div className="resize-handle" onMouseDown={(e) => columnActions.handleResize(colDef.id, e)} />
@@ -815,7 +869,7 @@ export function LogTable() {
                     {/* Context menu */}
                     {contextMenu.value.visible && (
                         <div className="context-menu" style={{ top: contextMenu.value.y, left: contextMenu.value.x }}>
-                            <div className="menu-item" onClick={handleAddToWaveform}>Add to Waveform</div>
+                            {!isGenericLog && <div className="menu-item" onClick={handleAddToWaveform}>Add to Waveform</div>}
                             <div className="menu-item" onClick={handleCopy}>Copy Selected Rows</div>
                             <div className="menu-item" onClick={() => { selectionActions.clearSelection(); contextMenu.value = { ...contextMenu.value, visible: false }; }}>Clear Selection</div>
                         </div>

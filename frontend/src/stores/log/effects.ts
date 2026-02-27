@@ -8,7 +8,7 @@ import { effect } from '@preact/signals';
 import {
     currentSession,
     useServerSide, clearServerCache,
-    searchQuery, categoryFilter, sortColumn, sortDirection,
+    searchQuery, categoryFilter, signalNameFilter, deviceIdFilter, sortColumn, sortDirection,
     signalTypeFilter, searchRegex, searchCaseSensitive,
     SERVER_PAGE_SIZE
 } from './state';
@@ -36,7 +36,9 @@ export function initFilterChangeEffect(): void {
             // Track dependencies
             const search = searchQuery.value;
             const category = categoryFilter.value;
-            void search; void category; // Used for dependency tracking
+            const signalNames = signalNameFilter.value;
+            const deviceIds = deviceIdFilter.value;
+            void search; void category; void signalNames; void deviceIds; // Used for dependency tracking
             sortColumn.value;
             sortDirection.value;
             signalTypeFilter.value;
