@@ -3,6 +3,7 @@ package parser
 import (
 	"bufio"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/plc-visualizer/backend/internal/models"
@@ -11,6 +12,8 @@ import (
 // TRSLogParser handles TRS backtick-delimited transfer logs.
 // Format: Timestamp`TRS`HST`CmdID`Status`Priority`CarrierID`CarrierID2`Source`Dest`CurrLoc`Field12`Field13`Field14`Result`StartTime`EndTime
 type TRSLogParser struct{}
+
+var trsRackIDRegex = regexp.MustCompile(`(?:^|[^0-9])([0-9][0-9]{3}[0-9]{2})(?:[^0-9]|$)`)
 
 func NewTRSLogParser() *TRSLogParser {
 	return &TRSLogParser{}
@@ -93,7 +96,7 @@ func (p *TRSLogParser) ParseWithProgress(filePath string, onProgress ProgressCal
 		if len(tsStr) > 19 && tsStr[19] == ':' {
 			tsNormalized = tsStr[:19] + "." + tsStr[20:]
 		}
-		
+
 		ts, err := FastTimestamp(tsNormalized)
 		if err != nil {
 			errors = append(errors, &models.ParseError{Line: lineNum, Content: line, Reason: "invalid timestamp"})
@@ -103,8 +106,8 @@ func (p *TRSLogParser) ParseWithProgress(filePath string, onProgress ProgressCal
 		cmdID := strings.TrimSpace(parts[3])
 		status := strings.TrimSpace(parts[4])
 		carrierID := strings.TrimSpace(parts[6])
-		source := strings.TrimSpace(parts[8])
-		dest := strings.TrimSpace(parts[9])
+		source := p.resolveTransferLocation(strings.TrimSpace(parts[8]), parts)
+		dest := p.resolveTransferLocation(strings.TrimSpace(parts[9]), parts)
 		currLoc := strings.TrimSpace(parts[10])
 		result := strings.TrimSpace(parts[14])
 
@@ -115,7 +118,7 @@ func (p *TRSLogParser) ParseWithProgress(filePath string, onProgress ProgressCal
 		// We store everything in a single entry with JSON value for structured display
 		// Format: CommandID|Status|Source|Dest|CurrLoc|Result
 		val := strings.Join([]string{cmdID, status, source, dest, currLoc, result}, "|")
-		
+
 		entries = append(entries, models.LogEntry{
 			DeviceID:   deviceID,
 			SignalName: intern.Intern("Transfer"),
@@ -144,4 +147,32 @@ func (p *TRSLogParser) ParseWithProgress(filePath string, onProgress ProgressCal
 		Devices:   devices,
 		TimeRange: timeRange,
 	}, errors, nil
+}
+
+func (p *TRSLogParser) resolveTransferLocation(primary string, parts []string) string {
+	primary = strings.TrimSpace(primary)
+	if primary != "" && !strings.EqualFold(primary, "SN0") {
+		return primary
+	}
+
+	// Fallback columns (1-based): 12 and 13 -> (0-based): 11 and 12.
+	// Some TRS rows store rack IDs here when Source/Dest is SN0.
+	for _, idx := range []int{11, 12} {
+		if idx >= len(parts) {
+			continue
+		}
+		if rackID := extractTRSRackID(strings.TrimSpace(parts[idx])); rackID != "" {
+			return rackID
+		}
+	}
+
+	return primary
+}
+
+func extractTRSRackID(raw string) string {
+	m := trsRackIDRegex.FindStringSubmatch(raw)
+	if len(m) < 2 {
+		return ""
+	}
+	return m[1]
 }

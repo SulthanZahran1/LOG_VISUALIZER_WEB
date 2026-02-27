@@ -4,6 +4,7 @@ package parser
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,12 +15,12 @@ import (
 func createTestFile(t *testing.T, content string) string {
 	tempDir := t.TempDir()
 	filePath := filepath.Join(tempDir, "test.log")
-	
+
 	err := os.WriteFile(filePath, []byte(content), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
-	
+
 	return filePath
 }
 
@@ -27,12 +28,12 @@ func createTestFile(t *testing.T, content string) string {
 func createTestFileWithName(t *testing.T, name string, content string) string {
 	tempDir := t.TempDir()
 	filePath := filepath.Join(tempDir, name)
-	
+
 	err := os.WriteFile(filePath, []byte(content), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
-	
+
 	return filePath
 }
 
@@ -40,15 +41,15 @@ func createTestFileWithName(t *testing.T, name string, content string) string {
 
 func TestPLCDebugParser_CanParse(t *testing.T) {
 	parser := NewPLCDebugParser()
-	
+
 	t.Run("valid plc debug format", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [INFO] [/PLC/Device1] [CATEGORY:Signal1] (bool) : TRUE
 2024-01-15 10:30:46.234 [DEBUG] [/PLC/Device2] [CAT:Signal2] (int) : 42
 2024-01-15 10:30:47.345 [INFO] [/PLC/Device1] [CATEGORY:Signal1] (bool) : FALSE`
-		
+
 		filePath := createTestFile(t, content)
 		canParse, err := parser.CanParse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("CanParse failed: %v", err)
 		}
@@ -56,15 +57,15 @@ func TestPLCDebugParser_CanParse(t *testing.T) {
 			t.Error("Expected CanParse to return true for valid PLC debug format")
 		}
 	})
-	
+
 	t.Run("invalid format", func(t *testing.T) {
 		content := `This is not a valid log line
 Just some random text
 Another invalid line`
-		
+
 		filePath := createTestFile(t, content)
 		canParse, err := parser.CanParse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("CanParse failed: %v", err)
 		}
@@ -72,7 +73,7 @@ Another invalid line`
 			t.Error("Expected CanParse to return false for invalid format")
 		}
 	})
-	
+
 	t.Run("mixed valid and invalid lines", func(t *testing.T) {
 		// 60% valid lines should pass
 		content := `2024-01-15 10:30:45.123 [INFO] [/PLC/Device1] [CAT:Signal1] (bool) : TRUE
@@ -80,10 +81,10 @@ Invalid line here
 2024-01-15 10:30:46.234 [DEBUG] [/PLC/Device2] [CAT:Signal2] (int) : 42
 Another bad line
 2024-01-15 10:30:47.345 [INFO] [/PLC/Device1] [CAT:Signal1] (bool) : FALSE`
-		
+
 		filePath := createTestFile(t, content)
 		canParse, err := parser.CanParse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("CanParse failed: %v", err)
 		}
@@ -91,13 +92,13 @@ Another bad line
 			t.Error("Expected CanParse to return true when 60% of lines match")
 		}
 	})
-	
+
 	t.Run("handles UTF-8 BOM", func(t *testing.T) {
 		content := "\xEF\xBB\xBF2024-01-15 10:30:45.123 [INFO] [/PLC/Device1] [CAT:Signal1] (bool) : TRUE"
-		
+
 		filePath := createTestFile(t, content)
 		canParse, err := parser.CanParse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("CanParse failed: %v", err)
 		}
@@ -105,11 +106,11 @@ Another bad line
 			t.Error("Expected CanParse to handle UTF-8 BOM")
 		}
 	})
-	
+
 	t.Run("empty file", func(t *testing.T) {
 		filePath := createTestFile(t, "")
 		canParse, err := parser.CanParse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("CanParse failed: %v", err)
 		}
@@ -121,14 +122,14 @@ Another bad line
 
 func TestPLCDebugParser_Parse(t *testing.T) {
 	parser := NewPLCDebugParser()
-	
+
 	t.Run("parses boolean values", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [INFO] [/PLC/Device1] [CATEGORY:MotorRunning] (bool) : TRUE
 2024-01-15 10:30:46.234 [INFO] [/PLC/Device1] [CATEGORY:MotorRunning] (bool) : FALSE`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, errors, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
@@ -138,7 +139,7 @@ func TestPLCDebugParser_Parse(t *testing.T) {
 		if len(parsedLog.Entries) != 2 {
 			t.Fatalf("Expected 2 entries, got %d", len(parsedLog.Entries))
 		}
-		
+
 		entry1 := parsedLog.Entries[0]
 		if entry1.Value != true {
 			t.Errorf("Expected first value TRUE, got %v", entry1.Value)
@@ -146,20 +147,20 @@ func TestPLCDebugParser_Parse(t *testing.T) {
 		if entry1.SignalType != models.SignalTypeBoolean {
 			t.Errorf("Expected boolean type, got %v", entry1.SignalType)
 		}
-		
+
 		entry2 := parsedLog.Entries[1]
 		if entry2.Value != false {
 			t.Errorf("Expected second value FALSE, got %v", entry2.Value)
 		}
 	})
-	
+
 	t.Run("parses integer values", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [INFO] [/PLC/Device1] [CATEGORY:Counter] (int) : 42
 2024-01-15 10:30:46.234 [INFO] [/PLC/Device1] [CATEGORY:Counter] (int) : -100`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, errors, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
@@ -169,7 +170,7 @@ func TestPLCDebugParser_Parse(t *testing.T) {
 		if len(parsedLog.Entries) != 2 {
 			t.Fatalf("Expected 2 entries, got %d", len(parsedLog.Entries))
 		}
-		
+
 		if parsedLog.Entries[0].Value != 42 {
 			t.Errorf("Expected value 42, got %v", parsedLog.Entries[0].Value)
 		}
@@ -177,16 +178,16 @@ func TestPLCDebugParser_Parse(t *testing.T) {
 			t.Errorf("Expected value -100, got %v", parsedLog.Entries[1].Value)
 		}
 	})
-	
+
 	t.Run("parses float values as strings", func(t *testing.T) {
 		// Note: The PLC parser treats 'float' dtype as string since SignalType only has
 		// boolean, integer, and string. The raw value is preserved.
 		content := `2024-01-15 10:30:45.123 [INFO] [/PLC/Device1] [CATEGORY:Temperature] (float) : 23.5
 2024-01-15 10:30:46.234 [INFO] [/PLC/Device1] [CATEGORY:Pressure] (float) : 101.325`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, errors, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
@@ -196,7 +197,7 @@ func TestPLCDebugParser_Parse(t *testing.T) {
 		if len(parsedLog.Entries) != 2 {
 			t.Fatalf("Expected 2 entries, got %d", len(parsedLog.Entries))
 		}
-		
+
 		// Float values are stored as strings (SignalTypeString)
 		val, ok := parsedLog.Entries[0].Value.(string)
 		if !ok {
@@ -209,14 +210,14 @@ func TestPLCDebugParser_Parse(t *testing.T) {
 			t.Errorf("Expected string type for float values, got %v", parsedLog.Entries[0].SignalType)
 		}
 	})
-	
+
 	t.Run("parses string values", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [INFO] [/PLC/Device1] [CATEGORY:Status] (string) : Running
 2024-01-15 10:30:46.234 [INFO] [/PLC/Device1] [CATEGORY:Mode] (string) : Auto`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, errors, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
@@ -226,7 +227,7 @@ func TestPLCDebugParser_Parse(t *testing.T) {
 		if len(parsedLog.Entries) != 2 {
 			t.Fatalf("Expected 2 entries, got %d", len(parsedLog.Entries))
 		}
-		
+
 		if parsedLog.Entries[0].Value != "Running" {
 			t.Errorf("Expected value 'Running', got %v", parsedLog.Entries[0].Value)
 		}
@@ -234,37 +235,37 @@ func TestPLCDebugParser_Parse(t *testing.T) {
 			t.Errorf("Expected string type, got %v", parsedLog.Entries[0].SignalType)
 		}
 	})
-	
+
 	t.Run("extracts device ID from path", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [INFO] [/PLC/Line1/StationA] [CAT:Signal1] (bool) : TRUE`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, _, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
 		if len(parsedLog.Entries) != 1 {
 			t.Fatalf("Expected 1 entry, got %d", len(parsedLog.Entries))
 		}
-		
+
 		// DeviceID should be extracted from path
 		if parsedLog.Entries[0].DeviceID == "" {
 			t.Error("Expected DeviceID to be extracted")
 		}
 	})
-	
+
 	t.Run("extracts category", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [INFO] [/PLC/Device1] [SYSTEM:Signal1] (bool) : TRUE
 2024-01-15 10:30:46.234 [INFO] [/PLC/Device1] [ALARM:Signal2] (bool) : FALSE`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, _, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
-		
+
 		if parsedLog.Entries[0].Category != "SYSTEM" {
 			t.Errorf("Expected category 'SYSTEM', got %v", parsedLog.Entries[0].Category)
 		}
@@ -272,49 +273,49 @@ func TestPLCDebugParser_Parse(t *testing.T) {
 			t.Errorf("Expected category 'ALARM', got %v", parsedLog.Entries[1].Category)
 		}
 	})
-	
+
 	t.Run("tracks signals and devices", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [INFO] [/PLC/Device1] [CAT:Signal1] (bool) : TRUE
 2024-01-15 10:30:46.234 [INFO] [/PLC/Device2] [CAT:Signal2] (int) : 42
 2024-01-15 10:30:47.345 [INFO] [/PLC/Device1] [CAT:Signal1] (bool) : FALSE`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, _, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
-		
+
 		// Should track 2 unique signals
 		if len(parsedLog.Signals) != 2 {
 			t.Errorf("Expected 2 unique signals, got %d", len(parsedLog.Signals))
 		}
-		
+
 		// Should track 2 unique devices
 		if len(parsedLog.Devices) != 2 {
 			t.Errorf("Expected 2 unique devices, got %d", len(parsedLog.Devices))
 		}
 	})
-	
+
 	t.Run("calculates time range", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [INFO] [/PLC/Device1] [CAT:Signal1] (bool) : TRUE
 2024-01-15 10:30:46.234 [INFO] [/PLC/Device1] [CAT:Signal1] (bool) : FALSE
 2024-01-15 10:30:47.345 [INFO] [/PLC/Device1] [CAT:Signal1] (bool) : TRUE`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, _, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
-		
+
 		if parsedLog.TimeRange == nil {
 			t.Fatal("Expected TimeRange to be set")
 		}
-		
+
 		expectedStart := time.Date(2024, 1, 15, 10, 30, 45, 123000000, time.UTC)
 		expectedEnd := time.Date(2024, 1, 15, 10, 30, 47, 345000000, time.UTC)
-		
+
 		if !parsedLog.TimeRange.Start.Equal(expectedStart) {
 			t.Errorf("Expected start %v, got %v", expectedStart, parsedLog.TimeRange.Start)
 		}
@@ -322,33 +323,33 @@ func TestPLCDebugParser_Parse(t *testing.T) {
 			t.Errorf("Expected end %v, got %v", expectedEnd, parsedLog.TimeRange.End)
 		}
 	})
-	
+
 	t.Run("reports parse errors for invalid lines", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [INFO] [/PLC/Device1] [CAT:Signal1] (bool) : TRUE
 This is an invalid line
 2024-01-15 10:30:46.234 [INFO] [/PLC/Device1] [CAT:Signal1] (bool) : FALSE`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, errors, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
-		
+
 		if len(errors) != 1 {
 			t.Errorf("Expected 1 parse error, got %d", len(errors))
 		}
-		
+
 		// Should still parse valid lines
 		if len(parsedLog.Entries) != 2 {
 			t.Errorf("Expected 2 valid entries, got %d", len(parsedLog.Entries))
 		}
 	})
-	
+
 	t.Run("handles empty file", func(t *testing.T) {
 		filePath := createTestFile(t, "")
 		parsedLog, errors, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
@@ -375,15 +376,15 @@ func TestPLCDebugParser_Name(t *testing.T) {
 
 func TestCSVParser_CanParse(t *testing.T) {
 	parser := NewCSVSignalParser()
-	
+
 	t.Run("valid csv format", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123, Device1, Signal1, TRUE
 2024-01-15 10:30:46.234, Device2, Signal2, 42
 2024-01-15 10:30:47.345, Device1, Signal1, FALSE`
-		
+
 		filePath := createTestFile(t, content)
 		canParse, err := parser.CanParse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("CanParse failed: %v", err)
 		}
@@ -391,14 +392,14 @@ func TestCSVParser_CanParse(t *testing.T) {
 			t.Error("Expected CanParse to return true for valid CSV format")
 		}
 	})
-	
+
 	t.Run("invalid format", func(t *testing.T) {
 		content := `Not a CSV line
 Another invalid line`
-		
+
 		filePath := createTestFile(t, content)
 		canParse, err := parser.CanParse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("CanParse failed: %v", err)
 		}
@@ -406,11 +407,11 @@ Another invalid line`
 			t.Error("Expected CanParse to return false for invalid format")
 		}
 	})
-	
+
 	t.Run("empty file", func(t *testing.T) {
 		filePath := createTestFile(t, "")
 		canParse, err := parser.CanParse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("CanParse failed: %v", err)
 		}
@@ -422,14 +423,14 @@ Another invalid line`
 
 func TestCSVParser_Parse(t *testing.T) {
 	parser := NewCSVSignalParser()
-	
+
 	t.Run("parses boolean values", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123, Device1, MotorRunning, TRUE
 2024-01-15 10:30:46.234, Device1, MotorRunning, FALSE`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, errors, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
@@ -439,7 +440,7 @@ func TestCSVParser_Parse(t *testing.T) {
 		if len(parsedLog.Entries) != 2 {
 			t.Fatalf("Expected 2 entries, got %d", len(parsedLog.Entries))
 		}
-		
+
 		if parsedLog.Entries[0].Value != true {
 			t.Errorf("Expected first value TRUE, got %v", parsedLog.Entries[0].Value)
 		}
@@ -447,14 +448,14 @@ func TestCSVParser_Parse(t *testing.T) {
 			t.Errorf("Expected second value FALSE, got %v", parsedLog.Entries[1].Value)
 		}
 	})
-	
+
 	t.Run("parses integer values", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123, Device1, Counter, 42
 2024-01-15 10:30:46.234, Device1, Counter, -100`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, errors, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
@@ -464,7 +465,7 @@ func TestCSVParser_Parse(t *testing.T) {
 		if len(parsedLog.Entries) != 2 {
 			t.Fatalf("Expected 2 entries, got %d", len(parsedLog.Entries))
 		}
-		
+
 		if parsedLog.Entries[0].Value != 42 {
 			t.Errorf("Expected value 42, got %v", parsedLog.Entries[0].Value)
 		}
@@ -472,22 +473,22 @@ func TestCSVParser_Parse(t *testing.T) {
 			t.Errorf("Expected integer type, got %v", parsedLog.Entries[0].SignalType)
 		}
 	})
-	
+
 	t.Run("parses float values as strings", func(t *testing.T) {
 		// CSV parser uses InferType which treats floats as strings
 		content := `2024-01-15 10:30:45.123, Device1, Temperature, 23.5
 2024-01-15 10:30:46.234, Device1, Pressure, 101.325`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, errors, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
 		if len(errors) != 0 {
 			t.Errorf("Expected 0 errors, got %d", len(errors))
 		}
-		
+
 		// CSV parser stores floats as strings (InferType doesn't detect floats)
 		val, ok := parsedLog.Entries[0].Value.(string)
 		if !ok {
@@ -500,21 +501,21 @@ func TestCSVParser_Parse(t *testing.T) {
 			t.Errorf("Expected string type, got %v", parsedLog.Entries[0].SignalType)
 		}
 	})
-	
+
 	t.Run("parses string values", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123, Device1, Status, Running
 2024-01-15 10:30:46.234, Device1, Mode, Auto`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, errors, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
 		if len(errors) != 0 {
 			t.Errorf("Expected 0 errors, got %d", len(errors))
 		}
-		
+
 		if parsedLog.Entries[0].Value != "Running" {
 			t.Errorf("Expected 'Running', got %v", parsedLog.Entries[0].Value)
 		}
@@ -522,52 +523,52 @@ func TestCSVParser_Parse(t *testing.T) {
 			t.Errorf("Expected string type, got %v", parsedLog.Entries[0].SignalType)
 		}
 	})
-	
+
 	t.Run("extracts device ID from path", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123, /PLC/Line1/StationA, Signal1, TRUE`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, _, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
 		if len(parsedLog.Entries) != 1 {
 			t.Fatalf("Expected 1 entry, got %d", len(parsedLog.Entries))
 		}
-		
+
 		if parsedLog.Entries[0].DeviceID == "" {
 			t.Error("Expected DeviceID to be extracted")
 		}
 	})
-	
+
 	t.Run("handles simple device ID", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123, Device1, Signal1, TRUE`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, _, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
-		
+
 		if parsedLog.Entries[0].DeviceID != "Device1" {
 			t.Errorf("Expected DeviceID 'Device1', got %v", parsedLog.Entries[0].DeviceID)
 		}
 	})
-	
+
 	t.Run("tracks signals and devices", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123, Device1, Signal1, TRUE
 2024-01-15 10:30:46.234, Device2, Signal2, 42
 2024-01-15 10:30:47.345, Device1, Signal1, FALSE`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, _, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
-		
+
 		if len(parsedLog.Signals) != 2 {
 			t.Errorf("Expected 2 signals, got %d", len(parsedLog.Signals))
 		}
@@ -575,32 +576,32 @@ func TestCSVParser_Parse(t *testing.T) {
 			t.Errorf("Expected 2 devices, got %d", len(parsedLog.Devices))
 		}
 	})
-	
+
 	t.Run("calculates time range", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123, Device1, Signal1, TRUE
 2024-01-15 10:30:47.345, Device1, Signal1, FALSE`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, _, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
-		
+
 		if parsedLog.TimeRange == nil {
 			t.Fatal("Expected TimeRange to be set")
 		}
-		
+
 		expectedStart := time.Date(2024, 1, 15, 10, 30, 45, 123000000, time.UTC)
 		if !parsedLog.TimeRange.Start.Equal(expectedStart) {
 			t.Errorf("Expected start %v, got %v", expectedStart, parsedLog.TimeRange.Start)
 		}
 	})
-	
+
 	t.Run("handles empty file", func(t *testing.T) {
 		filePath := createTestFile(t, "")
 		parsedLog, errors, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
@@ -624,15 +625,15 @@ func TestCSVParser_Name(t *testing.T) {
 
 func TestMCSParser_CanParse(t *testing.T) {
 	parser := NewMCSLogParser()
-	
+
 	t.Run("valid mcs format", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [ADD=CMD001, CARR001] [TransferState=ACTIVE]
 2024-01-15 10:30:46.234 [UPDATE=CMD001] [TransferState=COMPLETED]
 2024-01-15 10:30:47.345 [REMOVE=CMD001]`
-		
+
 		filePath := createTestFile(t, content)
 		canParse, err := parser.CanParse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("CanParse failed: %v", err)
 		}
@@ -640,14 +641,14 @@ func TestMCSParser_CanParse(t *testing.T) {
 			t.Error("Expected CanParse to return true for valid MCS format")
 		}
 	})
-	
+
 	t.Run("invalid format", func(t *testing.T) {
 		content := `Not an MCS log line
 Just random text`
-		
+
 		filePath := createTestFile(t, content)
 		canParse, err := parser.CanParse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("CanParse failed: %v", err)
 		}
@@ -655,7 +656,7 @@ Just random text`
 			t.Error("Expected CanParse to return false for invalid format")
 		}
 	})
-	
+
 	t.Run("mixed valid and invalid", func(t *testing.T) {
 		// 60% valid lines should pass
 		content := `2024-01-15 10:30:45.123 [ADD=CMD001, CARR001] [TransferState=ACTIVE]
@@ -663,10 +664,10 @@ Invalid line
 2024-01-15 10:30:46.234 [UPDATE=CMD001] [TransferState=COMPLETED]
 Another bad line
 2024-01-15 10:30:47.345 [REMOVE=CMD001]`
-		
+
 		filePath := createTestFile(t, content)
 		canParse, err := parser.CanParse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("CanParse failed: %v", err)
 		}
@@ -678,13 +679,13 @@ Another bad line
 
 func TestMCSParser_Parse(t *testing.T) {
 	parser := NewMCSLogParser()
-	
+
 	t.Run("parses ADD command", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [ADD=CMD001, CARR001] [TransferState=ACTIVE] [Priority=1]`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, errors, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
@@ -694,7 +695,7 @@ func TestMCSParser_Parse(t *testing.T) {
 		if len(parsedLog.Entries) == 0 {
 			t.Fatal("Expected entries to be parsed")
 		}
-		
+
 		// Check that entries were created for key-value pairs
 		foundTransferState := false
 		for _, entry := range parsedLog.Entries {
@@ -709,13 +710,13 @@ func TestMCSParser_Parse(t *testing.T) {
 			t.Error("Expected TransferState entry")
 		}
 	})
-	
+
 	t.Run("parses UPDATE command", func(t *testing.T) {
 		content := `2024-01-15 10:30:46.234 [UPDATE=CMD001] [TransferState=COMPLETED] [ResultCode=0]`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, _, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
@@ -723,30 +724,30 @@ func TestMCSParser_Parse(t *testing.T) {
 			t.Fatal("Expected entries to be parsed")
 		}
 	})
-	
+
 	t.Run("parses REMOVE command", func(t *testing.T) {
 		content := `2024-01-15 10:30:47.345 [REMOVE=CMD001]`
-		
+
 		filePath := createTestFile(t, content)
 		_, _, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
 		// REMOVE may create entries or not depending on implementation
 		// Just verify it doesn't error
 	})
-	
+
 	t.Run("parses boolean keys", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [ADD=CMD001, CARR001] [IsBoost=true] [IsMultiJob=false]`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, _, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
-		
+
 		// Look for boolean entries
 		for _, entry := range parsedLog.Entries {
 			if entry.SignalName == "IsBoost" {
@@ -756,17 +757,17 @@ func TestMCSParser_Parse(t *testing.T) {
 			}
 		}
 	})
-	
+
 	t.Run("parses integer keys", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [ADD=CMD001, CARR001] [Priority=5] [AltCount=2]`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, _, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
-		
+
 		// Look for integer entries
 		for _, entry := range parsedLog.Entries {
 			if entry.SignalName == "Priority" {
@@ -777,18 +778,18 @@ func TestMCSParser_Parse(t *testing.T) {
 			}
 		}
 	})
-	
+
 	t.Run("tracks signals and devices", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [ADD=CMD001, CARR001] [TransferState=ACTIVE]
 2024-01-15 10:30:46.234 [ADD=CMD002, CARR002] [TransferState=PENDING]`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, _, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
-		
+
 		// Should have some signals tracked
 		if len(parsedLog.Signals) == 0 {
 			t.Error("Expected signals to be tracked")
@@ -797,27 +798,27 @@ func TestMCSParser_Parse(t *testing.T) {
 			t.Error("Expected devices to be tracked")
 		}
 	})
-	
+
 	t.Run("calculates time range", func(t *testing.T) {
 		content := `2024-01-15 10:30:45.123 [ADD=CMD001, CARR001] [TransferState=ACTIVE]
 2024-01-15 10:30:47.345 [UPDATE=CMD001] [TransferState=COMPLETED]`
-		
+
 		filePath := createTestFile(t, content)
 		parsedLog, _, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
-		
+
 		if parsedLog.TimeRange == nil {
 			t.Fatal("Expected TimeRange to be set")
 		}
 	})
-	
+
 	t.Run("handles empty file", func(t *testing.T) {
 		filePath := createTestFile(t, "")
 		parsedLog, errors, err := parser.Parse(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("Parse failed: %v", err)
 		}
@@ -837,11 +838,89 @@ func TestMCSParser_Name(t *testing.T) {
 	}
 }
 
+// ============ TRS Parser Tests ============
+
+func TestTRSParser_Parse(t *testing.T) {
+	parser := NewTRSLogParser()
+
+	t.Run("falls back to column 13 rack ID when dest is SN0", func(t *testing.T) {
+		content := "2025-09-05 00:01:35:431`TRS`HST`66749`COMPLETED`50`BBENFB0066`BBENFB0066`B1ASTO15203-305`SN0`B1ASTO15203-102`12`204501`204501`TR_SUCCESS`2025-09-05 00:00:54`2025-09-05 00:00:54\n"
+		filePath := createTestFile(t, content)
+
+		parsedLog, errs, err := parser.Parse(filePath)
+		if err != nil {
+			t.Fatalf("Parse failed: %v", err)
+		}
+		if len(errs) != 0 {
+			t.Fatalf("Expected 0 parse errors, got %d", len(errs))
+		}
+		if len(parsedLog.Entries) != 1 {
+			t.Fatalf("Expected 1 entry, got %d", len(parsedLog.Entries))
+		}
+
+		parts := strings.Split(parsedLog.Entries[0].Value.(string), "|")
+		if len(parts) != 6 {
+			t.Fatalf("Expected 6 packed fields, got %d", len(parts))
+		}
+		if parts[3] != "204501" {
+			t.Fatalf("Expected fallback dest rack ID 204501, got %q", parts[3])
+		}
+	})
+
+	t.Run("falls back to column 13 rack ID when source is SN0", func(t *testing.T) {
+		content := "2025-09-05 00:01:35:431`TRS`HST`66749`COMPLETED`50`BBENFB0066`BBENFB0066`SN0`B1ASTO15203-305`B1ASTO15203-102`12`105205`105205`TR_SUCCESS`2025-09-05 00:00:54`2025-09-05 00:00:54\n"
+		filePath := createTestFile(t, content)
+
+		parsedLog, errs, err := parser.Parse(filePath)
+		if err != nil {
+			t.Fatalf("Parse failed: %v", err)
+		}
+		if len(errs) != 0 {
+			t.Fatalf("Expected 0 parse errors, got %d", len(errs))
+		}
+		if len(parsedLog.Entries) != 1 {
+			t.Fatalf("Expected 1 entry, got %d", len(parsedLog.Entries))
+		}
+
+		parts := strings.Split(parsedLog.Entries[0].Value.(string), "|")
+		if len(parts) != 6 {
+			t.Fatalf("Expected 6 packed fields, got %d", len(parts))
+		}
+		if parts[2] != "105205" {
+			t.Fatalf("Expected fallback source rack ID 105205, got %q", parts[2])
+		}
+	})
+
+	t.Run("keeps dest when not SN0", func(t *testing.T) {
+		content := "2025-09-05 00:03:06:019`TRS`HST`66750`COMPLETED`50`BBENFB1908`BBENFB1908`202101`B1ASTO15203-402`B1ASTO15203-101`202101`5`B1ASTO15203-101`TR_SUCCESS`2025-09-05 00:02:24`2025-09-05 00:02:24\n"
+		filePath := createTestFile(t, content)
+
+		parsedLog, errs, err := parser.Parse(filePath)
+		if err != nil {
+			t.Fatalf("Parse failed: %v", err)
+		}
+		if len(errs) != 0 {
+			t.Fatalf("Expected 0 parse errors, got %d", len(errs))
+		}
+		if len(parsedLog.Entries) != 1 {
+			t.Fatalf("Expected 1 entry, got %d", len(parsedLog.Entries))
+		}
+
+		parts := strings.Split(parsedLog.Entries[0].Value.(string), "|")
+		if len(parts) != 6 {
+			t.Fatalf("Expected 6 packed fields, got %d", len(parts))
+		}
+		if parts[3] != "B1ASTO15203-402" {
+			t.Fatalf("Expected original dest to be preserved, got %q", parts[3])
+		}
+	})
+}
+
 // ============ Parser Registry Tests ============
 
 func TestParserRegistry(t *testing.T) {
 	registry := NewRegistry()
-	
+
 	t.Run("registers default parsers", func(t *testing.T) {
 		// Check that we can get parsers by name
 		plcParser, err := registry.GetParserByName("plc_debug")
@@ -851,7 +930,7 @@ func TestParserRegistry(t *testing.T) {
 		if plcParser == nil {
 			t.Error("Expected PLC parser to not be nil")
 		}
-		
+
 		csvParser, err := registry.GetParserByName("csv_signal")
 		if err != nil {
 			t.Errorf("Expected registry to have CSV parser: %v", err)
@@ -859,7 +938,7 @@ func TestParserRegistry(t *testing.T) {
 		if csvParser == nil {
 			t.Error("Expected CSV parser to not be nil")
 		}
-		
+
 		mcsParser, err := registry.GetParserByName("mcs_log")
 		if err != nil {
 			t.Errorf("Expected registry to have MCS parser: %v", err)
@@ -868,15 +947,15 @@ func TestParserRegistry(t *testing.T) {
 			t.Error("Expected MCS parser to not be nil")
 		}
 	})
-	
+
 	t.Run("finds parser by format", func(t *testing.T) {
 		// Create a PLC debug format file
 		content := `2024-01-15 10:30:45.123 [INFO] [/PLC/Device1] [CAT:Signal1] (bool) : TRUE
 2024-01-15 10:30:46.234 [INFO] [/PLC/Device1] [CAT:Signal1] (bool) : FALSE`
-		
+
 		filePath := createTestFile(t, content)
 		parser, err := registry.FindParser(filePath)
-		
+
 		if err != nil {
 			t.Fatalf("FindParser failed: %v", err)
 		}
@@ -887,14 +966,14 @@ func TestParserRegistry(t *testing.T) {
 			t.Errorf("Expected plc_debug parser, got %v", parser.Name())
 		}
 	})
-	
+
 	t.Run("returns error for unknown format", func(t *testing.T) {
 		content := `Not a valid log format
 Just some random text that doesn't match any parser`
-		
+
 		filePath := createTestFile(t, content)
 		parser, err := registry.FindParser(filePath)
-		
+
 		if err == nil {
 			t.Error("Expected error for unknown format")
 		}
@@ -902,11 +981,11 @@ Just some random text that doesn't match any parser`
 			t.Error("Expected nil parser for unknown format")
 		}
 	})
-	
+
 	t.Run("registers custom parser", func(t *testing.T) {
 		customParser := NewPLCDebugParser() // Using existing as "custom"
 		registry.Register(customParser)
-		
+
 		// Should still be able to find it
 		found, err := registry.GetParserByName("plc_debug")
 		if err != nil {
@@ -941,7 +1020,7 @@ func TestParseValue(t *testing.T) {
 		{"3.14", models.SignalTypeString, "3.14"}, // Floats stored as strings for string type
 		{"hello", models.SignalTypeString, "hello"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			result := ParseValue(tt.input, tt.valType)
@@ -975,7 +1054,7 @@ func TestInferType(t *testing.T) {
 		{"hello", models.SignalTypeString},
 		{"", models.SignalTypeString},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			result := InferType(tt.input)
@@ -1008,7 +1087,7 @@ func TestFastTimestamp(t *testing.T) {
 			true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			result, err := FastTimestamp(tt.input)
