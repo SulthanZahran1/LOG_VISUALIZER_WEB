@@ -48,7 +48,8 @@ import {
     useKeyboardShortcuts,
     DEFAULT_COLUMNS,
     DEFAULT_COLUMN_ORDER,
-    type ColumnKey
+    type ColumnKey,
+    type ColumnDef
 } from './hooks';
 
 // Utils
@@ -61,7 +62,7 @@ const BUFFER = 15;
 const SERVER_PAGE_SIZE = 200;
 const MAX_SCROLL_HEIGHT = 15_000_000;
 
-const GENERIC_COLUMNS = [
+const GENERIC_COLUMNS: ColumnDef[] = [
     { key: 'timestamp', id: 'ts', label: 'TIMESTAMP', sortable: true, resizable: true },
     { key: 'deviceId', id: 'dev', label: 'SOURCE', sortable: true, resizable: true },
     { key: 'signalName', id: 'sig', label: 'LEVEL', sortable: true, resizable: true },
