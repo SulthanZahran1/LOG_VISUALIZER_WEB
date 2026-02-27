@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
@@ -520,7 +521,25 @@ func (m *Manager) GetCategories(ctx context.Context, id string) ([]string, bool)
 	}
 
 	if state.DuckStore == nil {
-		return nil, false
+		// Legacy in-memory parser path: session exists, but may not have category metadata.
+		if state.Result == nil {
+			return nil, false
+		}
+
+		set := make(map[string]struct{})
+		for _, entry := range state.Result.Entries {
+			if entry.Category == "" {
+				continue
+			}
+			set[entry.Category] = struct{}{}
+		}
+
+		cats := make([]string, 0, len(set))
+		for cat := range set {
+			cats = append(cats, cat)
+		}
+		sort.Strings(cats)
+		return cats, true
 	}
 
 	cats, err := state.DuckStore.GetCategories(ctx)
@@ -857,12 +876,12 @@ func (m *Manager) runMultiParse(sessionID string, fileIDs, filePaths []string) {
 		m.updateSessionError(sessionID, fmt.Sprintf("failed to create DuckStore for merged session: %v", err))
 		return
 	}
-	
+
 	// Add all merged entries to DuckStore
 	for i := range merged.Entries {
 		store.AddEntry(&merged.Entries[i])
 	}
-	
+
 	// Finalize to flush remaining entries and create indexes
 	if err := store.Finalize(); err != nil {
 		store.Close()
