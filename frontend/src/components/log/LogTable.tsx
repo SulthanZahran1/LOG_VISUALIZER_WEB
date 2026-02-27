@@ -31,7 +31,7 @@ import { getTimeTree } from '../../api/client';
 import type { TimeTreeEntry } from '../../api/client';
 import { toggleSignal } from '../../stores/waveformStore';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
-import type { LogEntry } from '../../models/types';
+import type { LogEntry, ParseSession } from '../../models/types';
 import { colorSettings } from '../../stores/colorCodingStore';
 import { SignalSidebar } from '../waveform/SignalSidebar';
 
@@ -70,6 +70,10 @@ const GENERIC_COLUMNS: ColumnDef[] = [
 ];
 
 const GENERIC_COLUMN_ORDER: ColumnKey[] = ['timestamp', 'deviceId', 'signalName', 'value'];
+
+function isGenericLogSession(session: ParseSession | null | undefined): boolean {
+    return (session as ParseSession & { parserName?: string } | null | undefined)?.parserName === 'generic_log';
+}
 
 /** Compute scroll scale factor when virtual height exceeds browser max */
 function getScrollScale(): number {
@@ -387,7 +391,7 @@ export function LogTable() {
     const [isFetchingPage, setIsFetchingPage] = useState(false);
     const fetchTimeoutRef = useRef<number | null>(null);
 
-    const isGenericLog = currentSession.value?.parserName === 'generic_log';
+    const isGenericLog = isGenericLogSession(currentSession.value);
 
     // ===== HOOKS =====
 
@@ -675,7 +679,11 @@ export function LogTable() {
                 selectionCount={selectionState.selectionCount}
                 jumpToTimeOpen={jumpToTimeOpen.value}
                 onToggleJumpToTime={() => jumpToTimeOpen.value = !jumpToTimeOpen.value}
-                onOpenWaveform={isGenericLog ? undefined : () => openView('waveform')}
+                onOpenWaveform={() => {
+                    if (!isGenericLog) {
+                        openView('waveform');
+                    }
+                }}
                 onCopy={handleCopy}
                 onReload={handleReload}
             />

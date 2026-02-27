@@ -23,6 +23,10 @@ import {
 import { selectedSignals } from '../selectionStore';
 import type { FetchFilters } from './types';
 
+function isGenericLogSession(session: ParseSession | null | undefined): boolean {
+    return (session as ParseSession & { parserName?: string } | null | undefined)?.parserName === 'generic_log';
+}
+
 // Track last initialized session for range reset (managed by effects)
 
 // ======================
@@ -237,13 +241,13 @@ async function handleSessionComplete(session: ParseSession): Promise<void> {
     finalizeSessionLoad(session);
 
     // Auto-open log table for generic logs
-    if (session.parserName === 'generic_log') {
+    if (isGenericLogSession(session)) {
         openView('log-table');
     }
 }
 
 async function finalizeSessionLoad(session: ParseSession): Promise<void> {
-    if (session.parserName === 'generic_log') {
+    if (isGenericLogSession(session)) {
         return;
     }
 
