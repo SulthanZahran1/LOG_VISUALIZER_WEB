@@ -342,12 +342,6 @@ export function App() {
         {activeTab.value === 'transitions' && <TransitionView />}
         {activeTab.value === 'heatmap' && (
           <div className="view-container heatmap-view">
-            <div className="view-header">
-              <h2>Transfer Rack Heatmap</h2>
-              <p>
-                Rack IDs are parsed from transfer source/destination in `zxxxyy` format and plotted by X and Z+YY.
-              </p>
-            </div>
             <TransferHeatmap 
               onCellClick={(rackId) => {
                 searchQuery.value = rackId;
@@ -765,26 +759,7 @@ export function App() {
         }
 
         .heatmap-view {
-          padding: var(--spacing-lg);
           background: var(--bg-primary);
-          gap: var(--spacing-md);
-        }
-
-        .heatmap-view .view-header {
-          margin-bottom: 0;
-          padding: 0 var(--spacing-xs);
-        }
-
-        .heatmap-view .view-header h2 {
-          margin: 0;
-          font-size: 20px;
-          color: var(--text-primary);
-        }
-
-        .heatmap-view .view-header p {
-          margin: var(--spacing-xs) 0 0;
-          color: var(--text-muted);
-          font-size: 14px;
         }
 
         .heatmap-view .transfer-heatmap-container {

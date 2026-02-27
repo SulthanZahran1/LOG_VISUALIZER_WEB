@@ -261,47 +261,28 @@ export function TransferHeatmap({ onCellClick, showControls = true }: TransferHe
     return (
         <div className="transfer-heatmap-container" style={legendStyle}>
             {showControls && (
-                <div className="heatmap-control-panel">
-                    <div className="heatmap-stats-grid">
-                        <div className="heatmap-stat-card">
-                            <span>Rack IDs Detected</span>
-                            <strong>{data.rackCount.toLocaleString()}</strong>
-                        </div>
-                        <div className="heatmap-stat-card">
-                            <span>Transfer Rows Used</span>
-                            <strong>{data.transferRows.toLocaleString()}</strong>
-                        </div>
-                        <div className="heatmap-stat-card">
-                            <span>Rack Hits</span>
-                            <strong>{data.totalRackHits.toLocaleString()}</strong>
-                        </div>
-                        <div className="heatmap-stat-card">
-                            <span>Visible Cells</span>
-                            <strong>{visibleRackCells.toLocaleString()} / {totalVisibleLocations.toLocaleString()}</strong>
-                        </div>
-                    </div>
-
-                    <div className="heatmap-options-grid">
-                        <label className="heatmap-option">
+                <div className="heatmap-toolbar">
+                    <div className="heatmap-toolbar-controls">
+                        <label className="heatmap-tool">
                             <span>Intensity</span>
                             <select value={intensityMode} onChange={(e) => setIntensityMode((e.target as HTMLSelectElement).value as IntensityMode)}>
-                                <option value="global">Global max</option>
-                                <option value="row">Per row (Y)</option>
-                                <option value="column">Per column (X)</option>
-                                <option value="log">Log scale</option>
+                                <option value="global">Global</option>
+                                <option value="row">Per Y</option>
+                                <option value="column">Per X</option>
+                                <option value="log">Log</option>
                             </select>
                         </label>
 
-                        <label className="heatmap-option">
+                        <label className="heatmap-tool">
                             <span>Labels</span>
                             <select value={labelMode} onChange={(e) => setLabelMode((e.target as HTMLSelectElement).value as LabelMode)}>
                                 <option value="count">Count</option>
                                 <option value="percent">Percent</option>
-                                <option value="both">Count + percent</option>
+                                <option value="both">Both</option>
                             </select>
                         </label>
 
-                        <label className="heatmap-option">
+                        <label className="heatmap-tool">
                             <span>Palette</span>
                             <select value={palette} onChange={(e) => setPalette((e.target as HTMLSelectElement).value as PaletteKey)}>
                                 {Object.entries(palettes).map(([key, item]) => (
@@ -310,8 +291,8 @@ export function TransferHeatmap({ onCellClick, showControls = true }: TransferHe
                             </select>
                         </label>
 
-                        <label className="heatmap-option">
-                            <span>Minimum count</span>
+                        <label className="heatmap-tool">
+                            <span>Min</span>
                             <input
                                 type="number"
                                 min={1}
@@ -324,98 +305,125 @@ export function TransferHeatmap({ onCellClick, showControls = true }: TransferHe
                             />
                         </label>
 
-                        <label className="heatmap-option heatmap-option-wide">
-                            <span>Rack filter (X / Z-Y)</span>
+                        <label className="heatmap-tool heatmap-tool-filter">
+                            <span>Filter</span>
                             <input
                                 type="text"
                                 value={locationFilter}
-                                placeholder="e.g. X012, Z1-Y03, 012..."
+                                placeholder="X012 / Z1-Y03"
                                 onInput={(e) => setLocationFilter((e.target as HTMLInputElement).value)}
                             />
                         </label>
 
-                        <label className="heatmap-checkbox">
+                        <label className="heatmap-tool heatmap-tool-checkbox">
                             <input
                                 type="checkbox"
                                 checked={showZeros}
                                 onChange={(e) => setShowZeros((e.target as HTMLInputElement).checked)}
                             />
-                            <span>Show zero-count cells</span>
+                            <span>Zeros</span>
                         </label>
 
                         <button className="heatmap-reset-btn" onClick={resetOptions}>
-                            Reset options
+                            Reset
                         </button>
                     </div>
                 </div>
             )}
 
-            <div className="heatmap-scroll">
-                <table className="heatmap-table">
-                    <thead>
-                        <tr>
-                            <th className="sticky-col">Rack Y (Z+YY)</th>
-                            {filteredXValues.map(x => (
-                                <th key={x} title={formatX(x)}>{formatX(x)}</th>
-                            ))}
-                            <th className="summary-col" title="Total rack hits in this row">Row Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredYValues.map(yAxis => (
-                            <tr key={yAxis.key}>
-                                <th className="sticky-col" title={yAxis.label}>{yAxis.label}</th>
-                                {filteredXValues.map(x => {
-                                    const count = data.matrix[yAxis.key]?.[x] || 0;
-                                    const underThreshold = count > 0 && count < minCount;
-                                    const visibleCount = underThreshold ? 0 : count;
-                                    const intensity = intensityFor(yAxis.key, x, visibleCount);
-                                    const alpha = visibleCount > 0 ? Math.max(0.22, intensity) : 0;
-                                    const backgroundColor = visibleCount > 0
-                                        ? `rgba(${paletteColor[0]}, ${paletteColor[1]}, ${paletteColor[2]}, ${alpha})`
-                                        : 'transparent';
-                                    const rackId = data.cellRackIds[yAxis.key]?.[x] || '';
-                                    const isClickable = visibleCount > 0 && rackId !== '';
-                                    const shouldShowLabel = visibleCount > 0 || showZeros;
+            <div className="heatmap-view-split">
+                {showControls && (
+                    <aside className="heatmap-sidebar">
+                        <div className="heatmap-stats-grid">
+                            <div className="heatmap-stat-card">
+                                <span>Rack IDs</span>
+                                <strong>{data.rackCount.toLocaleString()}</strong>
+                            </div>
+                            <div className="heatmap-stat-card">
+                                <span>Transfer Rows</span>
+                                <strong>{data.transferRows.toLocaleString()}</strong>
+                            </div>
+                            <div className="heatmap-stat-card">
+                                <span>Rack Hits</span>
+                                <strong>{data.totalRackHits.toLocaleString()}</strong>
+                            </div>
+                            <div className="heatmap-stat-card">
+                                <span>Visible Cells</span>
+                                <strong>{visibleRackCells.toLocaleString()} / {totalVisibleLocations.toLocaleString()}</strong>
+                            </div>
+                        </div>
+                    </aside>
+                )}
 
-                                    return (
-                                        <td
-                                            key={x}
-                                            style={{ backgroundColor }}
-                                            className={visibleCount > 0 ? 'has-data' : 'no-data'}
-                                            onClick={() => isClickable && onCellClick?.(rackId)}
-                                            title={`${rackId || `${formatX(x)} ${yAxis.label}`}: ${count} transfers`}
-                                        >
-                                            {shouldShowLabel ? formatLabel(visibleCount, intensity) : ''}
+                <div className="heatmap-content">
+                    <div className="heatmap-scroll">
+                        <table className="heatmap-table">
+                            <thead>
+                                <tr>
+                                    <th className="sticky-col">Rack Y (Z+YY)</th>
+                                    {filteredXValues.map(x => (
+                                        <th key={x} title={formatX(x)}>{formatX(x)}</th>
+                                    ))}
+                                    <th className="summary-col" title="Total rack hits in this row">Row Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredYValues.map(yAxis => (
+                                    <tr key={yAxis.key}>
+                                        <th className="sticky-col" title={yAxis.label}>{yAxis.label}</th>
+                                        {filteredXValues.map(x => {
+                                            const count = data.matrix[yAxis.key]?.[x] || 0;
+                                            const underThreshold = count > 0 && count < minCount;
+                                            const visibleCount = underThreshold ? 0 : count;
+                                            const intensity = intensityFor(yAxis.key, x, visibleCount);
+                                            const alpha = visibleCount > 0 ? Math.max(0.22, intensity) : 0;
+                                            const backgroundColor = visibleCount > 0
+                                                ? `rgba(${paletteColor[0]}, ${paletteColor[1]}, ${paletteColor[2]}, ${alpha})`
+                                                : 'transparent';
+                                            const rackId = data.cellRackIds[yAxis.key]?.[x] || '';
+                                            const isClickable = visibleCount > 0 && rackId !== '';
+                                            const shouldShowLabel = visibleCount > 0 || showZeros;
+
+                                            return (
+                                                <td
+                                                    key={x}
+                                                    style={{ backgroundColor }}
+                                                    className={visibleCount > 0 ? 'has-data' : 'no-data'}
+                                                    onClick={() => isClickable && onCellClick?.(rackId)}
+                                                    title={`${rackId || `${formatX(x)} ${yAxis.label}`}: ${count} transfers`}
+                                                >
+                                                    {shouldShowLabel ? formatLabel(visibleCount, intensity) : ''}
+                                                </td>
+                                            );
+                                        })}
+                                        <td className="summary-col" title={`Total for ${yAxis.label}`}>
+                                            {(data.rowTotals[yAxis.key] || 0).toLocaleString()}
                                         </td>
-                                    );
-                                })}
-                                <td className="summary-col" title={`Total for ${yAxis.label}`}>
-                                    {(data.rowTotals[yAxis.key] || 0).toLocaleString()}
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                    <tfoot>
-                        <tr>
-                            <th className="sticky-col">Column Total</th>
-                            {filteredXValues.map(x => (
-                                <th key={x} className="summary-col" title={`Total for ${formatX(x)}`}>
-                                    {(data.colTotals[x] || 0).toLocaleString()}
-                                </th>
-                            ))}
-                            <th className="summary-col">{data.totalRackHits.toLocaleString()}</th>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-            <div className="heatmap-legend">
-                <span>Low</span>
-                <div className="legend-bar"></div>
-                <span>High</span>
-                <span className="total-count">
-                    Mode: {intensityMode === 'global' ? 'Global max' : intensityMode === 'row' ? 'Per row' : intensityMode === 'column' ? 'Per column' : 'Log scale'}
-                </span>
+                                    </tr>
+                                ))}
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th className="sticky-col">Column Total</th>
+                                    {filteredXValues.map(x => (
+                                        <th key={x} className="summary-col" title={`Total for ${formatX(x)}`}>
+                                            {(data.colTotals[x] || 0).toLocaleString()}
+                                        </th>
+                                    ))}
+                                    <th className="summary-col">{data.totalRackHits.toLocaleString()}</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <div className="heatmap-legend">
+                        <span>Low</span>
+                        <div className="legend-bar"></div>
+                        <span>High</span>
+                        <span className="total-count">
+                            Mode: {intensityMode === 'global' ? 'Global max' : intensityMode === 'row' ? 'Per row' : intensityMode === 'column' ? 'Per column' : 'Log scale'}
+                        </span>
+                    </div>
+                </div>
             </div>
         </div>
     );
