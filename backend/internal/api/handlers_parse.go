@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -473,16 +474,49 @@ func (h *ParseHandlerImpl) resolveFilePaths(fileIDs []string) ([]string, []strin
 }
 
 func (h *ParseHandlerImpl) buildQueryParams(c echo.Context) parser.QueryParams {
+	queryParamFirst := func(keys ...string) string {
+		for _, key := range keys {
+			if value := c.QueryParam(key); value != "" {
+				return value
+			}
+		}
+		return ""
+	}
+
+	parseListParam := func(keys ...string) []string {
+		rawValues := make([]string, 0, len(keys))
+		for _, key := range keys {
+			rawValues = append(rawValues, c.QueryParams()[key]...)
+		}
+
+		out := make([]string, 0, len(rawValues))
+		seen := make(map[string]struct{}, len(rawValues))
+		for _, raw := range rawValues {
+			for _, part := range strings.Split(raw, ",") {
+				value := strings.TrimSpace(part)
+				if value == "" {
+					continue
+				}
+				if _, exists := seen[value]; exists {
+					continue
+				}
+				seen[value] = struct{}{}
+				out = append(out, value)
+			}
+		}
+		return out
+	}
+
 	return parser.QueryParams{
 		Search:              c.QueryParam("search"),
 		SearchRegex:         c.QueryParam("regex") == "true",
 		SearchCaseSensitive: c.QueryParam("caseSensitive") == "true",
 		ShowChanged:         c.QueryParam("showChangedOnly") == "true",
-		Categories:          c.QueryParams()["categories"],
-		Signals:             c.QueryParams()["signals"],
-		SignalType:          c.QueryParam("signalType"),
-		SortColumn:          c.QueryParam("sortColumn"),
-		SortDirection:       c.QueryParam("sortDirection"),
+		Categories:          parseListParam("categories", "category"),
+		Signals:             parseListParam("signals", "signal"),
+		SignalType:          queryParamFirst("signalType", "type"),
+		SortColumn:          queryParamFirst("sortColumn", "sort"),
+		SortDirection:       queryParamFirst("sortDirection", "order"),
 	}
 }
 

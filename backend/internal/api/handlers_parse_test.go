@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -446,5 +447,48 @@ func TestParseTimestamp(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestParseHandler_BuildQueryParams_BackwardCompatible(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/parse/test/entries?search=q&regex=true&caseSensitive=true&showChangedOnly=true&category=ALARM,WARNING&categories=INFO&sort=timestamp&order=desc&type=boolean&signals=PLC1::S1,PLC1::S2&signal=PLC2::S3", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	handler := &ParseHandlerImpl{}
+	params := handler.buildQueryParams(c)
+
+	if params.Search != "q" {
+		t.Fatalf("expected search q, got %q", params.Search)
+	}
+	if !params.SearchRegex {
+		t.Fatal("expected SearchRegex=true")
+	}
+	if !params.SearchCaseSensitive {
+		t.Fatal("expected SearchCaseSensitive=true")
+	}
+	if !params.ShowChanged {
+		t.Fatal("expected ShowChanged=true")
+	}
+
+	wantCategories := []string{"INFO", "ALARM", "WARNING"}
+	if !slices.Equal(params.Categories, wantCategories) {
+		t.Fatalf("expected categories %v, got %v", wantCategories, params.Categories)
+	}
+
+	wantSignals := []string{"PLC1::S1", "PLC1::S2", "PLC2::S3"}
+	if !slices.Equal(params.Signals, wantSignals) {
+		t.Fatalf("expected signals %v, got %v", wantSignals, params.Signals)
+	}
+
+	if params.SortColumn != "timestamp" {
+		t.Fatalf("expected sort column timestamp, got %q", params.SortColumn)
+	}
+	if params.SortDirection != "desc" {
+		t.Fatalf("expected sort direction desc, got %q", params.SortDirection)
+	}
+	if params.SignalType != "boolean" {
+		t.Fatalf("expected signal type boolean, got %q", params.SignalType)
 	}
 }

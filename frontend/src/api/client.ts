@@ -204,10 +204,10 @@ export async function getParseEntries(
     let url = `/parse/${sessionId}/entries?page=${page}&pageSize=${pageSize}`;
     if (filters) {
         if (filters.search) url += `&search=${encodeURIComponent(filters.search)}`;
-        if (filters.category) url += `&category=${encodeURIComponent(filters.category)}`;
-        if (filters.sort) url += `&sort=${encodeURIComponent(filters.sort)}`;
-        if (filters.order) url += `&order=${encodeURIComponent(filters.order)}`;
-        if (filters.type) url += `&type=${encodeURIComponent(filters.type)}`;
+        if (filters.category) url += `&categories=${encodeURIComponent(filters.category)}`;
+        if (filters.sort) url += `&sortColumn=${encodeURIComponent(filters.sort)}`;
+        if (filters.order) url += `&sortDirection=${encodeURIComponent(filters.order)}`;
+        if (filters.type) url += `&signalType=${encodeURIComponent(filters.type)}`;
         if (filters.regex) url += `&regex=true`;
         if (filters.caseSensitive) url += `&caseSensitive=true`;
         if (filters.signals) url += `&signals=${encodeURIComponent(filters.signals)}`;
@@ -237,10 +237,10 @@ export async function getIndexOfTime(
     let url = `/parse/${sessionId}/index-of-time?ts=${ts}`;
     if (filters) {
         if (filters.search) url += `&search=${encodeURIComponent(filters.search)}`;
-        if (filters.category) url += `&category=${encodeURIComponent(filters.category)}`;
-        if (filters.sort) url += `&sort=${encodeURIComponent(filters.sort)}`;
-        if (filters.order) url += `&order=${encodeURIComponent(filters.order)}`;
-        if (filters.type) url += `&type=${encodeURIComponent(filters.type)}`;
+        if (filters.category) url += `&categories=${encodeURIComponent(filters.category)}`;
+        if (filters.sort) url += `&sortColumn=${encodeURIComponent(filters.sort)}`;
+        if (filters.order) url += `&sortDirection=${encodeURIComponent(filters.order)}`;
+        if (filters.type) url += `&signalType=${encodeURIComponent(filters.type)}`;
         if (filters.regex) url += `&regex=true`;
         if (filters.caseSensitive) url += `&caseSensitive=true`;
         if (filters.signals) url += `&signals=${encodeURIComponent(filters.signals)}`;
@@ -274,10 +274,10 @@ export async function getTimeTree(
     const params: string[] = [];
     if (filters) {
         if (filters.search) params.push(`search=${encodeURIComponent(filters.search)}`);
-        if (filters.category) params.push(`category=${encodeURIComponent(filters.category)}`);
-        if (filters.sort) params.push(`sort=${encodeURIComponent(filters.sort)}`);
-        if (filters.order) params.push(`order=${encodeURIComponent(filters.order)}`);
-        if (filters.type) params.push(`type=${encodeURIComponent(filters.type)}`);
+        if (filters.category) params.push(`categories=${encodeURIComponent(filters.category)}`);
+        if (filters.sort) params.push(`sortColumn=${encodeURIComponent(filters.sort)}`);
+        if (filters.order) params.push(`sortDirection=${encodeURIComponent(filters.order)}`);
+        if (filters.type) params.push(`signalType=${encodeURIComponent(filters.type)}`);
         if (filters.regex) params.push('regex=true');
         if (filters.caseSensitive) params.push('caseSensitive=true');
         if (filters.signals) params.push(`signals=${encodeURIComponent(filters.signals)}`);
@@ -386,41 +386,75 @@ export function streamParseEntries(
     sessionId: string,
     onBatch: (entries: LogEntry[], progress: number, total: number) => void,
     onComplete: (total: number) => void,
-    onError?: (error: string) => void
+    onError?: (error: string) => void,
+    options?: { maxRetries?: number; retryDelay?: number }
 ): AbortController {
     const controller = new AbortController();
-    const url = `${API_BASE}/parse/${sessionId}/stream`;
+    const { maxRetries = 3, retryDelay = 1000 } = options || {};
+    
+    let eventSource: EventSource | null = null;
+    let retryCount = 0;
+    let isCompleted = false;
 
-    const eventSource = new EventSource(url);
+    const connect = () => {
+        if (isCompleted || controller.signal.aborted) return;
+        
+        const url = `${API_BASE}/parse/${sessionId}/stream`;
+        eventSource = new EventSource(url);
 
-    eventSource.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
 
-            if (data.error) {
-                eventSource.close();
-                onError?.(data.error);
-                return;
+                if (data.error) {
+                    eventSource?.close();
+                    isCompleted = true;
+                    onError?.(data.error);
+                    return;
+                }
+
+                if (data.done) {
+                    isCompleted = true;
+                    eventSource?.close();
+                    onComplete(data.total);
+                } else if (data.entries) {
+                    retryCount = 0; // Reset retry count on successful message
+                    const entries = data.entries.map(transformEntry);
+                    onBatch(entries, data.progress, data.total);
+                }
+            } catch (err) {
+                console.error('Failed to parse SSE data:', err);
             }
+        };
 
-            if (data.done) {
-                eventSource.close();
-                onComplete(data.total);
-            } else if (data.entries) {
-                const entries = data.entries.map(transformEntry);
-                onBatch(entries, data.progress, data.total);
+        eventSource.onerror = () => {
+            if (isCompleted || controller.signal.aborted) return;
+            
+            eventSource?.close();
+            
+            // Retry logic
+            if (retryCount < maxRetries) {
+                retryCount++;
+                console.warn(`Stream connection error, retrying (${retryCount}/${maxRetries})...`);
+                setTimeout(connect, retryDelay * retryCount);
+            } else {
+                isCompleted = true;
+                onError?.('Stream connection error');
             }
-        } catch (err) {
-            console.error('Failed to parse SSE data:', err);
-        }
+        };
+
+        eventSource.onopen = () => {
+            retryCount = 0; // Reset retry count on successful connection
+        };
     };
 
-    eventSource.onerror = () => {
-        eventSource.close();
-        onError?.('Stream connection error');
-    };
+    connect();
 
-    controller.signal.addEventListener('abort', () => eventSource.close());
+    controller.signal.addEventListener('abort', () => {
+        isCompleted = true;
+        eventSource?.close();
+    });
+    
     return controller;
 }
 
