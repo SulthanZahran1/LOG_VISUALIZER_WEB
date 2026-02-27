@@ -27,7 +27,7 @@ export interface LogTableToolbarProps {
     /** Toggle jump to time */
     onToggleJumpToTime: () => void;
     /** Open waveform view */
-    onOpenWaveform: () => void;
+    onOpenWaveform?: () => void;
     /** Copy selected rows */
     onCopy: () => void;
     /** Reload data */
@@ -128,9 +128,11 @@ export function LogTableToolbar({
                 <div className="toolbar-separator"></div>
                 <ColorCodingSettings />
                 <div className="toolbar-separator"></div>
-                <button className="btn-icon" onClick={onOpenWaveform} title="Open Waveform">
-                    <ChartIcon />
-                </button>
+                {onOpenWaveform && (
+                    <button className="btn-icon" onClick={onOpenWaveform} title="Open Waveform">
+                        <ChartIcon />
+                    </button>
+                )}
                 <button className="btn-icon" onClick={onCopy} title="Copy (Ctrl+C)">
                     <CopyIcon />
                 </button>

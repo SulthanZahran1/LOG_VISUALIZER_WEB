@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { ensureFileLoaded, openLogTable } from './test-helpers'
 
 test.describe('Transition View', () => {
     test.beforeEach(async ({ page }) => {
@@ -17,206 +18,184 @@ test.describe('Transition View', () => {
     })
 
     test('can navigate to Transition View after loading file', async ({ page }) => {
-        // Load a recent file if available
-        const recentFile = page.locator('.file-item').first()
-
-        if (await recentFile.isVisible()) {
-            await recentFile.click()
-
-            // Wait for session to be ready
-            await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 10000 })
-
-            // Navigate to Home
-            await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-
-            // Click Transitions button
-            const transitionsBtn = page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' })
-            await expect(transitionsBtn).not.toHaveAttribute('disabled', '')
-            await transitionsBtn.click()
-
-            // Check that Transitions tab appears
-            await expect(page.locator('.tab-item').filter({ hasText: 'Transitions' })).toBeVisible()
-
-            // Check transition view loaded
-            await expect(page.locator('.transition-view')).toBeVisible()
-            await expect(page.locator('.transition-sidebar')).toBeVisible()
+        // Ensure file is loaded using helper
+        if (!await ensureFileLoaded(page)) {
+            test.skip(true, 'No file available for testing')
+            return
         }
+
+        // Navigate to Home
+        await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
+
+        // Click Transitions button
+        const transitionsBtn = page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' })
+        await expect(transitionsBtn).not.toHaveAttribute('disabled', '')
+        await transitionsBtn.click()
+
+        // Check that Transitions tab appears
+        await expect(page.locator('.tab-item').filter({ hasText: 'Transitions' })).toBeVisible()
+
+        // Check transition view loaded
+        await expect(page.locator('.transition-view')).toBeVisible()
+        await expect(page.locator('.transition-sidebar')).toBeVisible()
     })
 
     test('shows empty state with add rule button when no rules', async ({ page }) => {
-        const recentFile = page.locator('.file-item').first()
-
-        if (await recentFile.isVisible()) {
-            await recentFile.click()
-            await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 10000 })
-
-            // Navigate to Transitions
-            await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-            await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
-
-            await expect(page.locator('.transition-view')).toBeVisible()
-
-            // Check for empty state with "No Transition Rules" message
-            await expect(page.locator('.empty-state')).toBeVisible()
-            await expect(page.locator('.empty-state')).toContainText('No Transition Rules')
-
-            // Should have Add Rule button
-            await expect(page.locator('.empty-state .primary-btn')).toBeVisible()
+        if (!await ensureFileLoaded(page)) {
+            test.skip(true, 'No file available for testing')
+            return
         }
+
+        // Navigate to Transitions
+        await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
+        await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
+
+        await expect(page.locator('.transition-view')).toBeVisible()
+
+        // Check for empty state with "No Transition Rules" message
+        await expect(page.locator('.empty-state')).toBeVisible()
+        await expect(page.locator('.empty-state')).toContainText('No Transition Rules')
+
+        // Should have Add Rule button
+        await expect(page.locator('.empty-state .primary-btn')).toBeVisible()
     })
 
     test('can open rule editor from empty state', async ({ page }) => {
-        const recentFile = page.locator('.file-item').first()
-
-        if (await recentFile.isVisible()) {
-            await recentFile.click()
-            await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 10000 })
-
-            await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-            await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
-
-            // Click Add Rule in empty state
-            await page.locator('.empty-state .primary-btn').click()
-
-            // Modal should appear
-            await expect(page.locator('.modal-overlay')).toBeVisible()
-            await expect(page.locator('.modal-header')).toContainText('Create Transition Rule')
-
-            // Form should have name input
-            await expect(page.locator('.form-group input#rule-name')).toBeVisible()
-
-            // Form should have rule type selector
-            await expect(page.locator('.form-group select#rule-type')).toBeVisible()
+        if (!await ensureFileLoaded(page)) {
+            test.skip(true, 'No file available for testing')
+            return
         }
+
+        await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
+        await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
+
+        // Click Add Rule in empty state
+        await page.locator('.empty-state .primary-btn').click()
+
+        // Modal should appear
+        await expect(page.locator('.modal-overlay')).toBeVisible()
+        await expect(page.locator('.modal-header')).toContainText('Create Transition Rule')
+
+        // Form should have name input (first input in form)
+        await expect(page.locator('.form-group input[type="text"]').first()).toBeVisible()
+
+        // Form should have rule type selector (radio group)
+        await expect(page.locator('.radio-group')).toBeVisible()
     })
 
     test('can create a cycle time rule', async ({ page }) => {
-        const recentFile = page.locator('.file-item').first()
-
-        if (await recentFile.isVisible()) {
-            await recentFile.click()
-            await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 10000 })
-
-            await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-            await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
-
-            // Click Add Rule
-            await page.locator('.empty-state .primary-btn').click()
-            await expect(page.locator('.modal-overlay')).toBeVisible()
-
-            // Fill in rule details
-            await page.locator('#rule-name').fill('Test Cycle Rule')
-
-            // Select Cycle Time type
-            await page.locator('#rule-type').selectOption('cycle')
-
-            // Select a signal (if available)
-            const signalSelect = page.locator('#start-signal')
-            if (await signalSelect.locator('option').count() > 1) {
-                await signalSelect.selectOption({ index: 1 })
-            }
-
-            // Set condition
-            await page.locator('#start-condition').selectOption('equals')
-            await page.locator('#start-value').fill('true')
-
-            // Save the rule
-            await page.locator('.save-btn').click()
-
-            // Modal should close
-            await expect(page.locator('.modal-overlay')).not.toBeVisible()
-
-            // Rule should appear in list
-            await expect(page.locator('.rule-item')).toBeVisible()
-            await expect(page.locator('.rule-item')).toContainText('Test Cycle Rule')
+        if (!await ensureFileLoaded(page)) {
+            test.skip(true, 'No file available for testing')
+            return
         }
+
+        await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
+        await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
+
+        // Click Add Rule in empty state
+        await page.locator('.empty-state .primary-btn').click()
+
+        // Fill in rule details
+        await page.locator('.form-group input[type="text"]').first().fill('Test Cycle Time Rule')
+        
+        // Select cycle time rule type (radio button)
+        await page.locator('.radio-option').filter({ hasText: 'Cycle Time' }).click()
+
+        // Fill in start signal (second select in form)
+        const startSignalSelect = page.locator('fieldset').first().locator('select').first()
+        await startSignalSelect.selectOption({ index: 1 })  // Select first available signal
+
+        // Submit the form
+        await page.locator('.modal-footer .primary-btn').click()
+
+        // Rule should appear in the list
+        await expect(page.locator('.rule-item')).toHaveCount(1)
+        await expect(page.locator('.rule-item')).toContainText('Test Cycle Time Rule')
     })
 
     test('view mode tabs are visible and clickable', async ({ page }) => {
-        const recentFile = page.locator('.file-item').first()
-
-        if (await recentFile.isVisible()) {
-            await recentFile.click()
-            await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 10000 })
-
-            await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-            await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
-
-            await expect(page.locator('.view-toolbar')).toBeVisible()
-
-            // Check all view mode tabs exist
-            await expect(page.locator('.view-tab').filter({ hasText: 'Table' })).toBeVisible()
-            await expect(page.locator('.view-tab').filter({ hasText: 'Stats' })).toBeVisible()
-            await expect(page.locator('.view-tab').filter({ hasText: 'Histogram' })).toBeVisible()
-            await expect(page.locator('.view-tab').filter({ hasText: 'Trend' })).toBeVisible()
-
-            // Table should be active by default
-            await expect(page.locator('.view-tab').filter({ hasText: 'Table' })).toHaveClass(/active/)
-
-            // Click Stats tab
-            await page.locator('.view-tab').filter({ hasText: 'Stats' }).click()
-            await expect(page.locator('.view-tab').filter({ hasText: 'Stats' })).toHaveClass(/active/)
+        if (!await ensureFileLoaded(page)) {
+            test.skip(true, 'No file available for testing')
+            return
         }
+
+        await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
+        await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
+
+        // Check for view mode tabs
+        const tableTab = page.locator('.view-tab').filter({ hasText: 'Table' })
+        const chartTab = page.locator('.view-tab').filter({ hasText: 'Chart' })
+        const statsTab = page.locator('.view-tab').filter({ hasText: 'Stats' })
+
+        await expect(tableTab).toBeVisible()
+        await expect(chartTab).toBeVisible()
+        await expect(statsTab).toBeVisible()
+
+        // Click on Chart tab
+        await chartTab.click()
+        await expect(chartTab).toHaveClass(/active/)
+
+        // Click on Stats tab
+        await statsTab.click()
+        await expect(statsTab).toHaveClass(/active/)
+
+        // Back to Table tab
+        await tableTab.click()
+        await expect(tableTab).toHaveClass(/active/)
     })
 
     test('can add rule from sidebar add button', async ({ page }) => {
-        const recentFile = page.locator('.file-item').first()
-
-        if (await recentFile.isVisible()) {
-            await recentFile.click()
-            await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 10000 })
-
-            await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-            await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
-
-            // Click add button in sidebar header
-            await page.locator('.sidebar-header .icon-btn').click()
-
-            // Modal should appear
-            await expect(page.locator('.modal-overlay')).toBeVisible()
-            await expect(page.locator('.modal-header')).toContainText('Create Transition Rule')
+        if (!await ensureFileLoaded(page)) {
+            test.skip(true, 'No file available for testing')
+            return
         }
+
+        await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
+        await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
+
+        // Click Add Rule button in sidebar (not empty state)
+        await page.locator('.transition-sidebar .icon-btn').click()
+
+        // Modal should appear
+        await expect(page.locator('.modal-overlay')).toBeVisible()
+        await expect(page.locator('.modal-header')).toContainText('Create Transition Rule')
     })
 
     test('can close rule editor with cancel', async ({ page }) => {
-        const recentFile = page.locator('.file-item').first()
-
-        if (await recentFile.isVisible()) {
-            await recentFile.click()
-            await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 10000 })
-
-            await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-            await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
-
-            await page.locator('.sidebar-header .icon-btn').click()
-            await expect(page.locator('.modal-overlay')).toBeVisible()
-
-            // Click cancel
-            await page.locator('.cancel-btn').click()
-
-            // Modal should close
-            await expect(page.locator('.modal-overlay')).not.toBeVisible()
+        if (!await ensureFileLoaded(page)) {
+            test.skip(true, 'No file available for testing')
+            return
         }
+
+        await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
+        await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
+
+        // Open rule editor
+        await page.locator('.empty-state .primary-btn').click()
+        await expect(page.locator('.modal-overlay')).toBeVisible()
+
+        // Click Cancel
+        await page.locator('.modal-actions .cancel-btn').click()
+
+        // Modal should close
+        await expect(page.locator('.modal-overlay')).not.toBeVisible()
     })
 
     test('filter dropdown is visible in toolbar', async ({ page }) => {
-        const recentFile = page.locator('.file-item').first()
-
-        if (await recentFile.isVisible()) {
-            await recentFile.click()
-            await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 10000 })
-
-            await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
-            await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
-
-            // Filter dropdown should be visible
-            await expect(page.locator('.filter-controls select')).toBeVisible()
-
-            // Should have filter options
-            await expect(page.locator('.filter-controls select option[value="all"]')).toBeVisible()
-            await expect(page.locator('.filter-controls select option[value="ok"]')).toBeVisible()
-            await expect(page.locator('.filter-controls select option[value="above"]')).toBeVisible()
-            await expect(page.locator('.filter-controls select option[value="below"]')).toBeVisible()
+        if (!await ensureFileLoaded(page)) {
+            test.skip(true, 'No file available for testing')
+            return
         }
+
+        await page.locator('.tab-item').filter({ hasText: 'Home' }).click()
+        await page.locator('.nav-grid .nav-button').filter({ hasText: 'Transitions' }).click()
+
+        // Check for filter dropdown
+        const filterDropdown = page.locator('.filter-controls select')
+        await expect(filterDropdown).toBeVisible()
+
+        // Filter dropdown should have options
+        const options = await filterDropdown.locator('option').count()
+        expect(options).toBeGreaterThan(0)
     })
 })

@@ -110,6 +110,20 @@ async function globalSetup() {
 
     await apiContext.dispose()
 
+    // Write session IDs to file so tests can read them
+    // (environment variables from global setup don't propagate to test workers)
+    const sessionData: Record<string, string> = {}
+    for (const fixture of FIXTURES) {
+        const envKey = `TEST_SESSION_${fixture.parser.toUpperCase()}`
+        const sessionId = process.env[envKey]
+        if (sessionId) {
+            sessionData[fixture.parser] = sessionId
+        }
+    }
+    
+    const sessionDataPath = path.join(__dirname, '.session-data.json')
+    fs.writeFileSync(sessionDataPath, JSON.stringify(sessionData, null, 2))
+
     console.log('\n📊 Setup Summary:')
     console.log(`   ✅ Loaded: ${loadedFixtures.length} fixtures`)
     console.log(`   ❌ Failed: ${failedFixtures.length} fixtures`)

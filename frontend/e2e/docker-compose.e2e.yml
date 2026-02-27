@@ -1,5 +1,5 @@
 # Docker Compose for E2E Testing
-# This runs the backend in a container for Playwright tests
+# This runs both backend and frontend in containers for Playwright tests
 
 name: cim_visualizer_e2e
 
@@ -17,14 +17,39 @@ services:
       - PORT=8089
       - GOGC=50
       - DUCKDB_TEMP_DIR=/app/data/temp
+      - PARSED_STORAGE_DIR=/app/data/uploads/parsed
       - GOMEMLIMIT=2GiB
       - CORS_ORIGIN=http://localhost:5173
+      - SESSION_MAX_AGE=2h
+    # Install wget for healthcheck, then start server
+    command: >
+      sh -c "apt-get update && apt-get install -y --no-install-recommends wget && rm -rf /var/lib/apt/lists/* && exec ./server"
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8089/api/health"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8089/api/health | grep -q 'ok'"]
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 10s
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile.e2e
+    ports:
+      - "5173:5173"
+    environment:
+      # Proxy API requests to backend container (inside Docker network)
+      - VITE_API_PROXY_URL=http://backend:8089
+      - NODE_OPTIONS=--max-old-space-size=4096
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5173"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 volumes:
   e2e-uploads:

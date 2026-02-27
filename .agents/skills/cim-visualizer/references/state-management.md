@@ -1,147 +1,40 @@
-# State Management Patterns
+# State Management Reference (Current)
 
-## Store Architecture
+CIM Visualizer uses `@preact/signals` with modular store folders.
 
-Each store follows this pattern:
+## Store Layout
 
-```typescript
-// stores/exampleStore.ts
-import { signal, computed, batch } from '@preact/signals';
-import type { SomeType } from '../models/types';
-
-// ==================== State ====================
-export const items = signal<SomeType[]>([]);
-export const loading = signal(false);
-export const error = signal<string | null>(null);
-
-// ==================== Computed ====================
-export const itemCount = computed(() => items.value.length);
-
-export const filteredItems = computed(() => {
-    // Derived state that auto-updates
-    return items.value.filter(i => i.active);
-});
-
-// ==================== Actions ====================
-export function setItems(newItems: SomeType[]) {
-    items.value = newItems;
-}
-
-export async function loadItems(sessionId: string) {
-    loading.value = true;
-    error.value = null;
-    
-    try {
-        const data = await api.getItems(sessionId);
-        items.value = data;
-    } catch (err) {
-        error.value = err instanceof Error ? err.message : 'Failed to load';
-    } finally {
-        loading.value = false;
-    }
-}
-
-export function updateItem(id: string, updates: Partial<SomeType>) {
-    items.value = items.value.map(item => 
-        item.id === id ? { ...item, ...updates } : item
-    );
-}
-
-// Batch updates for multiple changes
-export function reset() {
-    batch(() => {
-        items.value = [];
-        loading.value = false;
-        error.value = null;
-    });
-}
+```text
+frontend/src/stores/
+├── log/
+│   ├── state.ts
+│   ├── actions.ts
+│   ├── effects.ts
+│   ├── types.ts
+│   └── index.ts
+├── waveform/
+├── map/
+├── logStore.ts      # legacy re-export entrypoint
+├── waveformStore.ts # legacy re-export entrypoint
+└── mapStore.ts      # legacy re-export entrypoint
 ```
 
-## Using Stores in Components
+## Module Pattern
 
-### Basic Usage
+- `state.ts`: signals + computed values
+- `actions.ts`: operations and async flows
+- `effects.ts`: subscriptions/persistence/sync side effects
+- `types.ts`: shared interfaces/types
+- `index.ts`: stable public API
 
-```typescript
-import { useSignal } from '@preact/signals';
-import { items, loading, loadItems } from '../stores/exampleStore';
+## Practical Rules
 
-function MyComponent({ sessionId }: { sessionId: string }) {
-    // Subscribe to signals
-    const itemsList = useSignal(items);
-    const isLoading = useSignal(loading);
-    
-    useEffect(() => {
-        loadItems(sessionId);
-    }, [sessionId]);
-    
-    if (isLoading.value) return <div>Loading...</div>;
-    
-    return <div>{itemsList.value.length} items</div>;
-}
-```
+- New code should import from modular paths (`stores/log`, `stores/waveform`, `stores/map`).
+- Preserve compatibility of legacy re-export files unless removal is explicitly requested.
+- Keep cross-store coupling explicit and minimal; prefer pure helpers in `utils` folders.
 
-### Accessing Without useSignal (One-time read)
+## Testing
 
-```typescript
-// For event handlers or callbacks - won't trigger re-render
-function handleClick() {
-    console.log('Current count:', items.value.length);
-}
-```
-
-## Cross-Store Communication
-
-```typescript
-// stores/storeA.ts
-import { signal } from '@preact/signals';
-export const selectedId = signal<string>('');
-
-// stores/storeB.ts
-import { computed } from '@preact/signals';
-import { selectedId } from './storeA';
-
-// Computed that reacts to another store
-export const selectedItem = computed(() => {
-    return items.value.find(i => i.id === selectedId.value);
-});
-```
-
-## Store Testing
-
-```typescript
-// stores/exampleStore.test.ts
-import { describe, it, expect, beforeEach } from 'vitest';
-import { items, loading, loadItems, setItems } from './exampleStore';
-
-describe('exampleStore', () => {
-    beforeEach(() => {
-        // Reset state before each test
-        items.value = [];
-        loading.value = false;
-        error.value = null;
-    });
-    
-    it('should update items', () => {
-        setItems([{ id: '1', name: 'Test' }]);
-        expect(items.value).toHaveLength(1);
-    });
-    
-    it('should handle loading state', async () => {
-        const promise = loadItems('session-1');
-        expect(loading.value).toBe(true);
-        await promise;
-        expect(loading.value).toBe(false);
-    });
-});
-```
-
-## Existing Stores Reference
-
-| Store | Purpose | Key Signals |
-|-------|---------|-------------|
-| `logStore` | Log table state | `entries`, `filters`, `selectedRows`, `filteredEntries`, `currentSession`, `useServerSide` |
-| `waveformStore` | Waveform view | `viewport`, `signals`, `zoom`, `selectedTime` |
-| `mapStore` | Map viewer | `layout`, `playbackTime`, `carriers`, `isPlaying` |
-| `bookmarkStore` | Cross-view bookmarks | `bookmarks`, `syncEnabled` |
-| `selectionStore` | Cross-view selection | `selectedSignal` |
-| `transitionStore` | Transition analysis | `rules`, `stats` |
+- Unit-test action/state logic in module-level test files.
+- Reset signal state between tests.
+- Mock API layer from `frontend/src/api/client.ts` when testing async actions.

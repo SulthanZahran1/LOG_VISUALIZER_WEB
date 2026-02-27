@@ -39,6 +39,7 @@ export interface ParseSession {
     processingTimeMs?: number;
     startTime?: number;
     endTime?: number;
+    parserName?: string;
     errors?: ParseError[];
 }
 

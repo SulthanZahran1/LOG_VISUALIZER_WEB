@@ -60,10 +60,10 @@ cd "$SCRIPT_DIR"
 docker compose -f "$COMPOSE_FILE" down -v 2>&1 | tee -a "$LOG_FILE" || true
 log ""
 
-# Start backend
-log "${BLUE}🐳 Starting backend container...${NC}"
+# Start services
+log "${BLUE}🐳 Starting services...${NC}"
 docker compose -f "$COMPOSE_FILE" up -d --build 2>&1 | tee -a "$LOG_FILE"
-log "${GREEN}✅ Backend container started${NC}"
+log "${GREEN}✅ Services started${NC}"
 log ""
 
 # Wait for backend to be healthy
@@ -91,11 +91,39 @@ if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
     exit 1
 fi
 
+# Wait for frontend to be healthy
+log "${BLUE}⏳ Waiting for frontend to be healthy...${NC}"
+MAX_ATTEMPTS=60
+ATTEMPT=0
+FRONTEND_URL="http://localhost:5173"
+
+while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+    if curl -s "$FRONTEND_URL" > /dev/null 2>&1; then
+        log "${GREEN}✅ Frontend is healthy${NC}"
+        break
+    fi
+    
+    ATTEMPT=$((ATTEMPT + 1))
+    echo -n "." | tee -a "$LOG_FILE"
+    sleep 1
+done
+
+if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+    log ""
+    log "${RED}❌ Frontend failed to become healthy within $MAX_ATTEMPTS seconds${NC}"
+    log "${YELLOW}📋 Container logs:${NC}"
+    docker compose -f "$COMPOSE_FILE" logs 2>&1 | tee -a "$LOG_FILE"
+    exit 1
+fi
+
 log ""
 
 # Run E2E tests
 log "${BLUE}🎭 Running E2E tests...${NC}"
 cd "$PROJECT_ROOT/frontend"
+
+# Skip webServer since frontend runs in Docker
+export SKIP_WEBSERVER=1
 
 if npm run test:e2e 2>&1 | tee -a "$LOG_FILE"; then
     TEST_EXIT_CODE=${PIPESTATUS[0]}

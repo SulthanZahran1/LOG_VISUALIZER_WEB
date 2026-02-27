@@ -550,6 +550,10 @@ export function WaveformCanvas() {
                 .waveform-canvas-inner {
                     position: relative;
                     min-height: 100%;
+                    pointer-events: none;
+                }
+                .waveform-canvas {
+                    pointer-events: auto;
                 }
                 /* Non-blocking loading indicator - positioned in corner */
                 .waveform-loading-indicator {

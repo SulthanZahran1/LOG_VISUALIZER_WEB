@@ -161,7 +161,7 @@ test.describe('Jump to Time Feature', () => {
         await expect(page.locator('.log-table-header')).toBeVisible()
         
         // Click Jump to Time button
-        const jumpBtn = page.locator('.jump-to-time-btn')
+        const jumpBtn = page.locator('.btn-jump-to-time')
         await expect(jumpBtn).toBeVisible()
         await jumpBtn.click()
         
@@ -179,7 +179,8 @@ test.describe('Jump to Time Feature', () => {
         // Take screenshot
         await page.screenshot({ path: 'test-results/jump-to-time-popover.png' })
         
-        // Close popover with Escape
+        // Close popover with Escape (focus popover first to receive keyboard events)
+        await popover.click()
         await page.keyboard.press('Escape')
         await expect(popover).not.toBeVisible()
         
@@ -214,7 +215,7 @@ test.describe('Jump to Time Feature', () => {
         }
         
         // Open Jump to Time popover
-        await page.locator('.jump-to-time-btn').click()
+        await page.locator('.btn-jump-to-time').click()
         const popover = page.locator('.jump-to-time-popover')
         await expect(popover).toBeVisible()
         
@@ -337,7 +338,7 @@ test.describe('Jump to Time Feature', () => {
         }
         
         // Open Jump to Time popover
-        await page.locator('.jump-to-time-btn').click()
+        await page.locator('.btn-jump-to-time').click()
         const popover = page.locator('.jump-to-time-popover')
         await expect(popover).toBeVisible()
         

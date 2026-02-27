@@ -43,11 +43,13 @@ export default defineConfig({
      * Then run tests: npm run test:e2e
      * 
      * This webServer config only starts the frontend dev server.
+     * When running in Docker (via run-e2e-docker.sh), set SKIP_WEBSERVER=1
+     * since the frontend runs in its own container.
      */
-    webServer: {
+    webServer: process.env.SKIP_WEBSERVER === '1' ? undefined : {
         command: 'npm run dev',
         url: 'http://localhost:5173',
-        reuseExistingServer: true, // Always reuse existing servers
+        reuseExistingServer: false, // Restart server if it crashes
         timeout: 60 * 1000,
     },
 })

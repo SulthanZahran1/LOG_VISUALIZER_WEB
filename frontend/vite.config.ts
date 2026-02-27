@@ -7,7 +7,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8089',
+        // Use environment variable or default to localhost
+        target: process.env.VITE_API_PROXY_URL || 'http://localhost:8089',
         changeOrigin: true,
         // Enable WebSocket proxy for /api/ws/* endpoints
         ws: true,

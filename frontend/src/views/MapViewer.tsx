@@ -58,7 +58,7 @@ export function MapViewer() {
     }
 
     return (
-        <div class="view-container">
+        <div class="view-container map-viewer">
             {!mapLayout.value?.objects || Object.keys(mapLayout.value.objects).length === 0 ? (
                 <div class="map-placeholder">
                     <h2>Select a Map</h2>

@@ -57,6 +57,7 @@ export default [
                 TextEncoder: 'readonly',
                 Worker: 'readonly',
                 URL: 'readonly',
+                URLSearchParams: 'readonly',
                 WebSocket: 'readonly',
                 Node: 'readonly',
                 DOMRect: 'readonly',

@@ -9,7 +9,7 @@ test.describe('Map Viewer - Error States', () => {
 
     test('shows error state when map fails to load', async ({ page }) => {
         // Navigate to Map Viewer without loading a map first
-        const mapButton = page.locator('.nav-grid .nav-button').filter({ hasText: 'Map' })
+        const mapButton = page.locator('.nav-grid button.nav-button').filter({ hasText: 'Map' })
         const isEnabled = await mapButton.isEnabled().catch(() => false)
         
         if (!isEnabled) {

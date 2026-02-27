@@ -35,6 +35,7 @@ export function App() {
   const errorMessage = useSignal<string | null>(null)
   const recentFiles = useSignal<FileInfo[]>([])
   const showHelp = useSignal(false)
+  const sessionLoading = useSignal(false)
 
   const fetchFiles = async () => {
     try {
@@ -57,15 +58,40 @@ export function App() {
         const sessionId = urlParams.get('session')
         
         if (sessionId) {
-          // Load session from URL parameter
-          getParseStatus(sessionId)
-            .then((session) => {
-              startSessionPolling(session)
-            })
-            .catch((err) => {
-              console.error('Failed to load session from URL:', err)
-              // Fall back to persisted session
-              initLogStore()
+          // Load session from URL parameter with retry logic
+          sessionLoading.value = true
+          
+          const loadSessionWithRetry = async (retries = 3, delay = 1000): Promise<void> => {
+            for (let attempt = 1; attempt <= retries; attempt++) {
+              try {
+                const session = await getParseStatus(sessionId)
+                console.log(`[App] Session ${sessionId.substring(0, 8)} loaded successfully (attempt ${attempt})`)
+                startSessionPolling(session)
+                return
+              } catch (err) {
+                const status = (err as { status?: number }).status
+                console.warn(`[App] Failed to load session (attempt ${attempt}/${retries}):`, err)
+                
+                if (status === 404) {
+                  // Session not found - no point retrying
+                  console.error(`[App] Session ${sessionId.substring(0, 8)} not found on server`)
+                  break
+                }
+                
+                if (attempt < retries) {
+                  await new Promise(resolve => setTimeout(resolve, delay))
+                }
+              }
+            }
+            
+            // All retries exhausted or 404 error - fall back to persisted session
+            console.log('[App] Falling back to persisted session')
+            await initLogStore()
+          }
+          
+          loadSessionWithRetry()
+            .finally(() => {
+              sessionLoading.value = false
             })
         } else {
           // Normal flow: load from persistence
@@ -305,7 +331,7 @@ export function App() {
             onClearSession={handleClearSession}
           />
         )}
-        {activeTab.value === 'log-table' && <LogTable />}
+        {activeTab.value === 'log-table' && <LogTable key={currentSession.value?.id} />}
         {activeTab.value === 'waveform' && <WaveformView />}
         {activeTab.value === 'map-viewer' && <MapViewer />}
         {activeTab.value === 'transitions' && <TransitionView />}

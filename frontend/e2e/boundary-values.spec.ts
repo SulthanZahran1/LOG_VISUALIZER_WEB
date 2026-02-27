@@ -66,27 +66,52 @@ test.describe('Boundary Values API', () => {
         await expect(page.locator('canvas').first()).toBeVisible({ timeout: 30000 })
         console.log('Timing Diagram loaded')
 
-        // The signals should be auto-selected for large files
-        // Wait for data to load and check console logs
-        await page.waitForTimeout(3000)
-
-        // Pan/zoom to trigger additional chunk loading (this should trigger boundaries)
-        const canvas = page.locator('canvas').first()
-        await canvas.click() // Focus the canvas
-
-        console.log('Panning to trigger before boundaries (using keyboard)...')
-        for (let i = 0; i < 10; i++) {
-            await page.keyboard.press('ArrowRight')
-            await page.waitForTimeout(100)
+        // Wait for signals to be available in the sidebar
+        await page.waitForTimeout(2000)
+        
+        // Select first device/signal from sidebar to enable chunk fetching
+        // For large files, signals are not auto-selected
+        const firstDeviceCheckbox = page.locator('.signal-sidebar .device-header input[type="checkbox"]').first()
+        if (await firstDeviceCheckbox.isVisible({ timeout: 5000 }).catch(() => false)) {
+            await firstDeviceCheckbox.click()
+            console.log('Selected first device signals')
+            // Wait for data to load after signal selection
+            await page.waitForTimeout(2000)
+        } else {
+            console.log('No device checkbox found, signals may already be selected or sidebar not visible')
         }
 
-        // Wait for potential re-fetch
-        await page.waitForTimeout(3000)
+        // Pan/zoom to trigger additional chunk loading (this should trigger boundaries)
+        // Use wrapper for interactions since canvas has pointer-events issues
+        const wrapper = page.locator('.waveform-canvas-wrapper')
+        await expect(wrapper).toBeVisible({ timeout: 10000 })
+        
+        // Focus the wrapper first
+        await wrapper.click({ position: { x: 400, y: 100 } })
+        await page.waitForTimeout(500)
 
-        // Final zoom to be sure
-        const box = await canvas.boundingBox()
+        console.log('Panning to trigger chunk fetch (using mouse drag)...')
+        // Pan by dragging to trigger viewport change and chunk fetch
+        const box = await wrapper.boundingBox()
         if (box) {
-            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+            await page.mouse.move(box.x + box.width / 2, box.y + 100)
+            await page.mouse.down()
+            await page.mouse.move(box.x + box.width / 2 + 200, box.y + 100, { steps: 10 })
+            await page.mouse.up()
+            await page.waitForTimeout(2000)
+            
+            // Pan back to trigger fetch in opposite direction
+            await page.mouse.move(box.x + box.width / 2, box.y + 100)
+            await page.mouse.down()
+            await page.mouse.move(box.x + box.width / 2 - 400, box.y + 100, { steps: 10 })
+            await page.mouse.up()
+            await page.waitForTimeout(2000)
+        }
+
+        // Final zoom to trigger more fetches
+        const canvasBox = await wrapper.boundingBox()
+        if (canvasBox) {
+            await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + 100)
             await page.mouse.wheel(0, 100)
             await page.waitForTimeout(3000)
         }

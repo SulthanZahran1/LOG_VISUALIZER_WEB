@@ -1,10 +1,5 @@
 import { test, expect, Page } from '@playwright/test'
-import * as path from 'path'
-import { fileURLToPath } from 'url'
-import * as fs from 'fs'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+import { ensureFileLoaded, openLogTable } from './test-helpers'
 
 test.describe('Log Table Filtering', () => {
     
@@ -14,29 +9,26 @@ test.describe('Log Table Filtering', () => {
     })
 
     async function setupLogTableWithData(page: Page): Promise<boolean> {
-        // Check if Log Table is already open
-        const logTableTab = page.locator('.tab-item').filter({ hasText: 'Log Table' })
-        if (await logTableTab.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await logTableTab.click()
-            await expect(page.locator('.log-table-header')).toBeVisible({ timeout: 10000 })
-            return true
-        }
-
-        // Try to use a recent file
-        const recentTab = page.locator('.file-tab').filter({ hasText: 'Recent' })
-        if (await recentTab.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await recentTab.click()
-            await page.waitForTimeout(500)
+        // First try the shared helper
+        if (await ensureFileLoaded(page)) {
+            // Ensure Log Table is actually open
+            await openLogTable(page)
             
-            const recentFile = page.locator('.file-item').first()
-            if (await recentFile.isVisible({ timeout: 2000 }).catch(() => false)) {
-                await recentFile.click()
-                await expect(page.locator('.log-table-header')).toBeVisible({ timeout: 30000 })
-                return true
+            // Wait for data to be loaded (rows to appear)
+            let attempts = 0
+            while (attempts < 20) {
+                const rowCount = await page.locator('.log-table-row').count()
+                if (rowCount > 0) {
+                    return true
+                }
+                await page.waitForTimeout(500)
+                attempts++
             }
+            
+            // If no rows after waiting, data might not be available
+            console.log('No rows loaded after waiting')
+            return false
         }
-        
-        // NOTE: Direct API upload is not reliable in test environment
         return false
     }
 

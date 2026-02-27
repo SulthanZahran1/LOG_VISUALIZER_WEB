@@ -1,30 +1,5 @@
 import { test, expect } from '@playwright/test'
-import * as path from 'path'
-import { fileURLToPath } from 'url'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-
-async function ensureFileLoaded(page: any): Promise<boolean> {
-    // Check if there's already a Log Table tab (file already loaded)
-    const logTableTab = page.locator('.tab-item').filter({ hasText: 'Log Table' })
-    if (await logTableTab.isVisible({ timeout: 2000 }).catch(() => false)) {
-        return true
-    }
-    
-    // Try to use a recent file
-    const recentFile = page.locator('.file-item').first()
-    if (await recentFile.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await recentFile.click()
-        await expect(page.locator('.tab-item').filter({ hasText: 'Log Table' })).toBeVisible({ timeout: 30000 })
-        return true
-    }
-    
-    // NOTE: File upload in headless test environment is currently unreliable
-    // due to WebSocket upload mechanism issues. Skip tests that require uploads
-    // when no recent files are available.
-    return false
-}
+import { ensureFileLoaded } from './test-helpers'
 
 test.describe('Bookmarks', () => {
     test.beforeEach(async ({ page }) => {
@@ -170,7 +145,7 @@ test.describe('Waveform Cursor Snapping', () => {
         await page.waitForTimeout(1000)
 
         // Open Timing Diagram from Log Table toolbar
-        await page.locator('.btn-icon[title="Open Timing Diagram"]').click()
+        await page.locator('.btn-icon[title="Open Waveform"]').click()
 
         // Wait for Timing Diagram tab to be active and canvas to be visible
         await expect(page.locator('.tab-item.active')).toContainText('Timing Diagram')

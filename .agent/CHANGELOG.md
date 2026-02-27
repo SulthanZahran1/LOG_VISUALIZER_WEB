@@ -296,7 +296,7 @@ File upload tests skip gracefully in headless environment due to WebSocket uploa
 | Build time | ~12s | ~10s | 17% faster ✅ |
 | Bundle size | 1.8MB | 1.7MB | 6% smaller ✅ |
 
-See `REFACTORING_VERIFICATION.md` for full details.
+Legacy refactoring verification doc was retired during documentation cleanup.
 
 ## [Unreleased] - 2026-02-19
 
@@ -392,7 +392,7 @@ See `REFACTORING_VERIFICATION.md` for full details.
 - ✅ **COMPLETED**: Go 1.25.7 installed, tests running
 - ✅ **Build**: Server compiles successfully
 - ✅ **Tests**: 20/22 passing (91%) - 2 minor test infrastructure issues
-- 📄 **Report**: See `BACKEND_INTEGRATION_TEST.md`
+- 📄 **Report**: Legacy backend integration report doc was retired during documentation cleanup.
 
 ## [Unreleased] - 2026-02-11
 
@@ -616,7 +616,7 @@ See `REFACTORING_VERIFICATION.md` for full details.
 ### Documentation
 - Refactored `CONTEXT.md`: Added quick-start, moved session instructions up, removed duplicates
 - Refactored `TODO.md`: Active tasks first, collapsed completed phases
-- Created `CHANGELOG_ARCHIVE.md` for older entries
+- Created changelog archive (later retired during documentation cleanup)
 - Updated `TESTING_CHECKLIST.md`: Removed outdated split pane section, collapsed future phases
 - Enhanced `SCRATCHPAD.md` with current focus and known issues
 - Created `.agent/architecture/` folder with 5 detailed architecture documents:

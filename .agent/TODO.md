@@ -22,7 +22,7 @@
 
 ## ✅ Completed: 4-Week Refactoring Sprint (2026-02-20)
 
-All refactoring work merged to master. See `REFACTORING_VERIFICATION.md` for details.
+All refactoring work merged to master. Legacy refactoring planning/report docs were removed during documentation cleanup.
 
 ---
 
@@ -30,7 +30,7 @@ All refactoring work merged to master. See `REFACTORING_VERIFICATION.md` for det
 
 **Branch**: `improve/post-refactoring-cleanup`
 
-See `IMPROVEMENT_PLAN.md` for comprehensive options.
+Plans are now tracked directly in this file and in `.agent/SCRATCHPAD.md`.
 
 ### Phase 1: Quick Wins (Foundation) ✅ COMPLETE
 - [x] Fix 2 failing backend tests
@@ -217,14 +217,12 @@ All 4 weeks of the comprehensive refactoring have been successfully completed!
 - 0 TypeScript errors
 - Build 17% faster, bundle 6% smaller
 
-See `REFACTORING_VERIFICATION.md` for comprehensive report.
-
-**See:**
-- `REFACTORING_PLAN.md` - Full refactoring plan
-- `REFACTORING_QUICKSTART.md` - Quick start guide
-- `.agent/architecture/REFACTORING_HANDLERS.md` - Backend guide
-- `.agent/architecture/REFACTORING_LOGTABLE.md` - Frontend guide
-- `.agent/architecture/TESTING_INFRASTRUCTURE.md` - Testing guide
+Refactoring reference docs were retired. Use active docs instead:
+- `README.md`
+- `API.md`
+- `frontend/FRONTEND.md`
+- `backend/README.md`
+- `.agent/architecture/TESTING_INFRASTRUCTURE.md`
 
 ---
 

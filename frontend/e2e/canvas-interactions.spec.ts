@@ -15,17 +15,26 @@ test.describe('Waveform Canvas Interactions', () => {
             test.skip(true, 'Failed to load session')
             return
         }
+        
+        // Wait for signals to be available in sidebar and select first device
+        await page.waitForSelector('.signal-sidebar .device-header', { timeout: 10000 })
+        const firstDeviceCheckbox = page.locator('.signal-sidebar .device-header input[type="checkbox"]').first()
+        if (await firstDeviceCheckbox.isVisible({ timeout: 5000 }).catch(() => false)) {
+            await firstDeviceCheckbox.click()
+            // Wait for canvas to render with signals
+            await page.waitForTimeout(1000)
+        }
     })
 
     test('zooms with Ctrl+wheel on waveform canvas', async ({ page }) => {
-        // Wait for canvas to be visible
-        await expect(page.locator('.waveform-canvas')).toBeVisible()
+        // Wait for canvas wrapper to be visible (wrapper handles pointer events)
+        await expect(page.locator('.waveform-canvas-wrapper')).toBeVisible()
         await page.waitForTimeout(500)
 
-        const canvas = page.locator('.waveform-canvas')
+        const wrapper = page.locator('.waveform-canvas-wrapper')
         
-        // Focus canvas first
-        await canvas.click({ position: { x: 400, y: 200 } })
+        // Focus wrapper first (it handles pointer events, not the canvas directly)
+        await wrapper.click({ position: { x: 400, y: 100 } })
         
         // Hold Ctrl and wheel to zoom
         await page.keyboard.down('Control')
@@ -40,11 +49,11 @@ test.describe('Waveform Canvas Interactions', () => {
     })
 
     test('clears hover state when leaving canvas area', async ({ page }) => {
-        await expect(page.locator('.waveform-canvas')).toBeVisible()
+        await expect(page.locator('.waveform-canvas-wrapper')).toBeVisible()
 
-        // Hover over canvas to trigger hover state
-        const canvas = page.locator('.waveform-canvas')
-        await canvas.hover({ position: { x: 400, y: 200 } })
+        // Hover over wrapper to trigger hover state
+        const wrapper = page.locator('.waveform-canvas-wrapper')
+        await wrapper.hover({ position: { x: 400, y: 100 } })
         await page.waitForTimeout(200)
 
         // Verify hover state is active (time readout may be visible)
@@ -56,7 +65,7 @@ test.describe('Waveform Canvas Interactions', () => {
         await page.waitForTimeout(300)
 
         // Canvas should still be visible (no errors)
-        await expect(canvas).toBeVisible()
+        await expect(page.locator('.waveform-canvas')).toBeVisible()
     })
 
     test('pans waveform on drag', async ({ page }) => {

@@ -5,7 +5,7 @@ import { RecentFiles } from '../components/file/RecentFiles'
 import { LoadedFileCard } from '../components/file/LoadedFileCard'
 import { NavButton } from '../components/layout/NavButton'
 import type { FileInfo } from '../models/types'
-import { currentSession, type ViewType } from '../stores/logStore'
+import { currentSession, isLoadingLog, type ViewType } from '../stores/logStore'
 
 interface HomeViewProps {
     recentFiles: FileInfo[]
@@ -39,6 +39,8 @@ export function HomeView({
     // Upload mode: single or multi-file
     const uploadMode = useSignal<UploadMode>('single');
     const isMerging = useSignal(false);
+
+    const isGenericLog = currentSession.value?.parserName === 'generic_log';
 
     const handleNavigation = (view: ViewType) => {
         onOpenView(view);
@@ -196,13 +198,23 @@ export function HomeView({
 
                 <div class="nav-section">
                     <h3>Open Views</h3>
-                    <div class="nav-grid">
+                    <div 
+                        class="nav-grid" 
+                        data-session-status={currentSession.value ? 'loaded' : isLoadingLog.value ? 'loading' : 'empty'}
+                        data-session-id={currentSession.value?.id || ''}
+                    >
+                        {isLoadingLog.value && !currentSession.value && (
+                            <div class="nav-loading-overlay">
+                                <div class="nav-loading-spinner"></div>
+                                <span>Loading session...</span>
+                            </div>
+                        )}
                         <NavButton
                             title="Timing Diagram"
                             icon="waveform"
-                            description="Visualize signal changes over time"
+                            description={isGenericLog ? "Not available for this log format" : "Visualize signal changes over time"}
                             color="#4285F4"
-                            disabled={!currentSession.value}
+                            disabled={!currentSession.value || isGenericLog}
                             onClick={() => handleNavigation('waveform')}
                         />
                         <NavButton
@@ -216,17 +228,17 @@ export function HomeView({
                         <NavButton
                             title="Map Viewer"
                             icon="map"
-                            description="View carrier positions"
+                            description={isGenericLog ? "Not available for this log format" : "View carrier positions"}
                             color="#FBBC04"
-                            disabled={!currentSession.value}
+                            disabled={!currentSession.value || isGenericLog}
                             onClick={() => handleNavigation('map-viewer')}
                         />
                         <NavButton
                             title="Transitions"
                             icon="chart"
-                            description="Analyze signal intervals"
+                            description={isGenericLog ? "Not available for this log format" : "Analyze signal intervals"}
                             color="#EA4335"
-                            disabled={!currentSession.value}
+                            disabled={!currentSession.value || isGenericLog}
                             onClick={() => handleNavigation('transitions')}
                         />
                     </div>
@@ -406,6 +418,36 @@ export function HomeView({
                     padding: var(--spacing-lg);
                     border: 1px solid var(--border-color);
                     border-radius: var(--card-radius);
+                    position: relative;
+                }
+
+                .nav-loading-overlay {
+                    position: absolute;
+                    inset: 0;
+                    background: rgba(13, 17, 23, 0.8);
+                    backdrop-filter: blur(4px);
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    gap: var(--spacing-md);
+                    z-index: 10;
+                    border-radius: var(--card-radius);
+                    color: var(--text-secondary);
+                    font-size: 13px;
+                }
+
+                .nav-loading-spinner {
+                    width: 32px;
+                    height: 32px;
+                    border: 2px solid var(--border-color);
+                    border-top-color: var(--primary-accent);
+                    border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                }
+
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
                 }
 
                 /* Upload Mode Toggle */
