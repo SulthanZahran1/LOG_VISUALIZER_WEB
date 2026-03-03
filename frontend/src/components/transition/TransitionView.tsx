@@ -315,7 +315,7 @@ export function TransitionView() {
                     </div>
                 </div>
 
-                <div class="view-content">
+                <div class={`view-content${viewMode.value === 'table' ? ' view-content--flush' : ''}`}>
                     {renderConfigSummary()}
                     {renderContent()}
                 </div>
@@ -500,6 +500,25 @@ export function TransitionView() {
                     display: flex;
                     flex-direction: column;
                     gap: var(--spacing-md);
+                }
+
+                /* Table tab: no padding, content fills edge-to-edge like LogTable */
+                .view-content--flush {
+                    padding: 0;
+                    gap: 0;
+                    overflow: hidden;
+                }
+
+                .view-content--flush .config-summary {
+                    margin: var(--spacing-sm) var(--spacing-md);
+                    flex-shrink: 0;
+                }
+
+                /* Let .log-table-container grow into the remaining flex space */
+                .view-content--flush .log-table-container {
+                    flex: 1;
+                    min-height: 0;
+                    height: auto;
                 }
 
                 .config-summary {
