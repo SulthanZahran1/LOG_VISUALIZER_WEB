@@ -108,14 +108,12 @@ describe('TransitionView', () => {
         act(() => {
             currentSession.value = createSession('complete');
             logEntries.value = [
-                { deviceId: 'D1', signalName: 'SigA', timestamp: 1000, value: true, signalType: 'boolean' }
+                { deviceId: 'D1', signalName: 'SigA', timestamp: 1000, value: true, signalType: 'boolean' },
+                { deviceId: 'D1', signalName: 'SigB', timestamp: 1100, value: true, signalType: 'boolean' }
             ];
         });
 
         const { container } = render(<TransitionView />);
-
-        const nameInput = container.querySelector('input[placeholder="e.g., Cycle Time Config"]') as HTMLInputElement;
-        fireEvent.input(nameInput, { target: { value: 'First Config' } });
 
         const selects = container.querySelectorAll('fieldset.condition-fieldset select');
         const deviceSelect = selects[0] as HTMLSelectElement;
@@ -128,16 +126,16 @@ describe('TransitionView', () => {
         await waitFor(() => {
             expect(transitionConfig.value).not.toBeNull();
         });
-        expect(transitionConfig.value?.name).toBe('First Config');
+        expect(transitionConfig.value?.startSignalName).toBe('SigA');
 
         fireEvent.click(screen.getByText('Edit Configuration'));
 
-        const updatedNameInput = container.querySelector('input[placeholder="e.g., Cycle Time Config"]') as HTMLInputElement;
-        fireEvent.input(updatedNameInput, { target: { value: 'Updated Config' } });
+        const updatedSelects = container.querySelectorAll('fieldset.condition-fieldset select');
+        fireEvent.change(updatedSelects[1] as HTMLSelectElement, { target: { value: 'SigB' } });
         fireEvent.click(screen.getByText('Save Configuration'));
 
         await waitFor(() => {
-            expect(transitionConfig.value?.name).toBe('Updated Config');
+            expect(transitionConfig.value?.startSignalName).toBe('SigB');
         });
     });
 

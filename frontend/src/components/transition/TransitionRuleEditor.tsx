@@ -59,7 +59,6 @@ export function TransitionRuleEditor({ config, onSave, onClose }: TransitionRule
     const isEditing = !!config;
 
     // Form state
-    const name = useSignal(config?.name ?? '');
     const type = useSignal<RuleType>(config?.type ?? 'cycle');
     const enabled = useSignal(config?.enabled ?? true);
 
@@ -155,11 +154,38 @@ export function TransitionRuleEditor({ config, onSave, onClose }: TransitionRule
         }
     }, [endSignalType.value]);
 
+    // Reset value to a valid default when the signal type changes to avoid
+    // browser errors (e.g. <input type="number" value="true">) and silent
+    // parse failures (parseFloat('true') → NaN → 0).
+    useEffect(() => {
+        if (startSignalType.value === 'integer') {
+            if (Number.isNaN(parseFloat(startValue.value))) {
+                startValue.value = '0';
+            }
+        } else if (startSignalType.value === 'boolean') {
+            if (startValue.value !== 'true' && startValue.value !== 'false') {
+                startValue.value = 'true';
+            }
+        }
+    }, [startSignalType.value]);
+
+    useEffect(() => {
+        if (endSignalType.value === 'integer') {
+            if (Number.isNaN(parseFloat(endValue.value))) {
+                endValue.value = '0';
+            }
+        } else if (endSignalType.value === 'boolean') {
+            if (endValue.value !== 'true' && endValue.value !== 'false') {
+                endValue.value = 'true';
+            }
+        }
+    }, [endSignalType.value]);
+
     const handleSubmit = (e: Event) => {
         e.preventDefault();
 
         const configData: TransitionConfig = {
-            name: name.value || 'Transition Config',
+            name: 'Transition Config',
             type: type.value,
             enabled: enabled.value,
             startDeviceId: startDeviceId.value,
@@ -228,16 +254,6 @@ export function TransitionRuleEditor({ config, onSave, onClose }: TransitionRule
                 </div>
 
                 <form onSubmit={handleSubmit}>
-                    <div class="form-group">
-                        <label>Name</label>
-                        <input
-                            type="text"
-                            value={name.value}
-                            onInput={(e) => name.value = (e.target as HTMLInputElement).value}
-                            placeholder="e.g., Cycle Time Config"
-                        />
-                    </div>
-
                     <div class="form-group">
                         <label>Transition Type</label>
                         <div class="radio-group">
