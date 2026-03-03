@@ -185,7 +185,7 @@ export function TransitionTable() {
                 {results.map((result, index) => (
                     <div
                         key={`${result.startTime}-${result.endTime}`}
-                        class={`log-table-row tr-status-${result.status}${sel.isSelected(index) ? ' selected' : ''}`}
+                        class={`log-table-row tr-status-${result.status}${actions.isSelected(index) ? ' selected' : ''}`}
                         role="row"
                         onClick={(e) => actions.handleRowClick(e as unknown as MouseEvent, index)}
                     >
