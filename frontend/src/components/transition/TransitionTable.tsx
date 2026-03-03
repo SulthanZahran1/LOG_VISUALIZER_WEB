@@ -5,6 +5,7 @@
 import { useSignal } from '@preact/signals';
 import { CopyIcon, GridIcon } from '../icons';
 import { filteredResults, type TransitionResult } from '../../stores/transitionStore';
+import { useRowSelection } from '../log/hooks';
 import '../log/LogTable.css';
 
 // Column widths (px), matching LogTable's fixed-width column style
@@ -50,6 +51,7 @@ function buildTsv(results: TransitionResult[]): string {
 export function TransitionTable() {
     const results = filteredResults.value;
     const actionMessage = useSignal('');
+    const { state: sel, actions } = useRowSelection();
 
     const formatTime = (ms: number) => {
         const date = new Date(ms);
@@ -94,10 +96,11 @@ export function TransitionTable() {
     };
 
     const handleCopy = async () => {
-        const text = buildTsv(results);
+        const target = sel.hasSelection ? actions.getSelectedData(results) : results;
+        const text = buildTsv(target);
         if (navigator.clipboard?.writeText) {
             await navigator.clipboard.writeText(text);
-            setActionMessage(`Copied ${results.length} rows`);
+            setActionMessage(`Copied ${target.length} rows`);
             return;
         }
         const textarea = document.createElement('textarea');
@@ -109,7 +112,7 @@ export function TransitionTable() {
         textarea.select();
         const copied = document.execCommand('copy');
         document.body.removeChild(textarea);
-        setActionMessage(copied ? `Copied ${results.length} rows` : 'Copy failed');
+        setActionMessage(copied ? `Copied ${target.length} rows` : 'Copy failed');
     };
 
     const handleExportCsv = () => {
@@ -140,7 +143,9 @@ export function TransitionTable() {
             {/* Toolbar */}
             <div class="log-table-toolbar">
                 <div class="toolbar-left">
-                    <span class="selection-count">{results.length} rows</span>
+                    <span class="selection-count">
+                        {sel.hasSelection ? `${sel.selectionCount} / ${results.length} rows` : `${results.length} rows`}
+                    </span>
                 </div>
                 <div class="toolbar-actions">
                     <button
@@ -180,8 +185,9 @@ export function TransitionTable() {
                 {results.map((result, index) => (
                     <div
                         key={`${result.startTime}-${result.endTime}`}
-                        class={`log-table-row tr-status-${result.status}`}
+                        class={`log-table-row tr-status-${result.status}${sel.isSelected(index) ? ' selected' : ''}`}
                         role="row"
+                        onClick={(e) => actions.handleRowClick(e as unknown as MouseEvent, index)}
                     >
                         <div class="log-col tr-col-num" style={{ width: COL_NUM }}>{index + 1}</div>
                         <div class="log-col tr-col-time" style={{ width: COL_TIME }}>{formatTime(result.startTime)}</div>
