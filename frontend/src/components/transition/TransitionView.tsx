@@ -68,11 +68,14 @@ export function TransitionView() {
     const showHelp = useSignal(false);
 
     useEffect(() => {
-        // A transition view session is a single implicit configuration.
-        // Reset state each time this view mounts.
-        initTransitionStore();
         editingConfig.value = null;
-        showEditor.value = !!currentSession.value;
+        if (!transitionConfig.value) {
+            // First visit: no config yet — reset to clean state and auto-open
+            // the editor so the user can configure immediately.
+            initTransitionStore();
+            showEditor.value = !!currentSession.value;
+        }
+        // Returning via tab switch: preserve existing config and results.
     }, []);
 
     // Re-query the backend whenever the config or session changes.
