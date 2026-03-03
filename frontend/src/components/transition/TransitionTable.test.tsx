@@ -41,9 +41,8 @@ describe('TransitionTable', () => {
         });
 
         const copied = writeText.mock.calls[0][0] as string;
-        expect(copied).toContain('Configuration\tStart Time (ISO)\tEnd Time (ISO)\tDuration (ms)\tStatus');
-        expect(copied).toContain('Config A');
-        expect(copied).toContain('Config B');
+        expect(copied).toContain('Start Time (ISO)\tEnd Time (ISO)\tDuration (ms)\tStatus');
+        expect(copied).not.toContain('Configuration');
     });
 
     it('exports currently displayed table rows as CSV', async () => {
@@ -61,8 +60,7 @@ describe('TransitionTable', () => {
 
         const csvBlob = createObjectURL.mock.calls[0][0] as Blob;
         const csvText = await csvBlob.text();
-        expect(csvText).toContain('Configuration,Start Time (ISO),End Time (ISO),Duration (ms),Status');
-        expect(csvText).toContain('Config A');
-        expect(csvText).toContain('Config B');
+        expect(csvText).toContain('Start Time (ISO),End Time (ISO),Duration (ms),Status');
+        expect(csvText).not.toContain('Configuration');
     });
 });

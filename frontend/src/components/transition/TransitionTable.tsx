@@ -7,7 +7,6 @@ import { filteredResults, type TransitionResult } from '../../stores/transitionS
 
 function toRowValues(result: TransitionResult): string[] {
     return [
-        result.configName,
         new Date(result.startTime).toISOString(),
         new Date(result.endTime).toISOString(),
         String(result.duration),
@@ -23,7 +22,7 @@ function escapeCsvCell(value: string): string {
 }
 
 function buildCsv(results: TransitionResult[]): string {
-    const headers = ['Configuration', 'Start Time (ISO)', 'End Time (ISO)', 'Duration (ms)', 'Status'];
+    const headers = ['Start Time (ISO)', 'End Time (ISO)', 'Duration (ms)', 'Status'];
     const rows = results.map(toRowValues);
     const lines = [headers, ...rows].map((row) => row.map(escapeCsvCell).join(','));
     return `${lines.join('\n')}\n`;
@@ -34,7 +33,7 @@ function sanitizeTsvCell(value: string): string {
 }
 
 function buildTsv(results: TransitionResult[]): string {
-    const headers = ['Configuration', 'Start Time (ISO)', 'End Time (ISO)', 'Duration (ms)', 'Status'];
+    const headers = ['Start Time (ISO)', 'End Time (ISO)', 'Duration (ms)', 'Status'];
     const rows = results.map(toRowValues);
     const lines = [headers, ...rows].map((row) => row.map(sanitizeTsvCell).join('\t'));
     return `${lines.join('\n')}\n`;
@@ -172,7 +171,6 @@ export function TransitionTable() {
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Configuration</th>
                         <th>Start Time</th>
                         <th>End Time</th>
                         <th>Duration</th>
@@ -183,7 +181,6 @@ export function TransitionTable() {
                     {results.map((result, index) => (
                         <tr key={`${result.configName}-${result.startTime}`} class={`status-${result.status}`}>
                             <td class="cell-num">{index + 1}</td>
-                            <td class="cell-rule">{result.configName}</td>
                             <td class="cell-time">{formatTime(result.startTime)}</td>
                             <td class="cell-time">{formatTime(result.endTime)}</td>
                             <td class="cell-duration">{formatDuration(result.duration)}</td>
@@ -301,10 +298,6 @@ export function TransitionTable() {
                 .cell-num {
                     color: var(--text-muted);
                     width: 50px;
-                }
-
-                .cell-rule {
-                    font-weight: 500;
                 }
 
                 .cell-time {

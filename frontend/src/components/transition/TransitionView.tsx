@@ -112,6 +112,62 @@ export function TransitionView() {
 
     const activeHelp = VIEW_HELP_CONTENT[viewMode.value];
 
+    const formatCondition = (condition: string, value: string | number | boolean) => {
+        const condMap: Record<string, string> = {
+            'equals': '=', 'not-equals': '≠', 'greater': '>', 'less': '<', 'not-empty': '≠ empty'
+        };
+        const op = condMap[condition] ?? condition;
+        return condition === 'not-empty' ? op : `${op} ${String(value)}`;
+    };
+
+    const renderConfigSummary = () => {
+        const cfg = transitionConfig.value;
+        if (!cfg) return null;
+
+        const typeLabel: Record<string, string> = {
+            'cycle': 'Cycle', 'a-to-b': 'A → B', 'value-populated': 'Value Populated'
+        };
+
+        const formatDuration = (ms: number) => {
+            if (ms >= 60000) return `${(ms / 60000).toFixed(1)}m`;
+            if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
+            return `${ms}ms`;
+        };
+
+        return (
+            <div class="config-summary">
+                <span class="config-type-badge">{typeLabel[cfg.type] ?? cfg.type}</span>
+                <div class="config-conditions">
+                    <span class="config-signal">
+                        <span class="config-label">Start</span>
+                        <span class="config-device">{cfg.startDeviceId}</span>
+                        <span class="config-sep">·</span>
+                        <span class="config-signal-name">{cfg.startSignalName}</span>
+                        <span class="config-cond">{formatCondition(cfg.startCondition, cfg.startValue)}</span>
+                    </span>
+                    {cfg.type === 'a-to-b' && cfg.endDeviceId && cfg.endSignalName && (
+                        <>
+                            <span class="config-arrow">→</span>
+                            <span class="config-signal">
+                                <span class="config-label">End</span>
+                                <span class="config-device">{cfg.endDeviceId}</span>
+                                <span class="config-sep">·</span>
+                                <span class="config-signal-name">{cfg.endSignalName}</span>
+                                <span class="config-cond">{formatCondition(cfg.endCondition!, cfg.endValue!)}</span>
+                            </span>
+                        </>
+                    )}
+                </div>
+                {cfg.targetDuration !== undefined && (
+                    <span class="config-target">
+                        Target {formatDuration(cfg.targetDuration)}
+                        {cfg.tolerance ? ` ±${formatDuration(cfg.tolerance)}` : ''}
+                    </span>
+                )}
+            </div>
+        );
+    };
+
     const renderContent = () => {
         if (!currentSession.value) {
             return (
@@ -257,6 +313,7 @@ export function TransitionView() {
                 </div>
 
                 <div class="view-content">
+                    {renderConfigSummary()}
                     {renderContent()}
                 </div>
             </div>
@@ -437,6 +494,109 @@ export function TransitionView() {
                     flex: 1;
                     overflow: auto;
                     padding: var(--spacing-md);
+                    display: flex;
+                    flex-direction: column;
+                    gap: var(--spacing-md);
+                }
+
+                .config-summary {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                    padding: 6px 10px;
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border-color);
+                    border-radius: 6px;
+                    flex-shrink: 0;
+                    flex-wrap: wrap;
+                }
+
+                .config-type-badge {
+                    font-size: 10px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    color: var(--primary-accent);
+                    background: rgba(77, 182, 226, 0.1);
+                    border: 1px solid rgba(77, 182, 226, 0.3);
+                    border-radius: 4px;
+                    padding: 2px 6px;
+                    flex-shrink: 0;
+                }
+
+                .config-conditions {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                    flex-wrap: wrap;
+                    flex: 1;
+                    min-width: 0;
+                }
+
+                .config-signal {
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                    font-size: 12px;
+                    min-width: 0;
+                }
+
+                .config-label {
+                    font-size: 10px;
+                    font-weight: 600;
+                    color: var(--text-muted);
+                    text-transform: uppercase;
+                    letter-spacing: 0.04em;
+                    flex-shrink: 0;
+                }
+
+                .config-device {
+                    font-family: var(--font-mono);
+                    font-size: 11px;
+                    color: var(--text-secondary);
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .config-sep {
+                    color: var(--text-muted);
+                    flex-shrink: 0;
+                }
+
+                .config-signal-name {
+                    font-family: var(--font-mono);
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                    flex-shrink: 0;
+                }
+
+                .config-cond {
+                    font-family: var(--font-mono);
+                    font-size: 11px;
+                    color: var(--text-secondary);
+                    background: var(--bg-tertiary);
+                    border-radius: 3px;
+                    padding: 1px 5px;
+                    flex-shrink: 0;
+                }
+
+                .config-arrow {
+                    color: var(--text-muted);
+                    font-size: 12px;
+                    flex-shrink: 0;
+                }
+
+                .config-target {
+                    font-size: 11px;
+                    font-family: var(--font-mono);
+                    color: var(--text-secondary);
+                    background: var(--bg-tertiary);
+                    border-radius: 4px;
+                    padding: 2px 7px;
+                    flex-shrink: 0;
+                    margin-left: auto;
                 }
 
                 .empty-state {
