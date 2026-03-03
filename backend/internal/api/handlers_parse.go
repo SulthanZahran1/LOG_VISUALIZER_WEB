@@ -532,6 +532,207 @@ func (h *ParseHandlerImpl) sendSSEError(c echo.Context, message string) {
 	h.sendSSEData(c, map[string]string{"error": message})
 }
 
+// ── Transition analysis ───────────────────────────────────────────────────────
+
+type transitionCondition struct {
+	DeviceID   string      `json:"deviceId"`
+	SignalName string      `json:"signalName"`
+	Condition  string      `json:"condition"` // equals|not-equals|greater|less|not-empty
+	Value      interface{} `json:"value"`     // bool|number|string
+}
+
+type transitionRequest struct {
+	Type           string              `json:"type"` // cycle|a-to-b|value-populated
+	Start          transitionCondition `json:"start"`
+	End            *transitionCondition `json:"end,omitempty"` // a-to-b only
+	TargetDuration *float64            `json:"targetDuration,omitempty"` // ms
+	Tolerance      *float64            `json:"tolerance,omitempty"`      // ms
+}
+
+type transitionResult struct {
+	StartTime float64 `json:"startTime"` // Unix ms
+	EndTime   float64 `json:"endTime"`   // Unix ms
+	Duration  float64 `json:"duration"`  // ms
+	Status    string  `json:"status"`    // ok|above|below|no-target
+}
+
+// HandleTransitions computes transition/tact-time results for the full session
+// dataset by querying DuckDB directly — not limited to the current log table page.
+//
+// POST /api/parse/:sessionId/transitions
+func (h *ParseHandlerImpl) HandleTransitions(c echo.Context) error {
+	sessionID := c.Param("sessionId")
+	if sessionID == "" {
+		return NewValidationError("sessionId")
+	}
+
+	var req transitionRequest
+	if err := c.Bind(&req); err != nil {
+		return NewBadRequestError("invalid request body", err)
+	}
+
+	// Collect all signal pairs we need from the DB
+	signals := []string{fmt.Sprintf("%s::%s", req.Start.DeviceID, req.Start.SignalName)}
+	if req.End != nil && (req.End.DeviceID != req.Start.DeviceID || req.End.SignalName != req.Start.SignalName) {
+		signals = append(signals, fmt.Sprintf("%s::%s", req.End.DeviceID, req.End.SignalName))
+	}
+
+	ctx := c.Request().Context()
+	entries, ok := h.sessionMgr.QuerySignalEntries(ctx, sessionID, signals)
+	if !ok {
+		return NewNotFoundError("session", sessionID)
+	}
+
+	var results []transitionResult
+	switch req.Type {
+	case "cycle":
+		results = computeCycleTransitions(entries, req)
+	case "a-to-b":
+		results = computeABTransitions(entries, req)
+	case "value-populated":
+		results = computeValuePopulatedTransitions(entries, req)
+	default:
+		return NewBadRequestError("unknown transition type: "+req.Type, nil)
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{"results": results})
+}
+
+func matchesCondition(entry models.LogEntry, cond transitionCondition) bool {
+	if entry.DeviceID != cond.DeviceID || entry.SignalName != cond.SignalName {
+		return false
+	}
+	v := entry.Value
+	ev := cond.Value
+	switch cond.Condition {
+	case "equals":
+		return fmt.Sprintf("%v", v) == fmt.Sprintf("%v", ev)
+	case "not-equals":
+		return fmt.Sprintf("%v", v) != fmt.Sprintf("%v", ev)
+	case "greater":
+		return toFloat(v) > toFloat(ev)
+	case "less":
+		return toFloat(v) < toFloat(ev)
+	case "not-empty":
+		return v != nil && v != "" && v != false
+	}
+	return false
+}
+
+func toFloat(v interface{}) float64 {
+	switch x := v.(type) {
+	case float64:
+		return x
+	case int64:
+		return float64(x)
+	case int:
+		return float64(x)
+	case bool:
+		if x {
+			return 1
+		}
+		return 0
+	}
+	return 0
+}
+
+func transitionStatus(duration float64, target, tolerance *float64) string {
+	if target == nil {
+		return "no-target"
+	}
+	tol := 0.0
+	if tolerance != nil {
+		tol = *tolerance
+	}
+	if duration >= *target-tol && duration <= *target+tol {
+		return "ok"
+	}
+	if duration > *target+tol {
+		return "above"
+	}
+	return "below"
+}
+
+func computeCycleTransitions(entries []models.LogEntry, req transitionRequest) []transitionResult {
+	var results []transitionResult
+	var lastMs *float64
+
+	for _, e := range entries {
+		if !matchesCondition(e, req.Start) {
+			continue
+		}
+		ms := float64(e.Timestamp.UnixMilli())
+		if lastMs != nil {
+			dur := ms - *lastMs
+			results = append(results, transitionResult{
+				StartTime: *lastMs,
+				EndTime:   ms,
+				Duration:  dur,
+				Status:    transitionStatus(dur, req.TargetDuration, req.Tolerance),
+			})
+		}
+		lastMs = &ms
+	}
+	return results
+}
+
+func computeABTransitions(entries []models.LogEntry, req transitionRequest) []transitionResult {
+	if req.End == nil {
+		return nil
+	}
+	var results []transitionResult
+	var startMs *float64
+
+	for _, e := range entries {
+		if startMs == nil {
+			if matchesCondition(e, req.Start) {
+				ms := float64(e.Timestamp.UnixMilli())
+				startMs = &ms
+			}
+		} else {
+			if matchesCondition(e, *req.End) {
+				ms := float64(e.Timestamp.UnixMilli())
+				dur := ms - *startMs
+				results = append(results, transitionResult{
+					StartTime: *startMs,
+					EndTime:   ms,
+					Duration:  dur,
+					Status:    transitionStatus(dur, req.TargetDuration, req.Tolerance),
+				})
+				startMs = nil
+			}
+		}
+	}
+	return results
+}
+
+func computeValuePopulatedTransitions(entries []models.LogEntry, req transitionRequest) []transitionResult {
+	var results []transitionResult
+	var emptyMs *float64
+
+	for _, e := range entries {
+		if e.DeviceID != req.Start.DeviceID || e.SignalName != req.Start.SignalName {
+			continue
+		}
+		isEmpty := e.Value == nil || e.Value == "" || e.Value == false
+		if emptyMs == nil && isEmpty {
+			ms := float64(e.Timestamp.UnixMilli())
+			emptyMs = &ms
+		} else if emptyMs != nil && !isEmpty {
+			ms := float64(e.Timestamp.UnixMilli())
+			dur := ms - *emptyMs
+			results = append(results, transitionResult{
+				StartTime: *emptyMs,
+				EndTime:   ms,
+				Duration:  dur,
+				Status:    transitionStatus(dur, req.TargetDuration, req.Tolerance),
+			})
+			emptyMs = nil
+		}
+	}
+	return results
+}
+
 func parseTimestamp(s string) (time.Time, error) {
 	// Try parsing as float first (handles both integer and decimal timestamps)
 	msFloat, err := strconv.ParseFloat(s, 64)

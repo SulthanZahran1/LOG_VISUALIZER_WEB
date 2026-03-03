@@ -2,8 +2,8 @@
  * Transition Store - Manages a single transition configuration and calculated results
  */
 import { computed, signal } from '@preact/signals';
-import type { LogEntry } from '../models/types';
-import { logEntries } from './logStore';
+import { fetchTransitions, type TransitionRequestBody } from '../api/client';
+import { currentSession } from './logStore';
 
 // ============================================================================
 // Types
@@ -259,196 +259,53 @@ export function clearTransitionConfig(): void {
 // ============================================================================
 
 /**
- * Calculate transitions based on current config and log entries.
- * This is done client-side for now; can be moved to backend for large datasets.
+ * Fetch transitions from the backend. The backend queries the full DuckDB
+ * dataset — not the in-memory page slice — so results reflect all entries.
  */
-export function calculateTransitions(): void {
-    isCalculating.value = true;
+export async function calculateTransitions(): Promise<void> {
     const config = transitionConfig.value;
-    const entries = logEntries.value;
+    const session = currentSession.value;
 
-    if (!config || !config.enabled || entries.length === 0) {
+    if (!config || !config.enabled || !session) {
         transitionResults.value = [];
-        isCalculating.value = false;
         return;
     }
 
-    // Sort entries by timestamp
-    const sortedEntries = [...entries].sort((a, b) => {
-        const timeA = new Date(a.timestamp).getTime();
-        const timeB = new Date(b.timestamp).getTime();
-        return timeA - timeB;
-    });
+    isCalculating.value = true;
+    try {
+        const body: TransitionRequestBody = {
+            type: config.type,
+            start: {
+                deviceId: config.startDeviceId,
+                signalName: config.startSignalName,
+                condition: config.startCondition,
+                value: config.startValue,
+            },
+            targetDuration: config.targetDuration,
+            tolerance: config.tolerance,
+        };
 
-    const results = calculateConfigTransitions(config, sortedEntries);
-
-    // Sort results by start time
-    results.sort((a, b) => a.startTime - b.startTime);
-    transitionResults.value = results;
-    isCalculating.value = false;
-}
-
-function calculateConfigTransitions(config: TransitionConfig, entries: LogEntry[]): TransitionResult[] {
-    switch (config.type) {
-        case 'cycle':
-            return calculateCycleTransitions(config, entries);
-        case 'a-to-b':
-            return calculateABTransitions(config, entries);
-        case 'value-populated':
-            return calculateValuePopulatedTransitions(config, entries);
-        default:
-            return [];
-    }
-}
-
-function matchesCondition(
-    entry: LogEntry,
-    deviceId: string,
-    signalName: string,
-    condition: ConditionType,
-    expectedValue: string | number | boolean
-): boolean {
-    if (entry.deviceId !== deviceId || entry.signalName !== signalName) {
-        return false;
-    }
-
-    const value = entry.value;
-
-    switch (condition) {
-        case 'equals':
-            return value === expectedValue || String(value) === String(expectedValue);
-        case 'not-equals':
-            return value !== expectedValue && String(value) !== String(expectedValue);
-        case 'greater':
-            return Number(value) > Number(expectedValue);
-        case 'less':
-            return Number(value) < Number(expectedValue);
-        case 'not-empty':
-            return value !== null && value !== undefined && value !== '';
-        default:
-            return false;
-    }
-}
-
-function calculateCycleTransitions(config: TransitionConfig, entries: LogEntry[]): TransitionResult[] {
-    const results: TransitionResult[] = [];
-    let lastMatchTime: number | null = null;
-
-    for (const entry of entries) {
-        if (matchesCondition(entry, config.startDeviceId, config.startSignalName, config.startCondition, config.startValue)) {
-            const currentTime = new Date(entry.timestamp).getTime();
-
-            if (lastMatchTime !== null) {
-                const duration = currentTime - lastMatchTime;
-                const status = getStatus(duration, config.targetDuration, config.tolerance);
-
-                results.push({
-                    configName: config.name,
-                    startTime: lastMatchTime,
-                    endTime: currentTime,
-                    duration,
-                    status
-                });
-            }
-
-            lastMatchTime = currentTime;
-        }
-    }
-
-    return results;
-}
-
-function calculateABTransitions(config: TransitionConfig, entries: LogEntry[]): TransitionResult[] {
-    const results: TransitionResult[] = [];
-    let waitingForEnd = false;
-    let startTime: number | null = null;
-
-    for (const entry of entries) {
-        if (!waitingForEnd) {
-            // Looking for start condition
-            if (matchesCondition(entry, config.startDeviceId, config.startSignalName, config.startCondition, config.startValue)) {
-                startTime = new Date(entry.timestamp).getTime();
-                waitingForEnd = true;
-            }
-        } else {
-            // Looking for end condition
-            if (config.endDeviceId && config.endSignalName && config.endCondition && config.endValue !== undefined) {
-                if (matchesCondition(entry, config.endDeviceId, config.endSignalName, config.endCondition, config.endValue)) {
-                    const endTime = new Date(entry.timestamp).getTime();
-                    const duration = endTime - startTime!;
-                    const status = getStatus(duration, config.targetDuration, config.tolerance);
-
-                    results.push({
-                        configName: config.name,
-                        startTime: startTime!,
-                        endTime,
-                        duration,
-                        status
-                    });
-
-                    waitingForEnd = false;
-                    startTime = null;
-                }
-            }
-        }
-    }
-
-    return results;
-}
-
-function calculateValuePopulatedTransitions(config: TransitionConfig, entries: LogEntry[]): TransitionResult[] {
-    const results: TransitionResult[] = [];
-    let waitingForValue = false;
-    let startTime: number | null = null;
-
-    for (const entry of entries) {
-        if (entry.deviceId !== config.startDeviceId || entry.signalName !== config.startSignalName) {
-            continue;
+        if (config.type === 'a-to-b' && config.endDeviceId && config.endSignalName && config.endCondition && config.endValue !== undefined) {
+            body.end = {
+                deviceId: config.endDeviceId,
+                signalName: config.endSignalName,
+                condition: config.endCondition,
+                value: config.endValue,
+            };
         }
 
-        const isEmpty = entry.value === null || entry.value === undefined || entry.value === '';
-
-        if (!waitingForValue && isEmpty) {
-            // Started with empty value - wait for it to be populated
-            startTime = new Date(entry.timestamp).getTime();
-            waitingForValue = true;
-        } else if (waitingForValue && !isEmpty) {
-            // Value became populated
-            const endTime = new Date(entry.timestamp).getTime();
-            const duration = endTime - startTime!;
-            const status = getStatus(duration, config.targetDuration, config.tolerance);
-
-            results.push({
-                configName: config.name,
-                startTime: startTime!,
-                endTime,
-                duration,
-                status
-            });
-
-            waitingForValue = false;
-            startTime = null;
-        }
-    }
-
-    return results;
-}
-
-function getStatus(duration: number, target?: number, tolerance?: number): ResultStatus {
-    if (target === undefined || target === null) {
-        return 'no-target';
-    }
-
-    const tol = tolerance ?? 0;
-    const lowerBound = target - tol;
-    const upperBound = target + tol;
-
-    if (duration >= lowerBound && duration <= upperBound) {
-        return 'ok';
-    } else if (duration > upperBound) {
-        return 'above';
-    } else {
-        return 'below';
+        const items = await fetchTransitions(session.id, body);
+        transitionResults.value = items.map(r => ({
+            configName: config.name,
+            startTime: r.startTime,
+            endTime: r.endTime,
+            duration: r.duration,
+            status: r.status,
+        }));
+    } catch {
+        transitionResults.value = [];
+    } finally {
+        isCalculating.value = false;
     }
 }
 

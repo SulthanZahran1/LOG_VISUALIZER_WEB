@@ -679,6 +679,29 @@ func (m *Manager) GetChunk(ctx context.Context, id string, startTs, endTs time.T
 	return entries, true
 }
 
+// QuerySignalEntries returns all entries for specific signals (deviceId::signalName),
+// ordered by timestamp, with no pagination limit. Used for transition analysis.
+func (m *Manager) QuerySignalEntries(ctx context.Context, id string, signals []string) ([]models.LogEntry, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	state, ok := m.sessions[id]
+	if !ok {
+		return nil, false
+	}
+
+	if state.DuckStore == nil {
+		return nil, false
+	}
+
+	entries, err := state.DuckStore.QuerySignalEntries(ctx, signals)
+	if err != nil {
+		fmt.Printf("[Manager] QuerySignalEntries error: %v\n", err)
+		return nil, false
+	}
+	return entries, true
+}
+
 // GetValuesAtTime returns signal states at a specific point in time.
 func (m *Manager) GetValuesAtTime(ctx context.Context, id string, ts time.Time, signals []string) ([]models.LogEntry, bool) {
 	m.mu.RLock()

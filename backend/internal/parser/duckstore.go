@@ -805,6 +805,54 @@ func (ds *DuckStore) GetEntries(ctx context.Context, start, end int) ([]models.L
 	return entries, rows.Err()
 }
 
+// QuerySignalEntries returns ALL entries for specific signals (deviceId::signalName pairs)
+// ordered by timestamp ascending. No pagination — intended for full-dataset calculations
+// such as transition/tact-time analysis.
+func (ds *DuckStore) QuerySignalEntries(ctx context.Context, signals []string) ([]models.LogEntry, error) {
+	select {
+	case ds.querySem <- struct{}{}:
+		defer func() { <-ds.querySem }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	if len(signals) == 0 {
+		return []models.LogEntry{}, nil
+	}
+
+	var clauses []string
+	var args []interface{}
+	for _, s := range signals {
+		parts := strings.Split(s, "::")
+		if len(parts) == 2 {
+			clauses = append(clauses, "(device_id = ? AND signal = ?)")
+			args = append(args, parts[0], parts[1])
+		}
+	}
+	if len(clauses) == 0 {
+		return []models.LogEntry{}, nil
+	}
+
+	query := `SELECT timestamp, device_id, signal, category, val_type, val_bool, val_int, val_float, val_str
+		FROM entries WHERE ` + strings.Join(clauses, " OR ") + ` ORDER BY timestamp ASC`
+
+	rows, err := ds.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("QuerySignalEntries: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []models.LogEntry
+	for rows.Next() {
+		entry, err := scanEntryRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
 // GetChunk returns entries within a time range (startTs <= ts <= endTs)
 // Optional signals parameter filters results to specific signals (deviceId::signalName).
 func (ds *DuckStore) GetChunk(ctx context.Context, startTs, endTs time.Time, signals []string) ([]models.LogEntry, error) {

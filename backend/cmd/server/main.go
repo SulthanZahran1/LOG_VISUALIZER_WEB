@@ -217,6 +217,7 @@ func main() {
 	apiGroup.GET("/parse/:sessionId/index-of-time", handlers.Parse.HandleGetIndexByTime)
 	apiGroup.GET("/parse/:sessionId/time-tree", handlers.Parse.HandleGetTimeTree)
 	apiGroup.POST("/parse/:sessionId/keepalive", handlers.Parse.HandleSessionKeepAlive)
+	apiGroup.POST("/parse/:sessionId/transitions", handlers.Parse.HandleTransitions)
 
 	// Map Layout routes (new handlers)
 	apiGroup.GET("/map/layout", handlers.Map.HandleGetMapLayout)

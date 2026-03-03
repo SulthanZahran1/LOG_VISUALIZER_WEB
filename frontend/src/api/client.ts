@@ -384,6 +384,39 @@ export async function sessionKeepAlive(sessionId: string): Promise<void> {
     await request<void>(`/parse/${sessionId}/keepalive`, { method: 'POST' });
 }
 
+export interface TransitionCondition {
+    deviceId: string;
+    signalName: string;
+    condition: string;
+    value: string | number | boolean;
+}
+
+export interface TransitionRequestBody {
+    type: 'cycle' | 'a-to-b' | 'value-populated';
+    start: TransitionCondition;
+    end?: TransitionCondition;
+    targetDuration?: number;
+    tolerance?: number;
+}
+
+export interface TransitionResultItem {
+    startTime: number;
+    endTime: number;
+    duration: number;
+    status: 'ok' | 'above' | 'below' | 'no-target';
+}
+
+export async function fetchTransitions(
+    sessionId: string,
+    body: TransitionRequestBody
+): Promise<TransitionResultItem[]> {
+    const resp = await request<{ results: TransitionResultItem[] }>(
+        `/parse/${sessionId}/transitions`,
+        { method: 'POST', body: JSON.stringify(body) }
+    );
+    return resp.results ?? [];
+}
+
 /**
  * Stream log entries via Server-Sent Events for progressive loading.
  * This allows displaying entries incrementally as they are received.

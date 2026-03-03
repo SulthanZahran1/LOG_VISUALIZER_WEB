@@ -15,7 +15,7 @@ import {
     type TransitionConfig,
     type ViewMode
 } from '../../stores/transitionStore';
-import { currentSession, logEntries, isStreaming } from '../../stores/logStore';
+import { currentSession } from '../../stores/logStore';
 import { TransitionRuleEditor } from './TransitionRuleEditor';
 import { TransitionTable } from './TransitionTable';
 import { TransitionStats } from './TransitionStats';
@@ -75,16 +75,14 @@ export function TransitionView() {
         showEditor.value = !!currentSession.value;
     }, []);
 
-    // Recalculate when session/data/rules change and session is ready
+    // Re-query the backend whenever the config or session changes.
     useEffect(() => {
-        if (currentSession.value?.status === 'complete' && !isStreaming.value) {
-            calculateTransitions();
+        if (currentSession.value?.status === 'complete' && transitionConfig.value) {
+            void calculateTransitions();
         }
     }, [
         currentSession.value?.id,
         currentSession.value?.status,
-        isStreaming.value,
-        logEntries.value,
         transitionConfig.value
     ]);
 

@@ -40,6 +40,7 @@ type ParseHandler interface {
 	HandleGetTimeTree(c echo.Context) error
 	HandleGetValuesAtTime(c echo.Context) error
 	HandleSessionKeepAlive(c echo.Context) error
+	HandleTransitions(c echo.Context) error
 }
 
 // MapHandler handles map configuration operations
@@ -97,6 +98,7 @@ type SessionManager interface {
 	GetIndexByTime(ctx context.Context, id string, params parser.QueryParams, ts int64) (int, bool)
 	GetTimeTree(ctx context.Context, id string, params parser.QueryParams) ([]parser.TimeTreeEntry, bool)
 	GetValuesAtTime(ctx context.Context, id string, ts time.Time, signals []string) ([]models.LogEntry, bool)
+	QuerySignalEntries(ctx context.Context, id string, signals []string) ([]models.LogEntry, bool)
 }
 
 

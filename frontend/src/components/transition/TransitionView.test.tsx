@@ -1,7 +1,15 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/preact';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TransitionView } from './TransitionView';
 import { currentSession, isStreaming, logEntries } from '../../stores/logStore';
+
+vi.mock('../../api/client', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../api/client')>();
+    return { ...actual, fetchTransitions: vi.fn().mockResolvedValue([]) };
+});
+
+import { fetchTransitions } from '../../api/client';
+const mockFetchTransitions = vi.mocked(fetchTransitions);
 import {
     isCalculating,
     resultFilter,
@@ -11,7 +19,7 @@ import {
     viewMode,
     type TransitionConfig
 } from '../../stores/transitionStore';
-import type { LogEntry, ParseSession } from '../../models/types';
+import type { ParseSession } from '../../models/types';
 
 function createSession(status: ParseSession['status'], id = 'session-1'): ParseSession {
     return {
@@ -80,20 +88,18 @@ describe('TransitionView', () => {
     it('recalculates when a config is set and session becomes complete', async () => {
         const config = createCycleConfig('Cycle A', 'D1', 'SigA');
 
+        mockFetchTransitions.mockResolvedValue([
+            { startTime: 1000, endTime: 2500, duration: 1500, status: 'no-target' }
+        ]);
+
         act(() => {
             currentSession.value = createSession('parsing');
         });
 
         render(<TransitionView />);
 
-        const entries: LogEntry[] = [
-            { deviceId: 'D1', signalName: 'SigA', timestamp: 1000, value: true, signalType: 'boolean' },
-            { deviceId: 'D1', signalName: 'SigA', timestamp: 2500, value: true, signalType: 'boolean' },
-        ];
-
         act(() => {
             transitionConfig.value = config;
-            logEntries.value = entries;
             currentSession.value = createSession('complete');
         });
 
