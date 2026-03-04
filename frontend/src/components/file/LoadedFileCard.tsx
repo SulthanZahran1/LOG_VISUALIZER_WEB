@@ -19,9 +19,17 @@ function getStatusLabel(session: ParseSession): string {
         case 'pending': return 'Starting...';
         case 'parsing': return `Parsing ${Math.floor(session.progress || 0)}%`;
         case 'complete': return 'Ready';
-        case 'error': return 'Error';
+        case 'error': return 'Parse failed';
         default: return session.status;
     }
+}
+
+function getPrimaryError(session: ParseSession): string | null {
+    if (session.status !== 'error') {
+        return null;
+    }
+
+    return session.errors?.[0]?.reason || 'The parser did not return additional details.';
 }
 
 export function LoadedFileCard({ recentFiles, onUnload }: LoadedFileCardProps) {
@@ -77,6 +85,8 @@ export function LoadedFileCard({ recentFiles, onUnload }: LoadedFileCardProps) {
     const isParsing = session.status === 'pending' || session.status === 'parsing';
     const showProgress = isParsing || streaming;
     const progressValue = streaming ? progress : (session.progress || 0);
+    const primaryError = getPrimaryError(session);
+    const additionalErrorCount = Math.max((session.errors?.length || 0) - 1, 0);
 
     return (
         <div class="loaded-card">
@@ -112,6 +122,27 @@ export function LoadedFileCard({ recentFiles, onUnload }: LoadedFileCardProps) {
             {showProgress && (
                 <div class="progress-container">
                     <div class="progress-bar" style={{ width: `${progressValue}%` }}></div>
+                </div>
+            )}
+
+            {primaryError && (
+                <div class="loaded-error-panel" role="alert">
+                    <div class="loaded-error-icon" aria-hidden="true">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="8" x2="12" y2="12" />
+                            <line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
+                    </div>
+                    <div class="loaded-error-copy">
+                        <span class="loaded-error-title">Parsing stopped before the file was ready.</span>
+                        <span class="loaded-error-message">{primaryError}</span>
+                        {additionalErrorCount > 0 && (
+                            <span class="loaded-error-meta">
+                                {additionalErrorCount} more parser issue{additionalErrorCount === 1 ? '' : 's'} reported.
+                            </span>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -217,6 +248,54 @@ export function LoadedFileCard({ recentFiles, onUnload }: LoadedFileCardProps) {
                     height: 100%;
                     background: var(--primary-accent);
                     transition: width 0.3s ease;
+                }
+
+                .loaded-error-panel {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: var(--spacing-sm);
+                    padding: var(--spacing-sm) var(--spacing-md);
+                    border-radius: var(--border-radius);
+                    border: 1px solid rgba(248, 81, 73, 0.45);
+                    background:
+                        linear-gradient(135deg, rgba(248, 81, 73, 0.18), rgba(248, 81, 73, 0.08));
+                    color: var(--accent-error);
+                }
+
+                .loaded-error-icon {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 999px;
+                    background: rgba(248, 81, 73, 0.16);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-shrink: 0;
+                }
+
+                .loaded-error-copy {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                    min-width: 0;
+                }
+
+                .loaded-error-title {
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #ffd4d1;
+                }
+
+                .loaded-error-message {
+                    font-size: 12px;
+                    line-height: 1.45;
+                    color: var(--accent-error);
+                    word-break: break-word;
+                }
+
+                .loaded-error-meta {
+                    font-size: 11px;
+                    color: #ffb4ae;
                 }
             `}</style>
         </div>

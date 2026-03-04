@@ -116,7 +116,7 @@ export function initChangedSignalsEffect(): void {
         const range = viewRange.value;
         const active = showChangedInView.value;
 
-        if (!session || !range || !active) {
+        if (!session || session.status !== 'complete' || !range || !active) {
             activeFetchId++;
             signalsWithChanges.value = new Set();
             return;

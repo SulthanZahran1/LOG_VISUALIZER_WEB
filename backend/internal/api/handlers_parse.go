@@ -269,6 +269,10 @@ func (h *ParseHandlerImpl) HandleParseChunk(c echo.Context) error {
 		ctx := c.Request().Context()
 		entries, ok := h.sessionMgr.GetChunk(ctx, id, startTs, endTs, req.Signals)
 		if !ok {
+			if session, exists := h.sessionMgr.GetSession(id); exists &&
+				(session.Status == models.SessionStatusPending || session.Status == models.SessionStatusParsing) {
+				return c.JSON(http.StatusAccepted, []models.LogEntry{})
+			}
 			return NewNotFoundError("session", id)
 		}
 		return c.JSON(http.StatusOK, entries)
@@ -280,6 +284,10 @@ func (h *ParseHandlerImpl) HandleParseChunk(c echo.Context) error {
 	ctx := c.Request().Context()
 	entries, ok := h.sessionMgr.GetChunk(ctx, id, startTs, endTs, signals)
 	if !ok {
+		if session, exists := h.sessionMgr.GetSession(id); exists &&
+			(session.Status == models.SessionStatusPending || session.Status == models.SessionStatusParsing) {
+			return c.JSON(http.StatusAccepted, []models.LogEntry{})
+		}
 		return NewNotFoundError("session", id)
 	}
 
@@ -309,6 +317,13 @@ func (h *ParseHandlerImpl) HandleParseChunkBoundaries(c echo.Context) error {
 	ctx := c.Request().Context()
 	boundaries, ok := h.sessionMgr.GetBoundaryValues(ctx, id, startTs, endTs, req.Signals)
 	if !ok {
+		if session, exists := h.sessionMgr.GetSession(id); exists &&
+			(session.Status == models.SessionStatusPending || session.Status == models.SessionStatusParsing) {
+			return c.JSON(http.StatusAccepted, &parser.BoundaryValues{
+				Before: map[string]models.LogEntry{},
+				After:  map[string]models.LogEntry{},
+			})
+		}
 		return NewNotFoundError("session", id)
 	}
 
@@ -542,11 +557,11 @@ type transitionCondition struct {
 }
 
 type transitionRequest struct {
-	Type           string              `json:"type"` // cycle|a-to-b|value-populated
-	Start          transitionCondition `json:"start"`
-	End            *transitionCondition `json:"end,omitempty"` // a-to-b only
-	TargetDuration *float64            `json:"targetDuration,omitempty"` // ms
-	Tolerance      *float64            `json:"tolerance,omitempty"`      // ms
+	Type           string               `json:"type"` // cycle|a-to-b|value-populated
+	Start          transitionCondition  `json:"start"`
+	End            *transitionCondition `json:"end,omitempty"`            // a-to-b only
+	TargetDuration *float64             `json:"targetDuration,omitempty"` // ms
+	Tolerance      *float64             `json:"tolerance,omitempty"`      // ms
 }
 
 type transitionResult struct {

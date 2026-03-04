@@ -19,12 +19,16 @@ import (
 
 // MockSessionManager is a mock implementation for testing
 type MockSessionManager struct {
-	sessions map[string]*models.ParseSession
+	sessions         map[string]*models.ParseSession
+	chunkOK          bool
+	boundaryValuesOK bool
 }
 
 func NewMockSessionManager() *MockSessionManager {
 	return &MockSessionManager{
-		sessions: make(map[string]*models.ParseSession),
+		sessions:         make(map[string]*models.ParseSession),
+		chunkOK:          true,
+		boundaryValuesOK: true,
 	}
 }
 
@@ -73,11 +77,11 @@ func (m *MockSessionManager) GetCategories(ctx context.Context, id string) ([]st
 }
 
 func (m *MockSessionManager) GetChunk(ctx context.Context, id string, start, end time.Time, signals []string) ([]models.LogEntry, bool) {
-	return []models.LogEntry{}, true
+	return []models.LogEntry{}, m.chunkOK
 }
 
 func (m *MockSessionManager) GetBoundaryValues(ctx context.Context, id string, start, end time.Time, signals []string) (*parser.BoundaryValues, bool) {
-	return &parser.BoundaryValues{Before: make(map[string]models.LogEntry), After: make(map[string]models.LogEntry)}, true
+	return &parser.BoundaryValues{Before: make(map[string]models.LogEntry), After: make(map[string]models.LogEntry)}, m.boundaryValuesOK
 }
 
 func (m *MockSessionManager) GetIndexByTime(ctx context.Context, id string, params parser.QueryParams, ts int64) (int, bool) {
@@ -89,6 +93,10 @@ func (m *MockSessionManager) GetTimeTree(ctx context.Context, id string, params 
 }
 
 func (m *MockSessionManager) GetValuesAtTime(ctx context.Context, id string, ts time.Time, signals []string) ([]models.LogEntry, bool) {
+	return []models.LogEntry{}, true
+}
+
+func (m *MockSessionManager) QuerySignalEntries(ctx context.Context, id string, signals []string) ([]models.LogEntry, bool) {
 	return []models.LogEntry{}, true
 }
 
@@ -447,6 +455,76 @@ func TestParseTimestamp(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestParseHandler_HandleParseChunk_ReturnsAcceptedWhileSessionParsing(t *testing.T) {
+	store := testutil.NewMockStorage()
+	sessionMgr := NewMockSessionManager()
+	sessionMgr.chunkOK = false
+	sessionMgr.sessions["test-session-1"] = &models.ParseSession{
+		ID:     "test-session-1",
+		Status: models.SessionStatusParsing,
+	}
+	handler := NewParseHandler(store, sessionMgr)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/parse/:sessionId/chunk?start=1&end=2", bytes.NewBufferString(`{"signals":["A::B"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("sessionId")
+	c.SetParamValues("test-session-1")
+
+	err := handler.HandleParseChunk(c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d", http.StatusAccepted, rec.Code)
+	}
+
+	var response []models.LogEntry
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if len(response) != 0 {
+		t.Fatalf("expected empty response, got %d entries", len(response))
+	}
+}
+
+func TestParseHandler_HandleParseChunkBoundaries_ReturnsAcceptedWhileSessionParsing(t *testing.T) {
+	store := testutil.NewMockStorage()
+	sessionMgr := NewMockSessionManager()
+	sessionMgr.boundaryValuesOK = false
+	sessionMgr.sessions["test-session-1"] = &models.ParseSession{
+		ID:     "test-session-1",
+		Status: models.SessionStatusParsing,
+	}
+	handler := NewParseHandler(store, sessionMgr)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/parse/:sessionId/chunk-boundaries", bytes.NewBufferString(`{"start":1,"end":2,"signals":["A::B"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("sessionId")
+	c.SetParamValues("test-session-1")
+
+	err := handler.HandleParseChunkBoundaries(c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d", http.StatusAccepted, rec.Code)
+	}
+
+	var response parser.BoundaryValues
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if len(response.Before) != 0 || len(response.After) != 0 {
+		t.Fatalf("expected empty boundaries, got before=%d after=%d", len(response.Before), len(response.After))
 	}
 }
 

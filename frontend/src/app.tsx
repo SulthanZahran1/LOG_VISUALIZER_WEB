@@ -236,6 +236,11 @@ export function App() {
     }
   }
 
+  const hasSessionParseFailure = currentSession.value?.status === 'error'
+  const parseFailureSummary = hasSessionParseFailure
+    ? currentSession.value?.errors?.[0]?.reason || logError.value || 'The parser stopped before the session completed.'
+    : logError.value
+
   return (
     <div class="app-container">
       <header class="app-header">
@@ -313,14 +318,24 @@ export function App() {
 
       <main class="app-main">
         {logError.value && (
-          <div class="error-banner">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-            Parsing Error: {logError.value}
-            <button onClick={() => logError.value = null}><XIcon size={14} /></button>
+          <div class="error-banner" role="alert">
+            <div class="error-banner-icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            </div>
+            <div class="error-banner-copy">
+              <strong>{hasSessionParseFailure ? 'Parsing failed' : 'Operation failed'}</strong>
+              <span>{parseFailureSummary}</span>
+              {hasSessionParseFailure && (
+                <span class="error-banner-hint">
+                  The failed session stays loaded so you can review it, clear it, or try another file.
+                </span>
+              )}
+            </div>
+            <button aria-label="Dismiss error" onClick={() => logError.value = null}><XIcon size={14} /></button>
           </div>
         )}
 
@@ -608,14 +623,51 @@ export function App() {
         }
 
         .error-banner {
-          background: rgba(248, 81, 73, 0.15);
-          border: 1px solid var(--accent-error);
+          background: linear-gradient(135deg, rgba(248, 81, 73, 0.2), rgba(248, 81, 73, 0.08));
+          border: 1px solid rgba(248, 81, 73, 0.55);
+          border-left: 4px solid var(--accent-error);
           color: var(--accent-error);
-          padding: var(--spacing-sm) var(--spacing-md);
+          padding: var(--spacing-md);
+          display: flex;
+          align-items: flex-start;
+          gap: var(--spacing-md);
+          font-size: 13px;
+          box-shadow: 0 8px 20px rgba(248, 81, 73, 0.08);
+        }
+
+        .error-banner-icon {
+          width: 28px;
+          height: 28px;
+          border-radius: 999px;
+          background: rgba(248, 81, 73, 0.18);
           display: flex;
           align-items: center;
-          gap: var(--spacing-sm);
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .error-banner-copy {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+          flex: 1;
+        }
+
+        .error-banner-copy strong {
           font-size: 13px;
+          font-weight: 700;
+          color: #ffd4d1;
+        }
+
+        .error-banner-copy span {
+          line-height: 1.45;
+          word-break: break-word;
+        }
+
+        .error-banner-hint {
+          color: #ffb4ae;
+          font-size: 12px;
         }
 
         .error-banner button {
@@ -625,6 +677,7 @@ export function App() {
           margin-left: auto;
           cursor: pointer;
           padding: 4px;
+          align-self: flex-start;
         }
 
         /* === HELP MODAL === */
