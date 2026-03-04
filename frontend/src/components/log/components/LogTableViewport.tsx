@@ -7,6 +7,8 @@ import { forwardRef } from 'preact/compat';
 import { useCallback } from 'preact/hooks';
 import type { LogEntry } from '../../../models/types';
 import type { VirtualScrollState } from '../hooks/useVirtualScroll';
+import type { ColorCodingSettings } from '../../../stores/colorCodingStore';
+import type { ColumnKey } from '../hooks/useColumnManagement';
 import { LogTableRow } from './LogTableRow';
 
 export interface LogTableViewportProps {
@@ -21,21 +23,21 @@ export interface LogTableViewportProps {
     /** Set of selected row indices */
     selectedRows: Set<number>;
     /** Column order */
-    columnOrder: string[];
+    columnOrder: ColumnKey[];
     /** Column widths */
     columnWidths: Record<string, number>;
     /** Whether in server-side mode */
     serverSide?: boolean;
     /** Server page offset */
     serverPageOffset?: number;
-    /** Search query for highlighting */
-    searchQuery?: string;
+    /** Filter query used only for empty-state messaging */
+    filterQuery?: string;
+    /** Highlight-only query */
+    highlightQuery?: string;
     /** Use regex for search */
     searchRegex?: boolean;
     /** Case sensitive search */
     searchCaseSensitive?: boolean;
-    /** Highlight mode enabled */
-    highlightMode?: boolean;
     /** Row height */
     rowHeight?: number;
     /** Scale factor for scroll */
@@ -50,6 +52,8 @@ export interface LogTableViewportProps {
     isFetchingPage?: boolean;
     /** Total count for empty state */
     totalCount?: number;
+    /** Active color coding settings */
+    colorSettings?: ColorCodingSettings;
     /** Handler for row mouse down */
     onRowMouseDown?: (index: number, e: MouseEvent) => void;
     /** Handler for row context menu */
@@ -73,10 +77,10 @@ export const LogTableViewport = forwardRef<HTMLDivElement, LogTableViewportProps
         columnWidths,
         serverSide = false,
         serverPageOffset = 0,
-        searchQuery = '',
+        filterQuery = '',
+        highlightQuery = '',
         searchRegex = false,
         searchCaseSensitive = false,
-        highlightMode = false,
         rowHeight = DEFAULT_ROW_HEIGHT,
         scrollScale = 1,
         isLoading = false,
@@ -84,6 +88,7 @@ export const LogTableViewport = forwardRef<HTMLDivElement, LogTableViewportProps
         streamProgress = 0,
         isFetchingPage = false,
         totalCount = 0,
+        colorSettings,
         onRowMouseDown,
         onRowContextMenu,
         onScroll
@@ -129,8 +134,8 @@ export const LogTableViewport = forwardRef<HTMLDivElement, LogTableViewportProps
         if (!isLoading && totalCount === 0) {
             return (
                 <div className="log-table-viewport" ref={ref} onScroll={handleScroll}>
-                    <div className="log-empty-state">
-                        {searchQuery ? 'No entries match your filter' : 'No entries found'}
+                <div className="log-empty-state">
+                        {filterQuery ? 'No entries match your filter' : 'No entries found'}
                     </div>
                 </div>
             );
@@ -151,11 +156,11 @@ export const LogTableViewport = forwardRef<HTMLDivElement, LogTableViewportProps
                                     columnOrder={columnOrder}
                                     columnWidths={columnWidths}
                                     isSelected={selectedRows.has(actualIndex)}
-                                    searchQuery={searchQuery}
+                                    highlightQuery={highlightQuery}
                                     searchRegex={searchRegex}
                                     searchCaseSensitive={searchCaseSensitive}
-                                    highlightMode={highlightMode}
                                     rowHeight={rowHeight}
+                                    colorSettings={colorSettings}
                                     onMouseDown={onRowMouseDown}
                                     onContextMenu={onRowContextMenu}
                                 />

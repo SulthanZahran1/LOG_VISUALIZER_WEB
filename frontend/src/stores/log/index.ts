@@ -51,6 +51,7 @@ export {
     searchRegex,
     searchCaseSensitive,
     showChangedOnly,
+    highlightQuery,
     searchHighlightMode,
     categoryFilter,
     signalNameFilter,

@@ -10,7 +10,7 @@ import {
     searchRegex,
     searchCaseSensitive,
     showChangedOnly,
-    searchHighlightMode,
+    highlightQuery,
     totalEntries,
     fetchEntries,
     useServerSide,
@@ -32,14 +32,13 @@ import type { TimeTreeEntry } from '../../api/client';
 import { toggleSignal } from '../../stores/waveformStore';
 import type { SortColumnKey } from '../../stores/log/types';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
-import { getTRSFieldValue } from '../../utils/trsLog';
 import type { ParseSession } from '../../models/types';
 import { colorSettings } from '../../stores/colorCodingStore';
 import { SignalSidebar } from '../waveform/SignalSidebar';
 
 // Components
 import { LogTableToolbar } from './components/LogTableToolbar';
-import { HighlightText } from './components/HighlightText';
+import { LogTableViewport } from './components/LogTableViewport';
 
 // Hooks
 import {
@@ -54,8 +53,6 @@ import {
     type ColumnDef
 } from './hooks';
 
-// Utils
-import { computeRowColorCoding } from './utils/colorCoding';
 import './LogTable.css';
 
 const ROW_HEIGHT = 28;
@@ -449,8 +446,7 @@ export function LogTable() {
         onQueryChange: (q) => searchQuery.value = q,
         onRegexChange: (v) => searchRegex.value = v,
         onCaseSensitiveChange: (v) => searchCaseSensitive.value = v,
-        onShowChangedOnlyChange: (v) => showChangedOnly.value = v,
-        onHighlightModeChange: (v) => searchHighlightMode.value = v
+        onShowChangedOnlyChange: (v) => showChangedOnly.value = v
     });
 
     // Sync search state with store
@@ -465,10 +461,6 @@ export function LogTable() {
     useEffect(() => {
         showChangedOnly.value = searchState.showChangedOnly;
     }, [searchState.showChangedOnly]);
-
-    useEffect(() => {
-        searchHighlightMode.value = searchState.highlightMode;
-    }, [searchState.highlightMode]);
 
     // ===== EFFECTS =====
 
@@ -695,10 +687,11 @@ export function LogTable() {
             <LogTableToolbar
                 searchState={searchState}
                 onSearchChange={searchActions.setQuery}
+                highlightQuery={highlightQuery.value}
+                onHighlightQueryChange={(q) => highlightQuery.value = q}
                 onToggleRegex={searchActions.toggleRegex}
                 onToggleCaseSensitive={searchActions.toggleCaseSensitive}
                 onToggleShowChangedOnly={searchActions.toggleShowChangedOnly}
-                onToggleHighlightMode={searchActions.toggleHighlightMode}
                 selectionCount={selectionState.selectionCount}
                 jumpToTimeOpen={jumpToTimeOpen.value}
                 onToggleJumpToTime={() => jumpToTimeOpen.value = !jumpToTimeOpen.value}
@@ -790,121 +783,33 @@ export function LogTable() {
                     </div>
 
                     {/* Viewport with rows */}
-                    <div className="log-table-viewport" ref={tableRef} onScroll={handleScroll}>
-                        <div
-                            className="log-table-spacer"
-                            style={{ height: `${virtualState.scrollHeight}px` }}
-                        >
-                            <div
-                                className="log-table-rows"
-                                style={{ transform: `translateY(${useServerSide.value ? (serverPageOffset.value * ROW_HEIGHT) / virtualState.scaleFactor : virtualState.offsetY}px)` }}
-                            >
-                                {visibleEntries.map((entry, i) => {
-                                    const actualIdx = startIdx + i;
-                                    const isSelected = selectionActions.isSelected(actualIdx);
-
-                                    // Compute color coding
-                                    const colorResult = colorSettings.value.enabled
-                                        ? computeRowColorCoding(entry, colorSettings.value)
-                                        : { classes: [], styles: {}, valueClassMods: [] };
-
-                                    // Check highlight match
-                                    const isHighlightMatch = searchHighlightMode.value && searchQuery.value && (
-                                        entry.deviceId.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-                                        entry.signalName.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-                                        String(entry.value).toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-                                        (entry.category || '').toLowerCase().includes(searchQuery.value.toLowerCase())
-                                    );
-
-                                    const classNames = ['log-table-row'];
-                                    if (isSelected) classNames.push('selected');
-                                    if (isHighlightMatch) classNames.push('search-highlight');
-                                    classNames.push(...colorResult.classes);
-
-                                    return (
-                                        <div
-                                            key={actualIdx}
-                                            className={classNames.join(' ')}
-                                            style={colorResult.styles}
-                                            onMouseDown={(e) => handleRowMouseDown(actualIdx, e)}
-                                            onContextMenu={handleRowContextMenu}
-                                        >
-                                            {columnState.columnOrder.map((colKey) => {
-                                                const colIdMap: Record<string, string> = { 
-                                                    timestamp: 'ts', deviceId: 'dev', signalName: 'sig', 
-                                                    category: 'cat', value: 'val', type: 'type',
-                                                    cmdID: 'cmd', status: 'status', source: 'src', 
-                                                    dest: 'dst', currLoc: 'loc', result: 'res'
-                                                };
-                                                const colId = colIdMap[colKey as string] || 'val';
-                                                const width = columnActions.getColumnWidth(colId);
-
-                                                switch (colKey as string) {
-                                                    case 'timestamp':
-                                                        return <div key={colKey} className="log-col" style={{ width }}>{formatDateTime(entry.timestamp)}</div>;
-                                                    case 'deviceId':
-                                                        return <div key={colKey} className="log-col" style={{ width }}><HighlightText text={entry.deviceId} query={searchQuery.value} useRegex={searchRegex.value} caseSensitive={searchCaseSensitive.value} /></div>;
-                                                    case 'signalName':
-                                                        return <div key={colKey} className="log-col" style={{ width }}><HighlightText text={entry.signalName} query={searchQuery.value} useRegex={searchRegex.value} caseSensitive={searchCaseSensitive.value} /></div>;
-                                                    case 'category':
-                                                        return <div key={colKey} className="log-col" style={{ width }}><HighlightText text={entry.category || ''} query={searchQuery.value} useRegex={searchRegex.value} caseSensitive={searchCaseSensitive.value} /></div>;
-                                                    case 'value': {
-                                                        const valueStr = String(entry.value);
-                                                        const dataAttr = entry.signalType === 'boolean' ? { 'data-value': valueStr.toLowerCase() } : {};
-                                                        const valueClass = `log-col val-${entry.signalType} ${colorResult.valueClassMods.join(' ')}`;
-                                                        return <div key={colKey} className={valueClass} style={{ width }} {...dataAttr}><HighlightText text={valueStr} query={searchQuery.value} useRegex={searchRegex.value} caseSensitive={searchCaseSensitive.value} /></div>;
-                                                    }
-                                                    case 'type':
-                                                        return <div key={colKey} className="log-col" style={{ width }}>{entry.signalType}</div>;
-                                                    case 'cmdID':
-                                                    case 'status':
-                                                    case 'source':
-                                                    case 'dest':
-                                                    case 'currLoc':
-                                                    case 'result': {
-                                                        const val = getTRSFieldValue(entry, colKey as 'cmdID' | 'status' | 'source' | 'dest' | 'currLoc' | 'result');
-                                                        return <div key={colKey} className="log-col" style={{ width }}><HighlightText text={val} query={searchQuery.value} useRegex={searchRegex.value} caseSensitive={searchCaseSensitive.value} /></div>;
-                                                    }
-                                                    default:
-                                                        return null;
-                                                }
-                                            })}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Loading states */}
-                        {(isLoadingLog.value || isStreaming.value) && (
-                            <div className="log-loading-overlay">
-                                <div className="loader"></div>
-                                {isStreaming.value ? (
-                                    <div className="streaming-progress">
-                                        <span>Streaming Log Entries... {streamProgress.value}%</span>
-                                        <div className="progress-bar-container">
-                                            <div className="progress-bar" style={{ width: `${streamProgress.value}%` }}></div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <span>Loading Log Data...</span>
-                                )}
-                            </div>
-                        )}
-
-                        {useServerSide.value && isFetchingPage && !isLoadingLog.value && (
-                            <div className="log-loading-indicator">
-                                <div className="loader-small"></div>
-                                <span>Loading more entries...</span>
-                            </div>
-                        )}
-
-                        {!isLoadingLog.value && totalCount === 0 && (
-                            <div className="log-empty-state">
-                                {searchQuery.value ? 'No entries match your filter' : 'No entries found'}
-                            </div>
-                        )}
-                    </div>
+                    <LogTableViewport
+                        ref={tableRef}
+                        containerRef={tableRef}
+                        virtualState={virtualState}
+                        visibleEntries={visibleEntries}
+                        startIndex={startIdx}
+                        selectedRows={selectionState.selectedRows}
+                        columnOrder={columnState.columnOrder}
+                        columnWidths={columnState.columnWidths}
+                        serverSide={useServerSide.value}
+                        serverPageOffset={serverPageOffset.value}
+                        filterQuery={searchQuery.value}
+                        highlightQuery={highlightQuery.value}
+                        searchRegex={searchRegex.value}
+                        searchCaseSensitive={searchCaseSensitive.value}
+                        rowHeight={ROW_HEIGHT}
+                        scrollScale={virtualState.scaleFactor}
+                        isLoading={isLoadingLog.value}
+                        isStreaming={isStreaming.value}
+                        streamProgress={streamProgress.value}
+                        isFetchingPage={isFetchingPage && !isLoadingLog.value}
+                        totalCount={totalCount}
+                        colorSettings={colorSettings.value}
+                        onRowMouseDown={handleRowMouseDown}
+                        onRowContextMenu={handleRowContextMenu}
+                        onScroll={handleScroll}
+                    />
 
                     {/* Jump to Time popover */}
                     {jumpToTimeOpen.value && (

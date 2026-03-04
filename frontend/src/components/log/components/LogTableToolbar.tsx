@@ -12,14 +12,16 @@ export interface LogTableToolbarProps {
     searchState: SearchFilterState;
     /** Update search query */
     onSearchChange: (query: string) => void;
+    /** Highlight-only query */
+    highlightQuery: string;
+    /** Update highlight-only query */
+    onHighlightQueryChange: (query: string) => void;
     /** Toggle regex mode */
     onToggleRegex: () => void;
     /** Toggle case sensitivity */
     onToggleCaseSensitive: () => void;
     /** Toggle show changed only */
     onToggleShowChangedOnly: () => void;
-    /** Toggle highlight mode */
-    onToggleHighlightMode: () => void;
     /** Number of selected rows */
     selectionCount: number;
     /** Jump to time open state */
@@ -40,10 +42,11 @@ export interface LogTableToolbarProps {
 export function LogTableToolbar({
     searchState,
     onSearchChange,
+    highlightQuery,
+    onHighlightQueryChange,
     onToggleRegex,
     onToggleCaseSensitive,
     onToggleShowChangedOnly,
-    onToggleHighlightMode,
     selectionCount,
     jumpToTimeOpen,
     onToggleJumpToTime,
@@ -61,6 +64,15 @@ export function LogTableToolbar({
                         placeholder="Filter signals, devices, values..."
                         value={searchState.localQuery}
                         onInput={(e) => onSearchChange((e.target as HTMLInputElement).value)}
+                    />
+                </div>
+                <div className="search-box search-box-highlight">
+                    <span className="search-icon"><SearchIcon size={14} /></span>
+                    <input
+                        type="text"
+                        placeholder="Highlight visible matches..."
+                        value={highlightQuery}
+                        onInput={(e) => onHighlightQueryChange((e.target as HTMLInputElement).value)}
                     />
                 </div>
                 <div className="filter-options">
@@ -96,17 +108,6 @@ export function LogTableToolbar({
                             onChange={onToggleShowChangedOnly}
                         />
                         <span className="toggle-label">Changes Only</span>
-                    </label>
-                    <label
-                        className={`filter-toggle ${searchState.highlightMode ? 'active' : ''}`}
-                        title="Highlight Matches"
-                    >
-                        <input
-                            type="checkbox"
-                            checked={searchState.highlightMode}
-                            onChange={onToggleHighlightMode}
-                        />
-                        <span className="toggle-label">Highlight</span>
                     </label>
                 </div>
             </div>

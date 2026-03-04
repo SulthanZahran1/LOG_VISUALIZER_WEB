@@ -103,7 +103,7 @@ export const LogTableBody = forwardRef<HTMLDivElement, LogTableBodyProps>(
                   columnOrder={['timestamp', 'deviceId', 'signalName', 'value', 'type', 'category']}
                   columnWidths={{ ts: 220, dev: 180, sig: 250, cat: 120, val: 150, type: 100 }}
                   isSelected={isSelected}
-                  searchQuery={searchQuery}
+                  highlightQuery={searchQuery}
                   rowHeight={rowHeight}
                   onMouseDown={(index, e) => onRowClick?.(e, index)}
                 />

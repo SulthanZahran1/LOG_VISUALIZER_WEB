@@ -7,8 +7,10 @@ import { memo } from 'preact/compat';
 import { formatDateTime } from '../../../utils/TimeAxisUtils';
 import type { LogEntry } from '../../../models/types';
 import type { ColorCodingSettings } from '../../../stores/colorCodingStore';
+import { getTRSFieldValue } from '../../../utils/trsLog';
 import { HighlightText } from './HighlightText';
-import { computeRowColorCoding, entryMatchesSearch } from '../utils/colorCoding';
+import type { ColumnKey } from '../hooks/useColumnManagement';
+import { computeRowColorCoding } from '../utils/colorCoding';
 
 export interface LogTableRowProps {
     /** The log entry to display */
@@ -16,19 +18,17 @@ export interface LogTableRowProps {
     /** Row index for selection */
     index: number;
     /** Column order */
-    columnOrder: string[];
+    columnOrder: ColumnKey[];
     /** Column widths */
     columnWidths: Record<string, number>;
     /** Whether this row is selected */
     isSelected: boolean;
-    /** Search query for highlighting */
-    searchQuery?: string;
+    /** Highlight-only query */
+    highlightQuery?: string;
     /** Use regex for search */
     searchRegex?: boolean;
     /** Case sensitive search */
     searchCaseSensitive?: boolean;
-    /** Highlight mode enabled */
-    highlightMode?: boolean;
     /** Row height */
     rowHeight?: number;
     /** Color settings */
@@ -46,15 +46,56 @@ const COL_ID_MAP: Record<string, string> = {
     signalName: 'sig',
     category: 'cat',
     value: 'val',
-    type: 'type'
+    type: 'type',
+    cmdID: 'cmd',
+    status: 'status',
+    source: 'src',
+    dest: 'dst',
+    currLoc: 'loc',
+    result: 'res'
 };
 
 /**
- * Format value for display
+ * Check whether any visible field in the entry matches the highlight query.
  */
-function formatValue(value: unknown): string {
-    if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
-    return String(value);
+function entryMatchesHighlight(
+    entry: LogEntry,
+    query: string,
+    useRegex: boolean,
+    caseSensitive: boolean
+): boolean {
+    if (!query.trim()) {
+        return false;
+    }
+
+    const fields = [
+        entry.deviceId,
+        entry.signalName,
+        String(entry.value),
+        entry.category || '',
+        getTRSFieldValue(entry, 'cmdID'),
+        getTRSFieldValue(entry, 'status'),
+        getTRSFieldValue(entry, 'source'),
+        getTRSFieldValue(entry, 'dest'),
+        getTRSFieldValue(entry, 'currLoc'),
+        getTRSFieldValue(entry, 'result'),
+    ];
+
+    if (useRegex) {
+        try {
+            const flags = caseSensitive ? '' : 'i';
+            const regex = new RegExp(query, flags);
+            return fields.some((field) => regex.test(field));
+        } catch {
+            // Fall through to plain string matching on invalid regex.
+        }
+    }
+
+    const normalizedQuery = caseSensitive ? query : query.toLowerCase();
+    return fields.some((field) => {
+        const normalizedField = caseSensitive ? field : field.toLowerCase();
+        return normalizedField.includes(normalizedQuery);
+    });
 }
 
 /**
@@ -67,10 +108,9 @@ export const LogTableRow = memo(function LogTableRow({
     columnOrder,
     columnWidths,
     isSelected,
-    searchQuery = '',
+    highlightQuery = '',
     searchRegex = false,
     searchCaseSensitive = false,
-    highlightMode = false,
     rowHeight = 28,
     colorSettings,
     onMouseDown,
@@ -83,10 +123,9 @@ export const LogTableRow = memo(function LogTableRow({
     // Compute color coding
     const colorResult = colorSettings ? computeRowColorCoding(entry, colorSettings) : null;
 
-    // Check if row should be highlighted for search
-    const isHighlightMatch = highlightMode && searchQuery && entryMatchesSearch(
+    const isHighlightMatch = entryMatchesHighlight(
         entry,
-        searchQuery,
+        highlightQuery,
         searchRegex,
         searchCaseSensitive
     );
@@ -134,7 +173,7 @@ export const LogTableRow = memo(function LogTableRow({
                             <div key={colKey} className="log-col" style={{ width }}>
                                 <HighlightText
                                     text={entry.deviceId}
-                                    query={searchQuery}
+                                    query={highlightQuery}
                                     useRegex={searchRegex}
                                     caseSensitive={searchCaseSensitive}
                                 />
@@ -145,7 +184,7 @@ export const LogTableRow = memo(function LogTableRow({
                             <div key={colKey} className="log-col" style={{ width }}>
                                 <HighlightText
                                     text={entry.signalName}
-                                    query={searchQuery}
+                                    query={highlightQuery}
                                     useRegex={searchRegex}
                                     caseSensitive={searchCaseSensitive}
                                 />
@@ -156,14 +195,14 @@ export const LogTableRow = memo(function LogTableRow({
                             <div key={colKey} className="log-col" style={{ width }}>
                                 <HighlightText
                                     text={entry.category || ''}
-                                    query={searchQuery}
+                                    query={highlightQuery}
                                     useRegex={searchRegex}
                                     caseSensitive={searchCaseSensitive}
                                 />
                             </div>
                         );
                     case 'value': {
-                        const valueStr = formatValue(entry.value);
+                        const valueStr = String(entry.value);
                         const dataAttr = entry.signalType === 'boolean'
                             ? { 'data-value': valueStr.toLowerCase() }
                             : {};
@@ -172,7 +211,7 @@ export const LogTableRow = memo(function LogTableRow({
                             <div key={colKey} className={valueClass} style={{ width }} {...dataAttr}>
                                 <HighlightText
                                     text={valueStr}
-                                    query={searchQuery}
+                                    query={highlightQuery}
                                     useRegex={searchRegex}
                                     caseSensitive={searchCaseSensitive}
                                 />
@@ -185,6 +224,24 @@ export const LogTableRow = memo(function LogTableRow({
                                 {entry.signalType}
                             </div>
                         );
+                    case 'cmdID':
+                    case 'status':
+                    case 'source':
+                    case 'dest':
+                    case 'currLoc':
+                    case 'result': {
+                        const value = getTRSFieldValue(entry, colKey);
+                        return (
+                            <div key={colKey} className="log-col" style={{ width }}>
+                                <HighlightText
+                                    text={value}
+                                    query={highlightQuery}
+                                    useRegex={searchRegex}
+                                    caseSensitive={searchCaseSensitive}
+                                />
+                            </div>
+                        );
+                    }
                     default:
                         return null;
                 }
@@ -200,12 +257,16 @@ export const LogTableRow = memo(function LogTableRow({
     return (
         prevProps.index === nextProps.index &&
         prevProps.isSelected === nextProps.isSelected &&
-        prevProps.searchQuery === nextProps.searchQuery &&
+        prevProps.highlightQuery === nextProps.highlightQuery &&
         prevProps.searchRegex === nextProps.searchRegex &&
         prevProps.searchCaseSensitive === nextProps.searchCaseSensitive &&
-        prevProps.highlightMode === nextProps.highlightMode &&
+        prevProps.columnOrder === nextProps.columnOrder &&
+        prevProps.columnWidths === nextProps.columnWidths &&
         prevProps.entry.timestamp === nextProps.entry.timestamp &&
         prevProps.entry.value === nextProps.entry.value &&
+        prevProps.entry.category === nextProps.entry.category &&
+        prevProps.entry.deviceId === nextProps.entry.deviceId &&
+        prevProps.entry.signalName === nextProps.entry.signalName &&
         colorSettingsEqual
     );
 });

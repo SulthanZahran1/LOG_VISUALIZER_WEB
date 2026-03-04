@@ -69,6 +69,7 @@ export const searchQuery = signal('');
 export const searchRegex = signal(false);
 export const searchCaseSensitive = signal(false);
 export const showChangedOnly = signal(false);
+export const highlightQuery = signal('');
 export const searchHighlightMode = signal(false);
 
 // Category filter - Set of selected categories

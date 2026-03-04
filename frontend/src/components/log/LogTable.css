@@ -28,14 +28,17 @@
 
 /* === Toolbar === */
 .log-table-toolbar {
-    height: 48px;
+    min-height: 48px;
+    height: auto;
     background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
     border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: var(--spacing-sm);
     padding: 0 var(--spacing-md);
     flex-shrink: 0;
+    flex-wrap: wrap;
     backdrop-filter: blur(8px);
     position: relative;
     z-index: 10;
@@ -44,7 +47,10 @@
 .toolbar-left {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    flex: 1 1 auto;
     gap: var(--spacing-lg);
+    min-width: 0;
 }
 
 .search-box {
@@ -54,8 +60,13 @@
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     padding: 6px 10px;
-    width: 280px;
+    width: 220px;
+    flex: 0 1 220px;
     transition: all var(--transition-fast);
+}
+
+.search-box-highlight {
+    border-color: rgba(77, 182, 226, 0.35);
 }
 
 .search-box:focus-within {
@@ -129,6 +140,7 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
+    margin-left: auto;
 }
 
 .selection-count {

@@ -19,7 +19,7 @@ export * from './log';
 // Debug helper for browser console
 import {
     currentSession, logEntries, totalEntries, isLoadingLog,
-    searchQuery, searchRegex, searchCaseSensitive, showChangedOnly,
+    searchQuery, searchRegex, searchCaseSensitive, showChangedOnly, highlightQuery,
     isSyncEnabled
 } from './log';
 
@@ -38,6 +38,7 @@ const logStoreDebug = {
     searchRegex,
     searchCaseSensitive,
     showChangedOnly,
+    highlightQuery,
     isSyncEnabled
 };
 
