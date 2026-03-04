@@ -5,7 +5,8 @@ import { useComputed, useSignal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import type { SignalType } from '../../models/types';
 import type { TransitionConfig, RuleType, ConditionType } from '../../stores/transitionStore';
-import { logEntries } from '../../stores/logStore';
+import { currentSession, logEntries } from '../../stores/logStore';
+import { allSignals, allSignalTypes, signalListSessionId } from '../../stores/waveform/state';
 
 interface TransitionRuleEditorProps {
     config: TransitionConfig | null;
@@ -75,16 +76,54 @@ export function TransitionRuleEditor({ config, onSave, onClose }: TransitionRule
     const targetDuration = useSignal(config?.targetDuration ? String(config.targetDuration / 1000) : '');
     const tolerance = useSignal(config?.tolerance ? String(config.tolerance / 1000) : '');
 
-    // Build device -> signal -> type catalog from currently loaded log entries
-    const signalCatalog = useComputed(() => {
-        const byDevice = new Map<string, Map<string, SignalType>>();
+    const visibleSignalTypes = useComputed(() => {
+        const types = new Map<string, SignalType>();
 
         for (const entry of logEntries.value) {
-            const deviceSignals = byDevice.get(entry.deviceId) || new Map<string, SignalType>();
-            if (!deviceSignals.has(entry.signalName)) {
-                deviceSignals.set(entry.signalName, entry.signalType);
+            const signalKey = `${entry.deviceId}::${entry.signalName}`;
+            if (!types.has(signalKey)) {
+                types.set(signalKey, entry.signalType);
             }
-            byDevice.set(entry.deviceId, deviceSignals);
+        }
+
+        return types;
+    });
+
+    const hasSessionSignalCatalog = useComputed(() => {
+        return !!currentSession.value?.id
+            && signalListSessionId.value === currentSession.value.id
+            && allSignals.value.length > 0;
+    });
+
+    // Build device -> signal -> type catalog from the full session signal list
+    // fetched from DuckDB. Fall back to the visible rows while the metadata loads.
+    const signalCatalog = useComputed(() => {
+        const byDevice = new Map<string, Map<string, SignalType>>();
+        const signalKeys = hasSessionSignalCatalog.value
+            ? allSignals.value
+            : logEntries.value.map(entry => `${entry.deviceId}::${entry.signalName}`);
+
+        for (const signalKey of signalKeys) {
+            const separatorIndex = signalKey.indexOf('::');
+            if (separatorIndex < 0) {
+                continue;
+            }
+
+            const deviceId = signalKey.slice(0, separatorIndex);
+            const signalName = signalKey.slice(separatorIndex + 2);
+            const signalType = hasSessionSignalCatalog.value
+                ? allSignalTypes.value.get(signalKey) ?? visibleSignalTypes.value.get(signalKey) ?? 'string'
+                : visibleSignalTypes.value.get(signalKey);
+
+            if (!signalType) {
+                continue;
+            }
+
+            const deviceSignals = byDevice.get(deviceId) || new Map<string, SignalType>();
+            if (!deviceSignals.has(signalName)) {
+                deviceSignals.set(signalName, signalType);
+            }
+            byDevice.set(deviceId, deviceSignals);
         }
 
         return byDevice;

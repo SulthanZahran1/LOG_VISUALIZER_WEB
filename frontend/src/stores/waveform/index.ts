@@ -40,6 +40,7 @@ export {
     // Signals
     allSignals,
     allSignalTypes,
+    signalListSessionId,
     showChangedInView,
     signalsWithChanges,
     // Filters

@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen } from '@testing-library/preact';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TransitionRuleEditor } from './TransitionRuleEditor';
-import { logEntries } from '../../stores/logStore';
-import type { LogEntry } from '../../models/types';
+import { currentSession, logEntries } from '../../stores/logStore';
+import { allSignals, allSignalTypes, signalListSessionId } from '../../stores/waveform/state';
+import type { LogEntry, ParseSession } from '../../models/types';
 
 function setLogEntries(entries: LogEntry[]) {
     act(() => {
@@ -10,9 +11,19 @@ function setLogEntries(entries: LogEntry[]) {
     });
 }
 
+function setCurrentSession(session: ParseSession | null) {
+    act(() => {
+        currentSession.value = session;
+    });
+}
+
 describe('TransitionRuleEditor', () => {
     beforeEach(() => {
         logEntries.value = [];
+        currentSession.value = null;
+        allSignals.value = [];
+        allSignalTypes.value = new Map();
+        signalListSessionId.value = null;
     });
 
     it('uses separate device and signal comboboxes with signal list filtered by device', () => {
@@ -56,6 +67,38 @@ describe('TransitionRuleEditor', () => {
         const startValue = screen.getByLabelText('Start Value') as HTMLSelectElement;
         expect(startValue.tagName).toBe('SELECT');
         expect(Array.from(startValue.options).map(option => option.value)).toEqual(['true', 'false']);
+    });
+
+    it('prefers the session-wide signal catalog over the visible log rows', () => {
+        setCurrentSession({
+            id: 'session-1',
+            fileId: 'file-1',
+            status: 'complete',
+            progress: 100,
+        });
+
+        act(() => {
+            signalListSessionId.value = 'session-1';
+            allSignals.value = ['D1::SigBool', 'D1::SigHidden'];
+            allSignalTypes.value = new Map([
+                ['D1::SigBool', 'boolean'],
+                ['D1::SigHidden', 'string'],
+            ]);
+            logEntries.value = [
+                { deviceId: 'D1', signalName: 'SigBool', timestamp: 1000, value: true, signalType: 'boolean' }
+            ];
+        });
+
+        render(<TransitionRuleEditor config={null} onSave={vi.fn()} onClose={vi.fn()} />);
+
+        const startDevice = screen.getByLabelText('Start Device') as HTMLSelectElement;
+        const startSignal = screen.getByLabelText('Start Signal') as HTMLSelectElement;
+
+        fireEvent.change(startDevice, { target: { value: 'D1' } });
+
+        const options = Array.from(startSignal.options).map(option => option.textContent);
+        expect(options).toContain('SigBool');
+        expect(options).toContain('SigHidden');
     });
 
     it('switches value input type based on selected signal datatype', () => {

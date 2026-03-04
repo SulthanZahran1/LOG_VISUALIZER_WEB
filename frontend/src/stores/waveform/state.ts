@@ -33,6 +33,7 @@ export const waveformBoundaries = signal<ChunkBoundaries>({ before: {}, after: {
 // ======================
 export const allSignals = signal<string[]>([]);
 export const allSignalTypes = signal<Map<string, SignalType>>(new Map());
+export const signalListSessionId = signal<string | null>(null);
 export const showChangedInView = signal(false);
 export const signalsWithChanges = signal<Set<string>>(new Set());
 
@@ -105,8 +106,11 @@ export function setLastInitializedSessionId(id: string | null): void {
 
 export const availableSignals = computed<Map<string, string[]>>(() => {
     const deviceMap = new Map<string, Set<string>>();
+    const hasCurrentSessionSignalList = !!currentSession.value?.id
+        && signalListSessionId.value === currentSession.value.id
+        && allSignals.value.length > 0;
 
-    const signalsToUse = allSignals.value.length > 0
+    const signalsToUse = hasCurrentSessionSignalList
         ? allSignals.value
         : logEntries.value.map(e => `${e.deviceId}::${e.signalName}`);
 

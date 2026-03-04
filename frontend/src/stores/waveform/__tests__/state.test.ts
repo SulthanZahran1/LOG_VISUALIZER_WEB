@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { currentSession } from '../../log/state';
 import {
     scrollOffset,
     zoomLevel,
@@ -11,6 +12,7 @@ import {
     selectionRange,
     waveformEntries,
     allSignals,
+    signalListSessionId,
     signalSearchQuery,
     signalIsRegex,
     signalTypeFilter,
@@ -35,7 +37,9 @@ describe('waveformStore State', () => {
         hoverTime.value = null;
         selectionRange.value = null;
         waveformEntries.value = {};
+        currentSession.value = null;
         allSignals.value = [];
+        signalListSessionId.value = null;
         signalSearchQuery.value = '';
         signalIsRegex.value = false;
         signalTypeFilter.value = 'all';
@@ -56,6 +60,13 @@ describe('waveformStore State', () => {
 
     describe('availableSignals computed', () => {
         it('should group signals by device', () => {
+            currentSession.value = {
+                id: 'session-1',
+                fileId: 'file-1',
+                status: 'complete',
+                progress: 100,
+            };
+            signalListSessionId.value = 'session-1';
             allSignals.value = [
                 'Device1::SignalA',
                 'Device1::SignalB',
@@ -68,6 +79,13 @@ describe('waveformStore State', () => {
         });
 
         it('should handle malformed signal keys', () => {
+            currentSession.value = {
+                id: 'session-1',
+                fileId: 'file-1',
+                status: 'complete',
+                progress: 100,
+            };
+            signalListSessionId.value = 'session-1';
             allSignals.value = [
                 'Device1::SignalA',
                 'invalid-key',

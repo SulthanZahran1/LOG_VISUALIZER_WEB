@@ -12,7 +12,7 @@ import type { SignalType } from '../../models/types';
 import { clearSession } from '../logStore';
 import {
     currentSession, scrollOffset, zoomLevel, viewportWidth,
-    allSignals, allSignalTypes, showChangedInView, signalsWithChanges,
+    allSignals, allSignalTypes, signalListSessionId, showChangedInView, signalsWithChanges,
     viewRange,
     setHasFetched,
     lastInitializedSessionId, setLastInitializedSessionId
@@ -49,36 +49,59 @@ export function initViewportEffect(): void {
 export function initSignalListEffect(): void {
     effect(() => {
         const session = currentSession.value;
-        if (session && session.status === 'complete' && allSignals.value.length === 0) {
-            const sessionId = session.id;
-            Promise.all([
-                getParseSignals(sessionId),
-                getParseSignalTypes(sessionId),
-            ]).then(([signals, typesRecord]) => {
-                if (currentSession.value?.id !== sessionId) {
-                    return;
-                }
-                allSignals.value = signals;
-                const typesMap = new Map<string, string>();
-                for (const [key, val] of Object.entries(typesRecord)) {
-                    typesMap.set(key, val as string);
-                }
-                allSignalTypes.value = typesMap as Map<string, SignalType>;
-            }).catch(err => {
-                if (currentSession.value?.id !== sessionId) {
-                    return;
-                }
-                if (err.status === 404) {
-                    console.warn('Session not found on server during getParseSignals, clearing local state');
-                    clearSession();
-                } else {
-                    console.error('Failed to fetch signals', err);
-                }
-            });
-        } else if (!session) {
+        if (!session) {
             allSignals.value = [];
             allSignalTypes.value = new Map();
+            signalListSessionId.value = null;
+            return;
         }
+
+        if (session.status !== 'complete') {
+            if (signalListSessionId.value !== null) {
+                allSignals.value = [];
+                allSignalTypes.value = new Map();
+                signalListSessionId.value = null;
+            }
+            return;
+        }
+
+        if (signalListSessionId.value === session.id) {
+            return;
+        }
+
+        if (signalListSessionId.value !== null) {
+            allSignals.value = [];
+            allSignalTypes.value = new Map();
+            signalListSessionId.value = null;
+            return;
+        }
+
+        const sessionId = session.id;
+        Promise.all([
+            getParseSignals(sessionId),
+            getParseSignalTypes(sessionId),
+        ]).then(([signals, typesRecord]) => {
+            if (currentSession.value?.id !== sessionId) {
+                return;
+            }
+            allSignals.value = signals;
+            const typesMap = new Map<string, string>();
+            for (const [key, val] of Object.entries(typesRecord)) {
+                typesMap.set(key, val as string);
+            }
+            allSignalTypes.value = typesMap as Map<string, SignalType>;
+            signalListSessionId.value = sessionId;
+        }).catch(err => {
+            if (currentSession.value?.id !== sessionId) {
+                return;
+            }
+            if (err.status === 404) {
+                console.warn('Session not found on server during getParseSignals, clearing local state');
+                clearSession();
+            } else {
+                console.error('Failed to fetch signals', err);
+            }
+        });
     });
 }
 
