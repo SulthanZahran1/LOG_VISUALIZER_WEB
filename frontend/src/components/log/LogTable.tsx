@@ -30,7 +30,9 @@ import {
 import { getTimeTree } from '../../api/client';
 import type { TimeTreeEntry } from '../../api/client';
 import { toggleSignal } from '../../stores/waveformStore';
+import type { SortColumnKey } from '../../stores/log/types';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
+import { getTRSFieldValue } from '../../utils/trsLog';
 import type { LogEntry, ParseSession } from '../../models/types';
 import { colorSettings } from '../../stores/colorCodingStore';
 import { SignalSidebar } from '../waveform/SignalSidebar';
@@ -610,7 +612,7 @@ export function LogTable() {
     });
 
     // Header click handler
-    const handleHeaderClick = useCallback((col: keyof LogEntry) => {
+    const handleHeaderClick = useCallback((col: SortColumnKey) => {
         if (sortColumn.value === col) {
             sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
         } else {
@@ -736,7 +738,7 @@ export function LogTable() {
                                     key={colDef.key}
                                     className={`log-col col-${colDef.id} ${canShowColumnFilterToggle ? 'col-filterable' : ''} ${hasActiveColumnFilter && canShowColumnFilterToggle ? 'filter-active' : ''} ${isDragOver ? 'drag-over' : ''} ${isDraggingCol ? 'dragging' : ''}`}
                                     style={{ width }}
-                                    onClick={() => colDef.sortable && handleHeaderClick(colDef.key as keyof LogEntry)}
+                                    onClick={() => colDef.sortable && handleHeaderClick(colDef.key as SortColumnKey)}
                                     draggable
                                     onDragStart={(e) => columnActions.handleDragStart(colDef.key, e)}
                                     onDragEnd={columnActions.handleDragEnd}
@@ -860,11 +862,7 @@ export function LogTable() {
                                                     case 'dest':
                                                     case 'currLoc':
                                                     case 'result': {
-                                                        const parts = String(entry.value).split('|');
-                                                        const idxMap: Record<string, number> = {
-                                                            cmdID: 0, status: 1, source: 2, dest: 3, currLoc: 4, result: 5
-                                                        };
-                                                        const val = parts[idxMap[colKey as string]] || '';
+                                                        const val = getTRSFieldValue(entry, colKey);
                                                         return <div key={colKey} className="log-col" style={{ width }}><HighlightText text={val} query={searchQuery.value} useRegex={searchRegex.value} caseSensitive={searchCaseSensitive.value} /></div>;
                                                     }
                                                     default:

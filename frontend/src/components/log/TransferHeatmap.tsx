@@ -1,6 +1,9 @@
 import { Fragment } from 'preact';
-import { useMemo, useState } from 'preact/hooks';
-import { logEntries } from '../../stores/logStore';
+import { useEffect, useMemo, useState } from 'preact/hooks';
+import { getParseEntries } from '../../api/client';
+import type { LogEntry } from '../../models/types';
+import { currentSession, logEntries, useServerSide } from '../../stores/logStore';
+import { parseTRSValue } from '../../utils/trsLog';
 import './TransferHeatmap.css';
 
 interface TransferHeatmapProps {
@@ -90,7 +93,79 @@ export function TransferHeatmap({ onCellClick, showControls = true }: TransferHe
     const [minCount, setMinCount] = useState(1);
     const [locationFilter, setLocationFilter] = useState('');
     const [showZeros, setShowZeros] = useState(false);
-    const entries = logEntries.value;
+    const [fullSessionEntries, setFullSessionEntries] = useState<LogEntry[] | null>(null);
+    const [loadedSessionId, setLoadedSessionId] = useState<string | null>(null);
+    const [isLoadingAllEntries, setIsLoadingAllEntries] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const session = currentSession.value;
+    const isServerSide = useServerSide.value;
+
+    useEffect(() => {
+        if (!session || session.parserName !== 'trs_log' || !isServerSide) {
+            setFullSessionEntries(null);
+            setLoadedSessionId(null);
+            setIsLoadingAllEntries(false);
+            setLoadError(null);
+            return;
+        }
+
+        const controller = new AbortController();
+        let cancelled = false;
+        setFullSessionEntries(null);
+        setLoadedSessionId(null);
+
+        const loadAllEntries = async () => {
+            setIsLoadingAllEntries(true);
+            setLoadError(null);
+
+            try {
+                const pageSize = 1000;
+                const allEntries: LogEntry[] = [];
+                let page = 1;
+                let total = 0;
+
+                do {
+                    const response = await getParseEntries(session.id, page, pageSize, undefined, controller.signal);
+                    if (cancelled) {
+                        return;
+                    }
+
+                    total = response.total;
+                    allEntries.push(...response.entries);
+                    page += 1;
+
+                    if (response.entries.length === 0) {
+                        break;
+                    }
+                } while (allEntries.length < total);
+
+                if (!cancelled) {
+                    setFullSessionEntries(allEntries);
+                    setLoadedSessionId(session.id);
+                }
+            } catch (err) {
+                if (cancelled || (err as { name?: string }).name === 'AbortError') {
+                    return;
+                }
+                setLoadError((err as Error).message || 'Failed to load heatmap data');
+            } finally {
+                if (!cancelled) {
+                    setIsLoadingAllEntries(false);
+                }
+            }
+        };
+
+        void loadAllEntries();
+
+        return () => {
+            cancelled = true;
+            controller.abort();
+        };
+    }, [isServerSide, session?.id, session?.parserName]);
+
+    const entries = isServerSide
+        ? (session?.id === loadedSessionId ? (fullSessionEntries ?? []) : [])
+        : logEntries.value;
 
     const data: HeatmapData = useMemo(() => {
         const matrix: Record<string, Record<number, number>> = {};
@@ -111,13 +186,12 @@ export function TransferHeatmap({ onCellClick, showControls = true }: TransferHe
         entries.forEach(entry => {
             if (entry.signalName !== 'Transfer') return;
 
-            const parts = String(entry.value).split('|');
-            if (parts.length < 4) return;
-            const status = String(parts[1] || '').trim().toUpperCase();
+            const trsFields = parseTRSValue(entry.value);
+            const status = trsFields.status.trim().toUpperCase();
             if (status !== 'COMPLETED') return;
 
-            const sourceRack = extractRackCoordinate(parts[2]);
-            const destRack = extractRackCoordinate(parts[3]);
+            const sourceRack = extractRackCoordinate(trsFields.source);
+            const destRack = extractRackCoordinate(trsFields.dest);
             const racks: RackCoordinate[] = [sourceRack, destRack].filter((rack): rack is RackCoordinate => rack !== null);
             if (racks.length === 0) return;
             transferRows += 1;
@@ -189,7 +263,9 @@ export function TransferHeatmap({ onCellClick, showControls = true }: TransferHe
     if (data.xValues.length === 0 || data.yValues.length === 0) {
         return (
             <div className="transfer-heatmap-empty">
-                No rack ID data available for heatmap. {entries.length === 0 ? "(Loading...)" : ""}
+                {loadError
+                    ? `Failed to load heatmap data: ${loadError}`
+                    : `No rack ID data available for heatmap. ${(entries.length === 0 && isLoadingAllEntries) ? "(Loading full TRS dataset...)" : entries.length === 0 ? "(Loading...)" : ""}`}
             </div>
         );
     }

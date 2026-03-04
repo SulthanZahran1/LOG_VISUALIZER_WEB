@@ -11,6 +11,7 @@ import {
     logError,
     isParsing,
     useServerSide,
+    filteredEntries,
     sortColumn,
     sortDirection,
     searchQuery,
@@ -116,6 +117,20 @@ describe('logStore State', () => {
             serverPageCache.set('test', { page: 1, entries: [], timestamp: 0, filterKey: '' });
             clearServerCache();
             expect(serverPageCache.size).toBe(0);
+        });
+    });
+
+    describe('filteredEntries', () => {
+        it('sorts TRS rows by unpacked TRS fields in client-side mode', () => {
+            logEntries.value = [
+                { deviceId: 'CARRIER-02', signalName: 'Transfer', timestamp: 2000, value: '66750|COMPLETED|105205|204501|LOC-2|TR_SUCCESS', signalType: 'string' },
+                { deviceId: 'CARRIER-01', signalName: 'Transfer', timestamp: 1000, value: '66749|COMPLETED|204501|105205|LOC-1|TR_SUCCESS', signalType: 'string' },
+            ];
+
+            sortColumn.value = 'dest';
+            sortDirection.value = 'asc';
+
+            expect(filteredEntries.value.map(entry => entry.deviceId)).toEqual(['CARRIER-01', 'CARRIER-02']);
         });
     });
 });

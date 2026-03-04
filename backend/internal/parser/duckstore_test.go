@@ -366,6 +366,35 @@ func TestDuckStore_FlushAndQuery(t *testing.T) {
 			t.Error("Expected descending order")
 		}
 	})
+
+	t.Run("queries with TRS pseudo-column sorting", func(t *testing.T) {
+		store, cleanup := createTestStore(t)
+		defer cleanup()
+
+		baseTime := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
+		store.AddEntry(createTestEntry("CARRIER-02", "Transfer", baseTime, "66750|COMPLETED|105205|204501|B1ASTO15203-102|TR_SUCCESS", ""))
+		store.AddEntry(createTestEntry("CARRIER-01", "Transfer", baseTime.Add(time.Second), "66749|COMPLETED|204501|105205|B1ASTO15203-101|TR_SUCCESS", ""))
+
+		err := store.Finalize()
+		if err != nil {
+			t.Fatalf("Failed to finalize: %v", err)
+		}
+
+		ctx := context.Background()
+		params := QueryParams{SortColumn: "dest", SortDirection: "asc"}
+		entries, _, err := store.QueryEntries(ctx, params, 1, 10)
+		if err != nil {
+			t.Fatalf("Failed to query: %v", err)
+		}
+
+		if len(entries) != 2 {
+			t.Fatalf("Expected 2 entries, got %d", len(entries))
+		}
+
+		if entries[0].DeviceID != "CARRIER-01" {
+			t.Fatalf("Expected CARRIER-01 first when sorting by dest asc, got %s", entries[0].DeviceID)
+		}
+	})
 }
 
 func TestDuckStore_GetChunk(t *testing.T) {

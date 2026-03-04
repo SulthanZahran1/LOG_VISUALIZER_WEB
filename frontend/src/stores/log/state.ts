@@ -7,6 +7,7 @@
 import { signal, computed } from '@preact/signals';
 import type { LogEntry, ParseSession, ViewType, ServerPageCache, FetchFilters } from './types';
 import { selectedSignals } from '../selectionStore';
+import { getTRSFieldValue, isTRSFieldKey } from '../../utils/trsLog';
 
 
 // ======================
@@ -62,7 +63,7 @@ export const selectedLogTime = signal<number | null>(null);
 // ======================
 // Sorting & Filtering State
 // ======================
-export const sortColumn = signal<keyof LogEntry | null>('timestamp');
+export const sortColumn = signal<FetchFilters['sort'] | null>('timestamp');
 export const sortDirection = signal<'asc' | 'desc'>('asc');
 export const searchQuery = signal('');
 export const searchRegex = signal(false);
@@ -206,8 +207,8 @@ export const filteredEntries = computed(() => {
         const col = sortColumn.value;
         const dir = sortDirection.value === 'asc' ? 1 : -1;
         entries = [...entries].sort((a, b) => {
-            const valA = a[col] ?? '';
-            const valB = b[col] ?? '';
+            const valA = isTRSFieldKey(col) ? getTRSFieldValue(a, col) : (a[col] ?? '');
+            const valB = isTRSFieldKey(col) ? getTRSFieldValue(b, col) : (b[col] ?? '');
             if (valA < valB) return -1 * dir;
             if (valA > valB) return 1 * dir;
             return 0;

@@ -5,8 +5,10 @@
  */
 
 import type { LogEntry, ParseSession } from '../../models/types';
+import type { TRSFieldKey } from '../../utils/trsLog';
 
 export type ViewType = 'home' | 'log-table' | 'waveform' | 'map-viewer' | 'transitions' | 'heatmap';
+export type SortColumnKey = keyof LogEntry | TRSFieldKey;
 
 export interface ServerPageCache {
     page: number;
@@ -20,7 +22,7 @@ export interface FetchFilters {
     category?: string;
     signalName?: string;
     deviceId?: string;
-    sort?: string;
+    sort?: SortColumnKey;
     order?: 'asc' | 'desc';
     type?: string;
     regex?: boolean;

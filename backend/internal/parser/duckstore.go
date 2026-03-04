@@ -380,6 +380,33 @@ type QueryParams struct {
 	ShowChanged         bool
 }
 
+func resolveSortExpression(sortColumn, fallback string) string {
+	switch sortColumn {
+	case "timestamp":
+		return "timestamp"
+	case "deviceId":
+		return "device_id"
+	case "signalName":
+		return "signal"
+	case "category":
+		return "category"
+	case "cmdID":
+		return "split_part(coalesce(val_str, ''), '|', 1)"
+	case "status":
+		return "split_part(coalesce(val_str, ''), '|', 2)"
+	case "source":
+		return "split_part(coalesce(val_str, ''), '|', 3)"
+	case "dest":
+		return "split_part(coalesce(val_str, ''), '|', 4)"
+	case "currLoc":
+		return "split_part(coalesce(val_str, ''), '|', 5)"
+	case "result":
+		return "split_part(coalesce(val_str, ''), '|', 6)"
+	default:
+		return fallback
+	}
+}
+
 // QueryEntries returns filtered, sorted, and paginated entries
 func (ds *DuckStore) QueryEntries(ctx context.Context, params QueryParams, page, pageSize int) ([]models.LogEntry, int, error) {
 	// Acquire semaphore to limit concurrent queries
@@ -459,20 +486,7 @@ func (ds *DuckStore) queryWithKeysetPagination(ctx context.Context, params Query
 	default:
 	}
 
-	// Determine sort column
-	sortCol := "id"
-	if params.SortColumn != "" {
-		switch params.SortColumn {
-		case "timestamp":
-			sortCol = "timestamp"
-		case "deviceId":
-			sortCol = "device_id"
-		case "signalName":
-			sortCol = "signal"
-		case "category":
-			sortCol = "category"
-		}
-	}
+	sortCol := resolveSortExpression(params.SortColumn, "id")
 
 	dir := "ASC"
 	if params.SortDirection == "desc" {
@@ -1134,19 +1148,7 @@ func (ds *DuckStore) GetIndexByTime(ctx context.Context, params QueryParams, ts 
 
 	where, args := ds.buildWhereClause(params)
 
-	sortCol := "timestamp"
-	if params.SortColumn != "" {
-		switch params.SortColumn {
-		case "timestamp":
-			sortCol = "timestamp"
-		case "deviceId":
-			sortCol = "device_id"
-		case "signalName":
-			sortCol = "signal"
-		case "category":
-			sortCol = "category"
-		}
-	}
+	sortCol := resolveSortExpression(params.SortColumn, "timestamp")
 
 	dir := "ASC"
 	if params.SortDirection == "desc" {
