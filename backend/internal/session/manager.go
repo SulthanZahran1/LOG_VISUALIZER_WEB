@@ -820,6 +820,32 @@ func (m *Manager) DeleteParsedFile(fileID string) error {
 	return m.parsedStore.Delete(fileID)
 }
 
+// DeleteSessionsForFile removes active sessions derived from a deleted file.
+func (m *Manager) DeleteSessionsForFile(fileID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for id, state := range m.sessions {
+		matchesPrimary := state.Session.FileID == fileID
+		matchesMerged := false
+		for _, candidate := range state.Session.FileIDs {
+			if candidate == fileID {
+				matchesMerged = true
+				break
+			}
+		}
+		if !matchesPrimary && !matchesMerged {
+			continue
+		}
+
+		if state.DuckStore != nil {
+			state.DuckStore.Close()
+		}
+		delete(m.sessions, id)
+		fmt.Printf("[Manager] Deleted session %s after file %s was removed\n", id[:8], shortID(fileID))
+	}
+}
+
 // GetParsedStoreStats returns statistics about the persistent parsed store.
 func (m *Manager) GetParsedStoreStats() map[string]interface{} {
 	return m.parsedStore.Stats()

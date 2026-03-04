@@ -77,11 +77,13 @@ func main() {
 
 	// Initialize handler dependencies
 	deps := &api.Dependencies{
-		Store:      fileStore,
-		SessionMgr: sessionMgr,
-		UploadMgr:  uploadMgr,
-		DataDir:    cfg.GetDataDir(),
-		Version:    Version,
+		Store:             fileStore,
+		SessionMgr:        sessionMgr,
+		UploadMgr:         uploadMgr,
+		DataDir:           cfg.GetDataDir(),
+		Version:           Version,
+		UploadDir:         cfg.GetUploadDir(),
+		AllowFileDeletion: cfg.Security.AllowFileDeletion,
 	}
 
 	// Create all handlers using the new modular structure

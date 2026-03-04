@@ -27,13 +27,6 @@ type Parser interface {
 	ParseToDuckStore(filePath string, store *DuckStore, onProgress ProgressCallback) ([]*models.ParseError, error)
 }
 
-// WriteParsedLogToDuckStore writes an in-memory parsed result into DuckStore.
-func WriteParsedLogToDuckStore(parsed *models.ParsedLog, store *DuckStore) {
-	for i := range parsed.Entries {
-		store.AddEntry(&parsed.Entries[i])
-	}
-}
-
 // Common utilities for parsing
 
 var (

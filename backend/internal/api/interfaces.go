@@ -60,6 +60,7 @@ type MapHandler interface {
 	GetCurrentRules() (string, *models.MapRules)
 	SetCurrentRules(rulesID string, rules *models.MapRules)
 	LoadDefaultRules() error
+	HandleFileDeleted(fileID string)
 }
 
 // CarrierHandler handles carrier tracking operations
@@ -69,6 +70,7 @@ type CarrierHandler interface {
 	HandleGetCarrierEntries(c echo.Context) error
 	GetCarrierSessionID() string
 	SetCarrierSessionID(sessionID string)
+	HandleFileDeleted(fileID string)
 }
 
 // HealthHandler handles health check operations
@@ -100,5 +102,3 @@ type SessionManager interface {
 	GetValuesAtTime(ctx context.Context, id string, ts time.Time, signals []string) ([]models.LogEntry, bool)
 	QuerySignalEntries(ctx context.Context, id string, signals []string) ([]models.LogEntry, bool)
 }
-
-

@@ -119,124 +119,18 @@ func (p *CSVSignalParser) ParseWithProgress(filePath string, onProgress Progress
 			onProgress(lineNum, bytesRead, totalBytes)
 		}
 
-		m := p.lineRegex.FindStringSubmatch(line)
-		if m == nil {
-			// Try a simpler split for CSV if it contains no commas in values
-			parts := strings.Split(line, ",")
-			if len(parts) >= 4 {
-				tsStr := strings.TrimSpace(parts[0])
-				path := strings.TrimSpace(parts[1])
-				signal := strings.TrimSpace(parts[2])
-				valueStr := strings.TrimSpace(strings.Join(parts[3:], ","))
-
-				ts, err := FastTimestamp(tsStr)
-				if err != nil {
-					errors = append(errors, &models.ParseError{Line: lineNum, Content: line, Reason: "invalid timestamp"})
-					continue
-				}
-
-				deviceID := ExtractDeviceID(path)
-				if deviceID == "" {
-					deviceID = path // Fallback for simple CSV
-				}
-
-				// Intern strings
-				deviceID = intern.Intern(deviceID)
-				signal = intern.Intern(signal)
-
-				stype := InferType(valueStr)
-				value := ParseValue(valueStr, stype)
-
-				entry := models.LogEntry{
-					DeviceID:   deviceID,
-					SignalName: signal,
-					Timestamp:  ts,
-					Value:      value,
-					SignalType: stype,
-				}
-				entries = append(entries, entry)
-				signalKey := entry.DeviceID + "::" + entry.SignalName
-				signals[signalKey] = struct{}{}
-				devices[entry.DeviceID] = struct{}{}
-
-				// Track signal type requirements
-				if entry.SignalType == models.SignalTypeInteger {
-					if val, ok := entry.Value.(int); ok {
-						if val != 0 && val != 1 {
-							signalTypeReqs[signalKey] = models.SignalTypeInteger
-						} else if signalTypeReqs[signalKey] == "" {
-							signalTypeReqs[signalKey] = models.SignalTypeBoolean
-						}
-					}
-				} else if entry.SignalType == models.SignalTypeBoolean {
-					if signalTypeReqs[signalKey] == "" {
-						signalTypeReqs[signalKey] = models.SignalTypeBoolean
-					}
-				} else {
-					signalTypeReqs[signalKey] = models.SignalTypeString
-				}
-				continue
-			}
-
-			errors = append(errors, &models.ParseError{
-				Line:    lineNum,
-				Content: line,
-				Reason:  "line does not match CSV signal format",
-			})
+		entry, parseErr := p.parseLine(line, lineNum, intern)
+		if parseErr != nil {
+			errors = append(errors, parseErr)
 			continue
 		}
 
-		tsStr := m[1]
-		path := m[2]
-		signal := m[3]
-		valueStr := m[4]
-
-		ts, err := FastTimestamp(tsStr)
-		if err != nil {
-			errors = append(errors, &models.ParseError{Line: lineNum, Content: line, Reason: "invalid timestamp"})
-			continue
-		}
-
-		deviceID := ExtractDeviceID(path)
-		if deviceID == "" {
-			deviceID = path
-		}
-
-		// Intern strings
-		deviceID = intern.Intern(deviceID)
-		signal = intern.Intern(signal)
-
-		stype := InferType(valueStr)
-		value := ParseValue(valueStr, stype)
-
-		entry := models.LogEntry{
-			DeviceID:   deviceID,
-			SignalName: signal,
-			Timestamp:  ts,
-			Value:      value,
-			SignalType: stype,
-		}
-		entries = append(entries, entry)
+		entries = append(entries, *entry)
 		signalKey := entry.DeviceID + "::" + entry.SignalName
 		signals[signalKey] = struct{}{}
 		devices[entry.DeviceID] = struct{}{}
 
-		// Track signal type requirements
-		if entry.SignalType == models.SignalTypeInteger {
-			if val, ok := entry.Value.(int); ok {
-				if val != 0 && val != 1 {
-					signalTypeReqs[signalKey] = models.SignalTypeInteger
-				} else if signalTypeReqs[signalKey] == "" {
-					signalTypeReqs[signalKey] = models.SignalTypeBoolean
-				}
-			}
-		} else if entry.SignalType == models.SignalTypeBoolean {
-			if signalTypeReqs[signalKey] == "" {
-				signalTypeReqs[signalKey] = models.SignalTypeBoolean
-			}
-		} else {
-			signalTypeReqs[signalKey] = models.SignalTypeString
-		}
+		updateCSVSignalTypeRequirement(signalTypeReqs, *entry)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -250,17 +144,7 @@ func (p *CSVSignalParser) ParseWithProgress(filePath string, onProgress Progress
 
 	// Resolve signal types: upgrade boolean signals to integer if needed
 	for i := range entries {
-		signalKey := entries[i].DeviceID + "::" + entries[i].SignalName
-		if requiredType, ok := signalTypeReqs[signalKey]; ok {
-			if requiredType == models.SignalTypeInteger && entries[i].SignalType == models.SignalTypeBoolean {
-				entries[i].SignalType = models.SignalTypeInteger
-				if entries[i].Value == true {
-					entries[i].Value = 1
-				} else {
-					entries[i].Value = 0
-				}
-			}
-		}
+		applyCSVSignalTypeRequirement(&entries[i], signalTypeReqs)
 	}
 
 	var timeRange *models.TimeRange
@@ -280,11 +164,204 @@ func (p *CSVSignalParser) ParseWithProgress(filePath string, onProgress Progress
 }
 
 func (p *CSVSignalParser) ParseToDuckStore(filePath string, store *DuckStore, onProgress ProgressCallback) ([]*models.ParseError, error) {
-	parsed, errors, err := p.ParseWithProgress(filePath, onProgress)
+	errors, signalTypeReqs, err := p.scanCSVSignalTypeRequirements(filePath, onProgress)
 	if err != nil {
 		return nil, err
 	}
 
-	WriteParsedLogToDuckStore(parsed, store)
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	fileInfo, _ := file.Stat()
+	totalBytes := int64(0)
+	if fileInfo != nil {
+		totalBytes = fileInfo.Size()
+	}
+
+	intern := GetGlobalIntern()
+	scanner := bufio.NewScanner(file)
+	const maxScannerBuffer = 1024 * 1024
+	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
+	lineNum := 0
+	var bytesRead int64
+	lastProgressUpdate := 0
+
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		bytesRead += int64(len(line)) + 1
+
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		if onProgress != nil && lineNum%100000 == 0 && lineNum != lastProgressUpdate {
+			lastProgressUpdate = lineNum
+			onProgress(lineNum, bytesRead, totalBytes)
+		}
+
+		entry, parseErr := p.parseLine(line, lineNum, intern)
+		if parseErr != nil {
+			continue
+		}
+
+		applyCSVSignalTypeRequirement(entry, signalTypeReqs)
+		store.AddEntry(entry)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	if onProgress != nil {
+		onProgress(lineNum, bytesRead, totalBytes)
+	}
+
 	return errors, nil
+}
+
+func (p *CSVSignalParser) scanCSVSignalTypeRequirements(filePath string, onProgress ProgressCallback) ([]*models.ParseError, map[string]models.SignalType, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer file.Close()
+
+	fileInfo, _ := file.Stat()
+	totalBytes := int64(0)
+	if fileInfo != nil {
+		totalBytes = fileInfo.Size()
+	}
+
+	errors := make([]*models.ParseError, 0, 100)
+	signalTypeReqs := make(map[string]models.SignalType, 1000)
+	intern := GetGlobalIntern()
+	scanner := bufio.NewScanner(file)
+	const maxScannerBuffer = 1024 * 1024
+	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
+	lineNum := 0
+	var bytesRead int64
+	lastProgressUpdate := 0
+
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		bytesRead += int64(len(line)) + 1
+
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		if onProgress != nil && lineNum%100000 == 0 && lineNum != lastProgressUpdate {
+			lastProgressUpdate = lineNum
+			onProgress(lineNum, bytesRead, totalBytes)
+		}
+
+		entry, parseErr := p.parseLine(line, lineNum, intern)
+		if parseErr != nil {
+			errors = append(errors, parseErr)
+			continue
+		}
+
+		updateCSVSignalTypeRequirement(signalTypeReqs, *entry)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	return errors, signalTypeReqs, nil
+}
+
+func (p *CSVSignalParser) parseLine(line string, lineNum int, intern *StringIntern) (*models.LogEntry, *models.ParseError) {
+	m := p.lineRegex.FindStringSubmatch(line)
+	var tsStr, path, signal, valueStr string
+
+	if m == nil {
+		parts := strings.Split(line, ",")
+		if len(parts) < 4 {
+			return nil, &models.ParseError{
+				Line:    lineNum,
+				Content: line,
+				Reason:  "line does not match CSV signal format",
+			}
+		}
+		tsStr = strings.TrimSpace(parts[0])
+		path = strings.TrimSpace(parts[1])
+		signal = strings.TrimSpace(parts[2])
+		valueStr = strings.TrimSpace(strings.Join(parts[3:], ","))
+	} else {
+		tsStr = m[1]
+		path = m[2]
+		signal = m[3]
+		valueStr = m[4]
+	}
+
+	ts, err := FastTimestamp(tsStr)
+	if err != nil {
+		return nil, &models.ParseError{Line: lineNum, Content: line, Reason: "invalid timestamp"}
+	}
+
+	deviceID := ExtractDeviceID(path)
+	if deviceID == "" {
+		deviceID = path
+	}
+
+	deviceID = intern.Intern(deviceID)
+	signal = intern.Intern(signal)
+
+	stype := InferType(valueStr)
+	value := ParseValue(valueStr, stype)
+
+	return &models.LogEntry{
+		DeviceID:   deviceID,
+		SignalName: signal,
+		Timestamp:  ts,
+		Value:      value,
+		SignalType: stype,
+	}, nil
+}
+
+func updateCSVSignalTypeRequirement(signalTypeReqs map[string]models.SignalType, entry models.LogEntry) {
+	signalKey := entry.DeviceID + "::" + entry.SignalName
+	if entry.SignalType == models.SignalTypeInteger {
+		if val, ok := entry.Value.(int); ok {
+			if val != 0 && val != 1 {
+				signalTypeReqs[signalKey] = models.SignalTypeInteger
+			} else if signalTypeReqs[signalKey] == "" {
+				signalTypeReqs[signalKey] = models.SignalTypeBoolean
+			}
+		}
+		return
+	}
+
+	if entry.SignalType == models.SignalTypeBoolean {
+		if signalTypeReqs[signalKey] == "" {
+			signalTypeReqs[signalKey] = models.SignalTypeBoolean
+		}
+		return
+	}
+
+	signalTypeReqs[signalKey] = models.SignalTypeString
+}
+
+func applyCSVSignalTypeRequirement(entry *models.LogEntry, signalTypeReqs map[string]models.SignalType) {
+	signalKey := entry.DeviceID + "::" + entry.SignalName
+	requiredType, ok := signalTypeReqs[signalKey]
+	if !ok {
+		return
+	}
+	if requiredType != models.SignalTypeInteger || entry.SignalType != models.SignalTypeBoolean {
+		return
+	}
+
+	entry.SignalType = models.SignalTypeInteger
+	if entry.Value == true {
+		entry.Value = 1
+	} else {
+		entry.Value = 0
+	}
 }

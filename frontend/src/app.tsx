@@ -38,6 +38,7 @@ export function App() {
   const recentFiles = useSignal<FileInfo[]>([])
   const showHelp = useSignal(false)
   const sessionLoading = useSignal(false)
+  const canDeleteFiles = useSignal(false)
 
   const fetchFiles = async () => {
     try {
@@ -51,8 +52,9 @@ export function App() {
 
   useEffect(() => {
     checkHealth()
-      .then(() => {
+      .then((health) => {
         status.value = 'connected'
+        canDeleteFiles.value = health.allowFileDeletion === true
         fetchFiles()
         
         // Check for session query parameter (used by E2E tests)
@@ -171,6 +173,11 @@ export function App() {
     try {
       await deleteFile(id)
       recentFiles.value = recentFiles.value.filter(f => f.id !== id)
+
+      const session = currentSession.value
+      if (session?.fileId === id || session?.fileIds?.includes(id)) {
+        handleClearSession()
+      }
     } catch (err) {
       console.error('Failed to delete file', err)
     }
@@ -345,7 +352,7 @@ export function App() {
             onUploadSuccess={handleUploadSuccess}
             onFileSelect={handleFileSelect}
             onFileMerge={handleFileMerge}
-            onFileDelete={handleFileDelete}
+            onFileDelete={canDeleteFiles.value ? handleFileDelete : undefined}
             onFileRename={handleRename}
             onOpenView={handleOpenView}
             onClearSession={handleClearSession}

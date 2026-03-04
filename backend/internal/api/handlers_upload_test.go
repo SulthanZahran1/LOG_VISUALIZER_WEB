@@ -78,7 +78,7 @@ func TestUploadHandler_HandleUploadFile(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup
 			store := testutil.NewMockStorage()
-			handler := NewUploadHandler(store, nil, nil)
+			handler := NewUploadHandler(store, nil, nil, nil, nil)
 
 			e := echo.New()
 			body, _ := json.Marshal(tt.request)
@@ -192,7 +192,7 @@ func TestUploadHandler_HandleGetRecentFiles(t *testing.T) {
 			for name, data := range tt.setupFiles {
 				store.AddFile(fmt.Sprintf("id-%s", name), name, data)
 			}
-			handler := NewUploadHandler(store, nil, nil)
+			handler := NewUploadHandler(store, nil, nil, nil, nil)
 
 			e := echo.New()
 			req := httptest.NewRequest(http.MethodGet, "/api/files/recent", nil)
@@ -285,7 +285,7 @@ func TestUploadHandler_HandleGetFile(t *testing.T) {
 			for id, data := range tt.setupFiles {
 				store.AddFile(id, "test.txt", data)
 			}
-			handler := NewUploadHandler(store, nil, nil)
+			handler := NewUploadHandler(store, nil, nil, nil, nil)
 
 			e := echo.New()
 			req := httptest.NewRequest(http.MethodGet, "/api/files/:id", nil)
@@ -371,7 +371,7 @@ func TestUploadHandler_HandleDeleteFile(t *testing.T) {
 			for id, data := range tt.setupFiles {
 				store.AddFile(id, "test.txt", data)
 			}
-			handler := NewUploadHandler(store, nil, nil)
+			handler := NewUploadHandler(store, nil, nil, nil, nil)
 
 			e := echo.New()
 			req := httptest.NewRequest(http.MethodDelete, "/api/files/:id", nil)
@@ -462,7 +462,7 @@ func TestUploadHandler_HandleRenameFile(t *testing.T) {
 			for id, data := range tt.setupFiles {
 				store.AddFile(id, "old-name.txt", data)
 			}
-			handler := NewUploadHandler(store, nil, nil)
+			handler := NewUploadHandler(store, nil, nil, nil, nil)
 
 			e := echo.New()
 			body, _ := json.Marshal(renameFileRequest{Name: tt.newName})
@@ -573,7 +573,7 @@ func TestUploadHandler_HandleUploadChunk(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup
 			store := testutil.NewMockStorage()
-			handler := NewUploadHandler(store, nil, nil)
+			handler := NewUploadHandler(store, nil, nil, nil, nil)
 
 			e := echo.New()
 			body, _ := json.Marshal(tt.request)

@@ -53,6 +53,17 @@ func (h *MapHandlerImpl) GetCurrentRules() (string, *models.MapRules) {
 	return h.currentRulesID, h.currentRules
 }
 
+// HandleFileDeleted clears active map/rules references that point at a deleted file.
+func (h *MapHandlerImpl) HandleFileDeleted(fileID string) {
+	if h.currentMapID == fileID {
+		h.currentMapID = ""
+	}
+	if h.currentRulesID == fileID {
+		h.currentRulesID = ""
+		h.currentRules = nil
+	}
+}
+
 // LoadDefaultRules loads the default rules.yaml file if it exists
 func (h *MapHandlerImpl) LoadDefaultRules() error {
 	rulesPath := filepath.Join(h.dataDir, "defaults", "rules.yaml")

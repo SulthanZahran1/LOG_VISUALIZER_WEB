@@ -108,6 +108,7 @@ type WSErrorResponse struct {
 // Uses disk storage to minimize memory usage for large files
 type UploadSession struct {
 	ID             string
+	ConnectionID   string
 	FileName       string
 	TotalChunks    int
 	ReceivedChunks map[int]bool
@@ -123,6 +124,7 @@ type WebSocketHandler struct {
 	sessionMgr     *session.Manager
 	mapHandler     MapHandler
 	carrierHandler CarrierHandler
+	uploadDir      string
 	upgrader       websocket.Upgrader
 	sessions       map[string]*UploadSession
 	sessionsMu     sync.RWMutex
@@ -135,6 +137,7 @@ func NewWebSocketHandler(deps *Dependencies, handlers *Handlers) *WebSocketHandl
 		sessionMgr:     deps.SessionMgr,
 		mapHandler:     handlers.Map,
 		carrierHandler: handlers.Carrier,
+		uploadDir:      deps.UploadDir,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				// Allow connections from dev server
@@ -153,7 +156,10 @@ func (wsh *WebSocketHandler) HandleWebSocket(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	connectionID := generateUploadID()
 	defer ws.Close()
+	defer wsh.cleanupConnectionUploads(connectionID)
+	defer wsh.cleanupStaleSessions(30 * time.Minute)
 
 	fmt.Println("[WebSocket] Client connected for upload")
 
@@ -180,7 +186,7 @@ func (wsh *WebSocketHandler) HandleWebSocket(c echo.Context) error {
 			// Respond with pong to keep connection alive
 			wsh.sendMessage(ws, WSMessage{Type: MsgTypePong, Timestamp: time.Now().UnixMilli()})
 		case MsgTypeUploadInit:
-			wsh.handleUploadInit(ws, msg)
+			wsh.handleUploadInit(ws, msg, connectionID)
 		case MsgTypeUploadChunk:
 			wsh.handleUploadChunk(ws, msg)
 		case MsgTypeUploadComplete:
@@ -201,17 +207,19 @@ func (wsh *WebSocketHandler) HandleWebSocket(c echo.Context) error {
 }
 
 // handleUploadInit initializes a new chunked upload session
-func (wsh *WebSocketHandler) handleUploadInit(ws *websocket.Conn, msg WSMessage) {
+func (wsh *WebSocketHandler) handleUploadInit(ws *websocket.Conn, msg WSMessage, connectionID string) {
 	var payload UploadInitPayload
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		wsh.sendError(ws, "Invalid init payload: "+err.Error(), "INVALID_PAYLOAD")
 		return
 	}
 
+	wsh.cleanupStaleSessions(30 * time.Minute)
+
 	sessionID := generateUploadID()
 
 	// Create temp directory for chunks (disk storage to minimize memory)
-	tempDir := filepath.Join("./data/uploads", ".ws_temp", sessionID)
+	tempDir := filepath.Join(wsh.uploadDir, ".ws_temp", sessionID)
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		wsh.sendError(ws, "Failed to create temp directory: "+err.Error(), "INTERNAL_ERROR")
 		return
@@ -219,6 +227,7 @@ func (wsh *WebSocketHandler) handleUploadInit(ws *websocket.Conn, msg WSMessage)
 
 	session := &UploadSession{
 		ID:             sessionID,
+		ConnectionID:   connectionID,
 		FileName:       payload.FileName,
 		TotalChunks:    payload.TotalChunks,
 		ReceivedChunks: make(map[int]bool),
@@ -314,6 +323,7 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 		wsh.sendError(ws, "Upload session not found: "+payload.UploadID, "SESSION_NOT_FOUND")
 		return
 	}
+	defer wsh.cleanupUploadSession(payload.UploadID)
 
 	// Verify all chunks received
 	if len(session.ReceivedChunks) != session.TotalChunks {
@@ -394,14 +404,6 @@ func (wsh *WebSocketHandler) handleUploadComplete(ws *websocket.Conn, msg WSMess
 		return
 	}
 
-	// Clean up temp directory
-	os.RemoveAll(session.TempDir)
-
-	// Clean up session
-	wsh.sessionsMu.Lock()
-	delete(wsh.sessions, payload.UploadID)
-	wsh.sessionsMu.Unlock()
-
 	// Send completion
 	wsh.sendMessage(ws, WSMessage{
 		Type:      MsgTypeComplete,
@@ -453,6 +455,10 @@ func (wsh *WebSocketHandler) handleMapUpload(ws *websocket.Conn, msg WSMessage) 
 	if err != nil {
 		wsh.sendError(ws, "Failed to save map file: "+err.Error(), "SAVE_ERROR")
 		return
+	}
+
+	if h, ok := wsh.carrierHandler.(*CarrierHandlerImpl); ok {
+		h.SetCarrierFile(info.ID, info.Name)
 	}
 
 	// Set as active map via map handler
@@ -635,6 +641,59 @@ func (wsh *WebSocketHandler) sendError(ws *websocket.Conn, message, code string)
 			Code:    code,
 		}),
 	})
+}
+
+func (wsh *WebSocketHandler) cleanupUploadSession(uploadID string) {
+	wsh.sessionsMu.Lock()
+	session, ok := wsh.sessions[uploadID]
+	if ok {
+		delete(wsh.sessions, uploadID)
+	}
+	wsh.sessionsMu.Unlock()
+
+	if ok && session.TempDir != "" {
+		_ = os.RemoveAll(session.TempDir)
+	}
+}
+
+func (wsh *WebSocketHandler) cleanupConnectionUploads(connectionID string) {
+	if connectionID == "" {
+		return
+	}
+
+	var ids []string
+	wsh.sessionsMu.RLock()
+	for id, session := range wsh.sessions {
+		if session.ConnectionID == connectionID {
+			ids = append(ids, id)
+		}
+	}
+	wsh.sessionsMu.RUnlock()
+
+	for _, id := range ids {
+		wsh.cleanupUploadSession(id)
+	}
+}
+
+func (wsh *WebSocketHandler) cleanupStaleSessions(maxAge time.Duration) {
+	if maxAge <= 0 {
+		return
+	}
+
+	now := time.Now()
+	var expired []string
+
+	wsh.sessionsMu.RLock()
+	for id, session := range wsh.sessions {
+		if now.Sub(session.CreatedAt) > maxAge {
+			expired = append(expired, id)
+		}
+	}
+	wsh.sessionsMu.RUnlock()
+
+	for _, id := range expired {
+		wsh.cleanupUploadSession(id)
+	}
 }
 
 func generateUploadID() string {

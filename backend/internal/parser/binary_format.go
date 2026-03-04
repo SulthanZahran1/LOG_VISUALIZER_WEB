@@ -371,19 +371,8 @@ func NewBinaryDecoder(r io.Reader) *BinaryDecoder {
 
 // Decode reads and decodes the entire binary format
 func (dec *BinaryDecoder) Decode() (*models.ParsedLog, error) {
-	// Read header
-	if err := binary.Read(dec.reader, binary.BigEndian, &dec.header); err != nil {
-		return nil, fmt.Errorf("reading header: %w", err)
-	}
-
-	// Verify magic
-	if dec.header.Magic != BinaryMagic {
-		return nil, fmt.Errorf("invalid magic number: expected %x, got %x", BinaryMagic, dec.header.Magic)
-	}
-
-	// Verify version
-	if dec.header.Version != BinaryVersion {
-		return nil, fmt.Errorf("unsupported version: %d", dec.header.Version)
+	if err := dec.readHeader(); err != nil {
+		return nil, err
 	}
 
 	// Read string table
@@ -421,6 +410,44 @@ func (dec *BinaryDecoder) Decode() (*models.ParsedLog, error) {
 	}, nil
 }
 
+// DecodeToDuckStore decodes the binary format directly into DuckStore.
+func (dec *BinaryDecoder) DecodeToDuckStore(store *DuckStore) error {
+	if err := dec.readHeader(); err != nil {
+		return err
+	}
+
+	if err := dec.readStringTable(); err != nil {
+		return fmt.Errorf("reading string table: %w", err)
+	}
+
+	lastTimestamp := dec.header.FirstTimestamp
+	for i := uint32(0); i < dec.header.EntryCount; i++ {
+		entry, err := dec.readNextEntry(&lastTimestamp)
+		if err != nil {
+			return fmt.Errorf("reading entries: %w", err)
+		}
+		store.AddEntry(&entry)
+	}
+
+	return nil
+}
+
+func (dec *BinaryDecoder) readHeader() error {
+	if err := binary.Read(dec.reader, binary.BigEndian, &dec.header); err != nil {
+		return fmt.Errorf("reading header: %w", err)
+	}
+
+	if dec.header.Magic != BinaryMagic {
+		return fmt.Errorf("invalid magic number: expected %x, got %x", BinaryMagic, dec.header.Magic)
+	}
+
+	if dec.header.Version != BinaryVersion {
+		return fmt.Errorf("unsupported version: %d", dec.header.Version)
+	}
+
+	return nil
+}
+
 func (dec *BinaryDecoder) readStringTable() error {
 	// Read string count
 	count, err := readVarInt(dec.reader)
@@ -455,113 +482,134 @@ func (dec *BinaryDecoder) readEntries() error {
 	lastTimestamp := dec.header.FirstTimestamp
 
 	for i := uint32(0); i < dec.header.EntryCount; i++ {
-		// Read timestamp delta
-		var delta uint16
-		if err := binary.Read(dec.reader, binary.BigEndian, &delta); err != nil {
-			return err
-		}
-
-		var timestamp time.Time
-		if delta == 0xFFFF {
-			// Large delta, read full timestamp
-			var fullTs int64
-			if err := binary.Read(dec.reader, binary.BigEndian, &fullTs); err != nil {
-				return err
-			}
-			timestamp = time.UnixMilli(fullTs)
-			lastTimestamp = fullTs
-		} else {
-			timestamp = time.UnixMilli(lastTimestamp + int64(delta))
-			lastTimestamp += int64(delta)
-		}
-
-		// Read string indices
-		deviceIdx, err := readVarInt(dec.reader)
+		entry, err := dec.readNextEntry(&lastTimestamp)
 		if err != nil {
 			return err
 		}
-		signalIdx, err := readVarInt(dec.reader)
-		if err != nil {
-			return err
-		}
-		categoryIdx, err := readVarInt(dec.reader)
-		if err != nil {
-			return err
-		}
-
-		// Read value type
-		var valTypeByte [1]byte
-		if _, err := dec.reader.Read(valTypeByte[:]); err != nil {
-			return err
-		}
-		valType := ValueType(valTypeByte[0])
-
-		// Read value
-		var value interface{}
-		var signalType models.SignalType
-
-		switch valType {
-		case ValueTypeBoolFalse:
-			value = false
-			signalType = models.SignalTypeBoolean
-		case ValueTypeBoolTrue:
-			value = true
-			signalType = models.SignalTypeBoolean
-		case ValueTypeInt8:
-			var v int8
-			binary.Read(dec.reader, binary.BigEndian, &v)
-			value = int(v)
-			signalType = models.SignalTypeInteger
-		case ValueTypeInt16:
-			var v int16
-			binary.Read(dec.reader, binary.BigEndian, &v)
-			value = int(v)
-			signalType = models.SignalTypeInteger
-		case ValueTypeInt32:
-			var v int32
-			binary.Read(dec.reader, binary.BigEndian, &v)
-			value = int(v)
-			signalType = models.SignalTypeInteger
-		case ValueTypeInt64:
-			var v int64
-			binary.Read(dec.reader, binary.BigEndian, &v)
-			value = int(v)
-			signalType = models.SignalTypeInteger
-		case ValueTypeFloat64:
-			var v float64
-			binary.Read(dec.reader, binary.BigEndian, &v)
-			value = v
-			signalType = models.SignalTypeString // No float type in model
-		case ValueTypeStringIndex:
-			idx, _ := readVarInt(dec.reader)
-			value = dec.strings[idx]
-			signalType = models.SignalTypeString
-		case ValueTypeStringRaw:
-			length, _ := readVarInt(dec.reader)
-			data := make([]byte, length)
-			io.ReadFull(dec.reader, data)
-			value = string(data)
-			signalType = models.SignalTypeString
-		}
-
-		var category string
-		if categoryIdx != 0xFFFFFFFF {
-			category = dec.strings[categoryIdx]
-		}
-
-		entry := models.LogEntry{
-			DeviceID:   dec.strings[deviceIdx],
-			SignalName: dec.strings[signalIdx],
-			Timestamp:  timestamp,
-			Value:      value,
-			SignalType: signalType,
-			Category:   category,
-		}
-
 		dec.entries = append(dec.entries, entry)
 	}
 
 	return nil
+}
+
+func (dec *BinaryDecoder) readNextEntry(lastTimestamp *int64) (models.LogEntry, error) {
+	var delta uint16
+	if err := binary.Read(dec.reader, binary.BigEndian, &delta); err != nil {
+		return models.LogEntry{}, err
+	}
+
+	var timestamp time.Time
+	if delta == 0xFFFF {
+		var fullTs int64
+		if err := binary.Read(dec.reader, binary.BigEndian, &fullTs); err != nil {
+			return models.LogEntry{}, err
+		}
+		timestamp = time.UnixMilli(fullTs)
+		*lastTimestamp = fullTs
+	} else {
+		timestamp = time.UnixMilli(*lastTimestamp + int64(delta))
+		*lastTimestamp += int64(delta)
+	}
+
+	deviceIdx, err := readVarInt(dec.reader)
+	if err != nil {
+		return models.LogEntry{}, err
+	}
+	signalIdx, err := readVarInt(dec.reader)
+	if err != nil {
+		return models.LogEntry{}, err
+	}
+	categoryIdx, err := readVarInt(dec.reader)
+	if err != nil {
+		return models.LogEntry{}, err
+	}
+
+	var valTypeByte [1]byte
+	if _, err := dec.reader.Read(valTypeByte[:]); err != nil {
+		return models.LogEntry{}, err
+	}
+	valType := ValueType(valTypeByte[0])
+
+	var value interface{}
+	var signalType models.SignalType
+
+	switch valType {
+	case ValueTypeBoolFalse:
+		value = false
+		signalType = models.SignalTypeBoolean
+	case ValueTypeBoolTrue:
+		value = true
+		signalType = models.SignalTypeBoolean
+	case ValueTypeInt8:
+		var v int8
+		if err := binary.Read(dec.reader, binary.BigEndian, &v); err != nil {
+			return models.LogEntry{}, err
+		}
+		value = int(v)
+		signalType = models.SignalTypeInteger
+	case ValueTypeInt16:
+		var v int16
+		if err := binary.Read(dec.reader, binary.BigEndian, &v); err != nil {
+			return models.LogEntry{}, err
+		}
+		value = int(v)
+		signalType = models.SignalTypeInteger
+	case ValueTypeInt32:
+		var v int32
+		if err := binary.Read(dec.reader, binary.BigEndian, &v); err != nil {
+			return models.LogEntry{}, err
+		}
+		value = int(v)
+		signalType = models.SignalTypeInteger
+	case ValueTypeInt64:
+		var v int64
+		if err := binary.Read(dec.reader, binary.BigEndian, &v); err != nil {
+			return models.LogEntry{}, err
+		}
+		value = int(v)
+		signalType = models.SignalTypeInteger
+	case ValueTypeFloat64:
+		var v float64
+		if err := binary.Read(dec.reader, binary.BigEndian, &v); err != nil {
+			return models.LogEntry{}, err
+		}
+		value = v
+		signalType = models.SignalTypeString
+	case ValueTypeStringIndex:
+		idx, err := readVarInt(dec.reader)
+		if err != nil {
+			return models.LogEntry{}, err
+		}
+		value = dec.strings[idx]
+		signalType = models.SignalTypeString
+	case ValueTypeStringRaw:
+		length, err := readVarInt(dec.reader)
+		if err != nil {
+			return models.LogEntry{}, err
+		}
+		data := make([]byte, length)
+		if _, err := io.ReadFull(dec.reader, data); err != nil {
+			return models.LogEntry{}, err
+		}
+		value = string(data)
+		signalType = models.SignalTypeString
+	default:
+		return models.LogEntry{}, fmt.Errorf("unsupported value type: %d", valType)
+	}
+
+	var category string
+	if categoryIdx != 0xFFFFFFFF {
+		category = dec.strings[categoryIdx]
+	}
+
+	return models.LogEntry{
+		DeviceID:   dec.strings[deviceIdx],
+		SignalName: dec.strings[signalIdx],
+		Timestamp:  timestamp,
+		Value:      value,
+		SignalType: signalType,
+		Category:   category,
+	}, nil
 }
 
 // readVarInt reads a variable-length integer
@@ -657,11 +705,30 @@ func (p *BinaryFormatParser) ParseWithProgress(filePath string, onProgress Progr
 }
 
 func (p *BinaryFormatParser) ParseToDuckStore(filePath string, store *DuckStore, onProgress ProgressCallback) ([]*models.ParseError, error) {
-	parsed, errors, err := p.ParseWithProgress(filePath, onProgress)
+	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 
-	WriteParsedLogToDuckStore(parsed, store)
-	return errors, nil
+	fileInfo, _ := file.Stat()
+	totalBytes := int64(0)
+	if fileInfo != nil {
+		totalBytes = fileInfo.Size()
+	}
+
+	if onProgress != nil {
+		onProgress(0, 0, totalBytes)
+	}
+
+	decoder := NewBinaryDecoder(file)
+	if err := decoder.DecodeToDuckStore(store); err != nil {
+		return nil, err
+	}
+
+	if onProgress != nil {
+		onProgress(store.Len(), totalBytes, totalBytes)
+	}
+
+	return nil, nil
 }

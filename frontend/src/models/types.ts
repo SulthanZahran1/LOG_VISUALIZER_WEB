@@ -59,4 +59,6 @@ export interface FileInfo {
 
 export interface HealthResponse {
     status: string;
+    version?: string;
+    allowFileDeletion?: boolean;
 }

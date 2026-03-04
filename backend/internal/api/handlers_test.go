@@ -26,14 +26,29 @@ func setupTestHandlers(t *testing.T) (*Dependencies, *Handlers, *echo.Echo) {
 	uploadMgr := upload.NewManager(tmpDir, store)
 
 	deps := &Dependencies{
-		Store:      store,
-		SessionMgr: sessionMgr,
-		UploadMgr:  uploadMgr,
-		DataDir:    tmpDir,
-		Version:    "test",
+		Store:             store,
+		SessionMgr:        sessionMgr,
+		UploadMgr:         uploadMgr,
+		DataDir:           tmpDir,
+		Version:           "test",
+		UploadDir:         tmpDir,
+		AllowFileDeletion: true,
 	}
 	handlers := NewHandlers(deps)
 	return deps, handlers, e
+}
+
+func TestHealthIncludesDeletionCapability(t *testing.T) {
+	_, handlers, e := setupTestHandlers(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if assert.NoError(t, handlers.Health.HandleHealth(c)) {
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, rec.Body.String(), `"allowFileDeletion":true`)
+	}
 }
 
 func TestMapHandlers(t *testing.T) {
@@ -74,14 +89,7 @@ func TestMapHandlers(t *testing.T) {
 }
 
 func TestChunkedUpload(t *testing.T) {
-	// NOTE: This test is skipped because the upload completion is now async.
-	// The async job processor reads chunks directly from disk, but the test
-	// setup uses an in-memory temp directory that gets cleaned up before
-	// the async job runs. Testing async upload completion requires job
-	// status polling infrastructure that doesn't exist yet.
-	t.Skip("Skipped: async upload completion requires job polling infrastructure")
-	
-	_, handlers, e := setupTestHandlers(t)
+	deps, handlers, e := setupTestHandlers(t)
 
 	uploadID := "test-upload-v1"
 	chunk1 := []byte("chunk one ")
@@ -132,6 +140,30 @@ func TestChunkedUpload(t *testing.T) {
 		assert.Equal(t, http.StatusAccepted, rec3.Code)
 		assert.Contains(t, rec3.Body.String(), `"jobId"`)
 		assert.Contains(t, rec3.Body.String(), `"status":"processing"`)
+	}
+
+	var completeResp struct {
+		JobID string `json:"jobId"`
+	}
+	if assert.NoError(t, json.Unmarshal(rec3.Body.Bytes(), &completeResp)) {
+		assert.NotEmpty(t, completeResp.JobID)
+	}
+
+	req4 := httptest.NewRequest(http.MethodGet, "/api/files/upload/"+completeResp.JobID+"/status", nil)
+	rec4 := httptest.NewRecorder()
+	c4 := e.NewContext(req4, rec4)
+	c4.SetParamNames("jobId")
+	c4.SetParamValues(completeResp.JobID)
+	if assert.NoError(t, handlers.Upload.HandleUploadJobStream(c4)) {
+		assert.Equal(t, http.StatusOK, rec4.Code)
+		assert.Contains(t, rec4.Body.String(), `"status":"complete"`)
+		assert.Contains(t, rec4.Body.String(), `"fileInfo"`)
+	}
+
+	files, err := deps.Store.List(10)
+	if assert.NoError(t, err) {
+		assert.Len(t, files, 1)
+		assert.Equal(t, "combined.txt", files[0].Name)
 	}
 }
 
@@ -205,5 +237,48 @@ func TestSetActiveMap(t *testing.T) {
 	if assert.NoError(t, handlers.Map.HandleGetMapLayout(cGet)) {
 		assert.Equal(t, http.StatusOK, recGet.Code)
 		assert.Contains(t, recGet.Body.String(), info.ID)
+	}
+}
+
+func TestDeleteFileClearsActiveMap(t *testing.T) {
+	_, handlers, e := setupTestHandlers(t)
+
+	xmlData := `<?xml version="1.0" ?><ConveyorMap><Object name="O1" type="T"><Size>1,1</Size><Location>0,0</Location></Object></ConveyorMap>`
+	uploadBody, _ := json.Marshal(map[string]string{
+		"name": "test_map.xml",
+		"data": base64.StdEncoding.EncodeToString([]byte(xmlData)),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/map/upload", bytes.NewBuffer(uploadBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	if !assert.NoError(t, handlers.Map.HandleUploadMapLayout(c)) {
+		return
+	}
+
+	var info struct {
+		ID string `json:"id"`
+	}
+	if !assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &info)) {
+		return
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/files/"+info.ID, nil)
+	deleteRec := httptest.NewRecorder()
+	deleteCtx := e.NewContext(deleteReq, deleteRec)
+	deleteCtx.SetParamNames("id")
+	deleteCtx.SetParamValues(info.ID)
+	if !assert.NoError(t, handlers.Upload.HandleDeleteFile(deleteCtx)) {
+		return
+	}
+	assert.Equal(t, http.StatusNoContent, deleteRec.Code)
+
+	layoutReq := httptest.NewRequest(http.MethodGet, "/api/map/layout", nil)
+	layoutRec := httptest.NewRecorder()
+	layoutCtx := e.NewContext(layoutReq, layoutRec)
+	if assert.NoError(t, handlers.Map.HandleGetMapLayout(layoutCtx)) {
+		assert.Equal(t, http.StatusOK, layoutRec.Code)
+		assert.Contains(t, layoutRec.Body.String(), `"objects":{}`)
 	}
 }

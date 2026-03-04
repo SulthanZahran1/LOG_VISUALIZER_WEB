@@ -110,8 +110,14 @@ func TestCarrierHandler_HandleUploadCarrierLog(t *testing.T) {
 					t.Errorf("failed to unmarshal: %v", err)
 					return
 				}
-				if _, ok := response["entries"]; !ok {
-					t.Error("expected 'entries' in response")
+				if _, ok := response["sessionId"]; !ok {
+					t.Error("expected 'sessionId' in response")
+				}
+				if _, ok := response["fileId"]; !ok {
+					t.Error("expected 'fileId' in response")
+				}
+				if _, ok := response["fileName"]; !ok {
+					t.Error("expected 'fileName' in response")
 				}
 			}
 		})
@@ -172,9 +178,9 @@ func TestCarrierHandler_HandleGetCarrierLog(t *testing.T) {
 				return
 			}
 
-			hasLog, _ := response["hasCarrierLog"].(bool)
+			hasLog, _ := response["loaded"].(bool)
 			if hasLog != tt.hasCarrierData {
-				t.Errorf("expected hasCarrierLog=%v, got %v", tt.hasCarrierData, hasLog)
+				t.Errorf("expected loaded=%v, got %v", tt.hasCarrierData, hasLog)
 			}
 		})
 	}
@@ -246,14 +252,20 @@ func TestCarrierHandler_HandleGetCarrierEntries(t *testing.T) {
 				t.Errorf("expected status %d, got %d", tt.wantStatus, rec.Code)
 			}
 
-			var entries []models.CarrierEntry
-			if err := json.Unmarshal(rec.Body.Bytes(), &entries); err != nil {
+			var response struct {
+				Entries []models.CarrierEntry `json:"entries"`
+				Total   int                   `json:"total"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 				t.Errorf("failed to unmarshal: %v", err)
 				return
 			}
 
-			if len(entries) != tt.wantCount {
-				t.Errorf("expected %d entries, got %d", tt.wantCount, len(entries))
+			if len(response.Entries) != tt.wantCount {
+				t.Errorf("expected %d entries, got %d", tt.wantCount, len(response.Entries))
+			}
+			if response.Total != tt.wantCount {
+				t.Errorf("expected total %d, got %d", tt.wantCount, response.Total)
 			}
 		})
 	}

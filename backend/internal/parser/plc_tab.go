@@ -129,27 +129,7 @@ func (p *PLCTabParser) ParseWithProgress(filePath string, onProgress ProgressCal
 		signals[signalKey] = struct{}{}
 		devices[entry.DeviceID] = struct{}{}
 
-		// Track signal type requirements
-		// If a signal has any non-0/1 integer values, it should be integer type
-		if entry.SignalType == models.SignalTypeInteger {
-			// Check if value is 0 or 1 (could be boolean) or other integer
-			if val, ok := entry.Value.(int); ok {
-				if val != 0 && val != 1 {
-					// Non-0/1 value forces integer type
-					signalTypeReqs[signalKey] = models.SignalTypeInteger
-				} else if signalTypeReqs[signalKey] == "" {
-					// 0/1 tentatively boolean unless already marked integer
-					signalTypeReqs[signalKey] = models.SignalTypeBoolean
-				}
-			}
-		} else if entry.SignalType == models.SignalTypeBoolean {
-			if signalTypeReqs[signalKey] == "" {
-				signalTypeReqs[signalKey] = models.SignalTypeBoolean
-			}
-		} else {
-			// String type always stays string
-			signalTypeReqs[signalKey] = models.SignalTypeString
-		}
+		updatePLCTabSignalTypeRequirement(signalTypeReqs, *entry)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -164,18 +144,7 @@ func (p *PLCTabParser) ParseWithProgress(filePath string, onProgress ProgressCal
 	// Resolve signal types: upgrade boolean signals to integer if needed
 	// Convert bool values to 0/1 for signals that were upgraded
 	for i := range entries {
-		signalKey := entries[i].DeviceID + "::" + entries[i].SignalName
-		if requiredType, ok := signalTypeReqs[signalKey]; ok {
-			if requiredType == models.SignalTypeInteger && entries[i].SignalType == models.SignalTypeBoolean {
-				// Upgrade: convert boolean to 0/1
-				entries[i].SignalType = models.SignalTypeInteger
-				if entries[i].Value == true {
-					entries[i].Value = 1
-				} else {
-					entries[i].Value = 0
-				}
-			}
-		}
+		applyPLCTabSignalTypeRequirement(&entries[i], signalTypeReqs)
 	}
 
 	var timeRange *models.TimeRange
@@ -195,13 +164,163 @@ func (p *PLCTabParser) ParseWithProgress(filePath string, onProgress ProgressCal
 }
 
 func (p *PLCTabParser) ParseToDuckStore(filePath string, store *DuckStore, onProgress ProgressCallback) ([]*models.ParseError, error) {
-	parsed, errors, err := p.ParseWithProgress(filePath, onProgress)
+	errors, signalTypeReqs, err := p.scanPLCTabSignalTypeRequirements(filePath, onProgress)
 	if err != nil {
 		return nil, err
 	}
 
-	WriteParsedLogToDuckStore(parsed, store)
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	fileInfo, err := file.Stat()
+	if err != nil {
+		fileInfo = nil
+	}
+	totalBytes := int64(0)
+	if fileInfo != nil {
+		totalBytes = fileInfo.Size()
+	}
+
+	intern := GetGlobalIntern()
+	scanner := bufio.NewScanner(file)
+	const maxScannerBuffer = 1024 * 1024
+	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
+	lineNum := 0
+	var bytesRead int64
+	lastProgressUpdate := 0
+
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		bytesRead += int64(len(line)) + 1
+
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		if onProgress != nil && lineNum%100000 == 0 && lineNum != lastProgressUpdate {
+			lastProgressUpdate = lineNum
+			onProgress(lineNum, bytesRead, totalBytes)
+		}
+
+		entry, parseErr := p.parseLine(line, lineNum, intern)
+		if parseErr != nil {
+			continue
+		}
+
+		applyPLCTabSignalTypeRequirement(entry, signalTypeReqs)
+		store.AddEntry(entry)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	if onProgress != nil {
+		onProgress(lineNum, bytesRead, totalBytes)
+	}
+
 	return errors, nil
+}
+
+func (p *PLCTabParser) scanPLCTabSignalTypeRequirements(filePath string, onProgress ProgressCallback) ([]*models.ParseError, map[string]models.SignalType, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer file.Close()
+
+	fileInfo, err := file.Stat()
+	if err != nil {
+		fileInfo = nil
+	}
+	totalBytes := int64(0)
+	if fileInfo != nil {
+		totalBytes = fileInfo.Size()
+	}
+
+	errors := make([]*models.ParseError, 0, 100)
+	signalTypeReqs := make(map[string]models.SignalType, 1000)
+	intern := GetGlobalIntern()
+	scanner := bufio.NewScanner(file)
+	const maxScannerBuffer = 1024 * 1024
+	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
+	lineNum := 0
+	var bytesRead int64
+	lastProgressUpdate := 0
+
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		bytesRead += int64(len(line)) + 1
+
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		if onProgress != nil && lineNum%100000 == 0 && lineNum != lastProgressUpdate {
+			lastProgressUpdate = lineNum
+			onProgress(lineNum, bytesRead, totalBytes)
+		}
+
+		entry, parseErr := p.parseLine(line, lineNum, intern)
+		if parseErr != nil {
+			errors = append(errors, parseErr)
+			continue
+		}
+
+		updatePLCTabSignalTypeRequirement(signalTypeReqs, *entry)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	return errors, signalTypeReqs, nil
+}
+
+func updatePLCTabSignalTypeRequirement(signalTypeReqs map[string]models.SignalType, entry models.LogEntry) {
+	signalKey := entry.DeviceID + "::" + entry.SignalName
+	if entry.SignalType == models.SignalTypeInteger {
+		if val, ok := entry.Value.(int); ok {
+			if val != 0 && val != 1 {
+				signalTypeReqs[signalKey] = models.SignalTypeInteger
+			} else if signalTypeReqs[signalKey] == "" {
+				signalTypeReqs[signalKey] = models.SignalTypeBoolean
+			}
+		}
+		return
+	}
+
+	if entry.SignalType == models.SignalTypeBoolean {
+		if signalTypeReqs[signalKey] == "" {
+			signalTypeReqs[signalKey] = models.SignalTypeBoolean
+		}
+		return
+	}
+
+	signalTypeReqs[signalKey] = models.SignalTypeString
+}
+
+func applyPLCTabSignalTypeRequirement(entry *models.LogEntry, signalTypeReqs map[string]models.SignalType) {
+	signalKey := entry.DeviceID + "::" + entry.SignalName
+	requiredType, ok := signalTypeReqs[signalKey]
+	if !ok {
+		return
+	}
+	if requiredType != models.SignalTypeInteger || entry.SignalType != models.SignalTypeBoolean {
+		return
+	}
+
+	entry.SignalType = models.SignalTypeInteger
+	if entry.Value == true {
+		entry.Value = 1
+	} else {
+		entry.Value = 0
+	}
 }
 
 func (p *PLCTabParser) parseLine(line string, lineNum int, intern *StringIntern) (*models.LogEntry, *models.ParseError) {

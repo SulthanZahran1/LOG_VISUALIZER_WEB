@@ -12,7 +12,7 @@ interface HomeViewProps {
     onUploadSuccess: (file: FileInfo) => void
     onFileSelect: (file: FileInfo) => void
     onFileMerge?: (files: FileInfo[]) => void
-    onFileDelete: (id: string) => void
+    onFileDelete?: (id: string) => void
     onFileRename: (id: string, newName: string) => Promise<void>
     onOpenView: (viewType: ViewType) => void
     onClearSession?: () => void

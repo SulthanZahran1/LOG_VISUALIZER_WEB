@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -31,6 +32,7 @@ type Store interface {
 type LocalStore struct {
 	mu        sync.RWMutex
 	uploadDir string
+	metaDir   string
 	files     map[string]*models.FileInfo
 }
 
@@ -40,10 +42,21 @@ func NewLocalStore(uploadDir string) (*LocalStore, error) {
 		return nil, fmt.Errorf("creating upload directory: %w", err)
 	}
 
-	return &LocalStore{
+	metaDir := filepath.Join(uploadDir, ".meta")
+	if err := os.MkdirAll(metaDir, 0755); err != nil {
+		return nil, fmt.Errorf("creating metadata directory: %w", err)
+	}
+
+	store := &LocalStore{
 		uploadDir: uploadDir,
+		metaDir:   metaDir,
 		files:     make(map[string]*models.FileInfo),
-	}, nil
+	}
+	if err := store.loadMetadata(); err != nil {
+		return nil, err
+	}
+
+	return store, nil
 }
 
 // Save saves a file to the local filesystem.
@@ -71,6 +84,11 @@ func (s *LocalStore) Save(name string, r io.Reader) (*models.FileInfo, error) {
 		Status:     "uploaded",
 	}
 
+	if err := s.persistFileMeta(info); err != nil {
+		os.Remove(path)
+		return nil, err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.files[id] = info
@@ -93,6 +111,11 @@ func (s *LocalStore) SaveBytes(name string, data []byte) (*models.FileInfo, erro
 		Size:       int64(len(data)),
 		UploadedAt: time.Now(),
 		Status:     "uploaded",
+	}
+
+	if err := s.persistFileMeta(info); err != nil {
+		os.Remove(path)
+		return nil, err
 	}
 
 	s.mu.Lock()
@@ -153,7 +176,11 @@ func (s *LocalStore) Delete(id string) error {
 	}
 
 	delete(s.files, id)
-	_ = info // Silence unused warning if any
+
+	if err := s.removeFileMeta(id); err != nil {
+		s.files[id] = info
+		return err
+	}
 
 	return nil
 }
@@ -168,7 +195,12 @@ func (s *LocalStore) Rename(id string, newName string) (*models.FileInfo, error)
 		return nil, fmt.Errorf("file not found: %s", id)
 	}
 
+	oldName := info.Name
 	info.Name = newName
+	if err := s.persistFileMeta(info); err != nil {
+		info.Name = oldName
+		return nil, err
+	}
 	return info, nil
 }
 
@@ -258,6 +290,11 @@ func (s *LocalStore) CompleteChunkedUpload(uploadID string, name string, totalCh
 		Status:     "uploaded",
 	}
 
+	if err := s.persistFileMeta(info); err != nil {
+		os.Remove(finalPath)
+		return nil, err
+	}
+
 	s.mu.Lock()
 	s.files[id] = info
 	s.mu.Unlock()
@@ -273,4 +310,70 @@ func (s *LocalStore) RegisterFile(info *models.FileInfo) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.files[info.ID] = info
+	if err := s.persistFileMeta(info); err != nil {
+		fmt.Printf("[LocalStore] Warning: failed to persist metadata for file %s: %v\n", info.ID, err)
+	}
+}
+
+func (s *LocalStore) metadataPath(id string) string {
+	return filepath.Join(s.metaDir, id+".json")
+}
+
+func (s *LocalStore) persistFileMeta(info *models.FileInfo) error {
+	data, err := json.Marshal(info)
+	if err != nil {
+		return fmt.Errorf("marshalling file metadata: %w", err)
+	}
+	if err := os.WriteFile(s.metadataPath(info.ID), data, 0644); err != nil {
+		return fmt.Errorf("writing file metadata: %w", err)
+	}
+	return nil
+}
+
+func (s *LocalStore) removeFileMeta(id string) error {
+	if err := os.Remove(s.metadataPath(id)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("deleting file metadata: %w", err)
+	}
+	return nil
+}
+
+func (s *LocalStore) loadMetadata() error {
+	entries, err := os.ReadDir(s.metaDir)
+	if err != nil {
+		return fmt.Errorf("reading metadata directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+
+		path := filepath.Join(s.metaDir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("reading metadata file %s: %w", path, err)
+		}
+
+		var info models.FileInfo
+		if err := json.Unmarshal(data, &info); err != nil {
+			return fmt.Errorf("parsing metadata file %s: %w", path, err)
+		}
+		if info.ID == "" {
+			continue
+		}
+
+		rawPath := filepath.Join(s.uploadDir, info.ID)
+		if _, err := os.Stat(rawPath); err != nil {
+			if os.IsNotExist(err) {
+				_ = os.Remove(path)
+				continue
+			}
+			return fmt.Errorf("checking stored file %s: %w", rawPath, err)
+		}
+
+		infoCopy := info
+		s.files[info.ID] = &infoCopy
+	}
+
+	return nil
 }

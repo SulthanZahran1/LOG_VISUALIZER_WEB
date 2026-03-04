@@ -14,6 +14,8 @@ import (
 // CarrierHandlerImpl implements the CarrierHandler interface
 type CarrierHandlerImpl struct {
 	store            storage.Store
+	carrierFileID    string
+	carrierFileName  string
 	carrierSessionID string
 	carrierEntries   []models.CarrierEntry
 }
@@ -34,6 +36,24 @@ func (h *CarrierHandlerImpl) GetCarrierSessionID() string {
 // SetCarrierSessionID sets the current carrier session ID
 func (h *CarrierHandlerImpl) SetCarrierSessionID(sessionID string) {
 	h.carrierSessionID = sessionID
+}
+
+// SetCarrierFile stores the active carrier file metadata.
+func (h *CarrierHandlerImpl) SetCarrierFile(fileID, fileName string) {
+	h.carrierFileID = fileID
+	h.carrierFileName = fileName
+}
+
+// HandleFileDeleted clears carrier state tied to a deleted file.
+func (h *CarrierHandlerImpl) HandleFileDeleted(fileID string) {
+	if h.carrierFileID != fileID && h.carrierSessionID != fileID {
+		return
+	}
+
+	h.carrierFileID = ""
+	h.carrierFileName = ""
+	h.carrierSessionID = ""
+	h.carrierEntries = make([]models.CarrierEntry, 0)
 }
 
 // HandleUploadCarrierLog uploads and processes a carrier log file
@@ -59,6 +79,9 @@ func (h *CarrierHandlerImpl) HandleUploadCarrierLog(c echo.Context) error {
 		return NewInternalError("failed to save carrier log", err)
 	}
 
+	h.SetCarrierFile(info.ID, info.Name)
+	// Keep HTTP and WebSocket response contracts aligned. The HTTP path does not
+	// create a separate parse session yet, so the file ID is also the session ID.
 	h.carrierSessionID = info.ID
 
 	// Parse carrier entries from the log
@@ -70,35 +93,44 @@ func (h *CarrierHandlerImpl) HandleUploadCarrierLog(c echo.Context) error {
 	h.carrierEntries = entries
 
 	return c.JSON(http.StatusCreated, map[string]interface{}{
-		"file":    info,
-		"entries": len(entries),
+		"sessionId": h.carrierSessionID,
+		"fileId":    info.ID,
+		"fileName":  info.Name,
 	})
 }
 
 // HandleGetCarrierLog returns carrier log file metadata
 func (h *CarrierHandlerImpl) HandleGetCarrierLog(c echo.Context) error {
-	if h.carrierSessionID == "" {
+	if h.carrierFileID == "" && h.carrierSessionID == "" {
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"hasCarrierLog": false,
+			"loaded": false,
 		})
 	}
 
-	info, err := h.store.Get(h.carrierSessionID)
-	if err != nil {
-		return NewNotFoundError("carrier log", h.carrierSessionID)
+	if h.carrierFileID != "" {
+		if _, err := h.store.Get(h.carrierFileID); err != nil {
+			h.HandleFileDeleted(h.carrierFileID)
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"loaded": false,
+			})
+		}
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"hasCarrierLog": true,
-		"file":          info,
-		"entryCount":    len(h.carrierEntries),
+		"loaded":     true,
+		"sessionId":  h.carrierSessionID,
+		"status":     "complete",
+		"entryCount": len(h.carrierEntries),
 	})
 }
 
 // HandleGetCarrierEntries returns carrier position entries
 func (h *CarrierHandlerImpl) HandleGetCarrierEntries(c echo.Context) error {
-	if h.carrierSessionID == "" {
-		return c.JSON(http.StatusOK, []models.CarrierEntry{})
+	if h.carrierFileID == "" && h.carrierSessionID == "" {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"entries": []models.CarrierEntry{},
+			"total":   0,
+		})
 	}
 
 	// Filter by time range if provided
@@ -120,7 +152,10 @@ func (h *CarrierHandlerImpl) HandleGetCarrierEntries(c echo.Context) error {
 		filteredEntries = h.carrierEntries
 	}
 
-	return c.JSON(http.StatusOK, filteredEntries)
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"entries": filteredEntries,
+		"total":   len(filteredEntries),
+	})
 }
 
 // parseCarrierLog parses carrier log data into entries

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/plc-visualizer/backend/internal/models"
@@ -16,17 +17,21 @@ import (
 
 // UploadHandlerImpl implements the UploadHandler interface
 type UploadHandlerImpl struct {
-	store         storage.Store
-	sessionMgr    *session.Manager
-	uploadManager *upload.Manager
+	store          storage.Store
+	sessionMgr     *session.Manager
+	uploadManager  *upload.Manager
+	mapHandler     MapHandler
+	carrierHandler CarrierHandler
 }
 
 // NewUploadHandler creates a new upload handler instance
-func NewUploadHandler(store storage.Store, sessionMgr *session.Manager, uploadMgr *upload.Manager) UploadHandler {
+func NewUploadHandler(store storage.Store, sessionMgr *session.Manager, uploadMgr *upload.Manager, mapHandler MapHandler, carrierHandler CarrierHandler) UploadHandler {
 	return &UploadHandlerImpl{
-		store:         store,
-		sessionMgr:    sessionMgr,
-		uploadManager: uploadMgr,
+		store:          store,
+		sessionMgr:     sessionMgr,
+		uploadManager:  uploadMgr,
+		mapHandler:     mapHandler,
+		carrierHandler: carrierHandler,
 	}
 }
 
@@ -178,7 +183,16 @@ func (h *UploadHandlerImpl) HandleDeleteFile(c echo.Context) error {
 
 	// Clean up associated parsed data
 	if h.sessionMgr != nil {
-		h.sessionMgr.DeleteParsedFile(id)
+		_ = h.sessionMgr.DeleteParsedFile(id)
+		h.sessionMgr.DeleteSessionsForFile(id)
+	}
+
+	if h.mapHandler != nil {
+		h.mapHandler.HandleFileDeleted(id)
+	}
+
+	if h.carrierHandler != nil {
+		h.carrierHandler.HandleFileDeleted(id)
 	}
 
 	return c.NoContent(http.StatusNoContent)
@@ -211,14 +225,63 @@ func (h *UploadHandlerImpl) HandleRenameFile(c echo.Context) error {
 // HandleUploadJobStream streams upload job status via SSE
 // TODO: Implement proper upload job streaming
 func (h *UploadHandlerImpl) HandleUploadJobStream(c echo.Context) error {
-	// Stub implementation - returns not implemented
+	jobID := c.Param("jobId")
+	if jobID == "" {
+		return NewValidationError("jobId")
+	}
+	if h.uploadManager == nil {
+		return NewInternalError("upload manager unavailable", nil)
+	}
+
+	job, ok := h.uploadManager.GetJob(jobID)
+	if !ok {
+		return NewNotFoundError("upload job", jobID)
+	}
+
 	c.Response().Header().Set("Content-Type", "text/event-stream")
 	c.Response().Header().Set("Cache-Control", "no-cache")
 	c.Response().Header().Set("Connection", "keep-alive")
-	
-	fmt.Fprintf(c.Response(), "data: %s\n\n", `{"status":"pending","progress":0}`)
-	c.Response().Flush()
-	return nil
+	c.Response().Header().Set("X-Accel-Buffering", "no")
+	c.Response().WriteHeader(http.StatusOK)
+
+	sendJob := func(current *upload.Job) error {
+		fmt.Fprintf(c.Response(), "data: %s\n\n", mustJSON(current))
+		c.Response().Flush()
+		return nil
+	}
+
+	if err := sendJob(job); err != nil {
+		return nil
+	}
+	if job.Status == upload.StatusComplete || job.Status == upload.StatusError {
+		return nil
+	}
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	timeout := time.NewTimer(10 * time.Minute)
+	defer timeout.Stop()
+
+	for {
+		select {
+		case <-c.Request().Context().Done():
+			return nil
+		case <-timeout.C:
+			return nil
+		case <-ticker.C:
+			current, ok := h.uploadManager.GetJob(jobID)
+			if !ok {
+				return nil
+			}
+			if err := sendJob(current); err != nil {
+				return nil
+			}
+			if current.Status == upload.StatusComplete || current.Status == upload.StatusError {
+				return nil
+			}
+		}
+	}
 }
 
 // Request/Response types

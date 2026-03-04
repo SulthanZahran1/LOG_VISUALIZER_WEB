@@ -11,11 +11,13 @@ import (
 
 // Dependencies holds all handler dependencies
 type Dependencies struct {
-	Store      storage.Store
-	SessionMgr *session.Manager
-	UploadMgr  *upload.Manager
-	DataDir    string
-	Version    string
+	Store             storage.Store
+	SessionMgr        *session.Manager
+	UploadMgr         *upload.Manager
+	DataDir           string
+	Version           string
+	UploadDir         string
+	AllowFileDeletion bool
 }
 
 // Handlers holds all handler instances
@@ -30,12 +32,15 @@ type Handlers struct {
 
 // NewHandlers creates all handler instances
 func NewHandlers(deps *Dependencies) *Handlers {
+	mapHandler := NewMapHandler(deps.Store, deps.DataDir)
+	carrierHandler := NewCarrierHandler(deps.Store)
+
 	return &Handlers{
-		Health:  NewHealthHandler(deps.Version),
-		Upload:  NewUploadHandler(deps.Store, deps.SessionMgr, deps.UploadMgr),
+		Health:  NewHealthHandler(deps.Version, deps.AllowFileDeletion),
+		Upload:  NewUploadHandler(deps.Store, deps.SessionMgr, deps.UploadMgr, mapHandler, carrierHandler),
 		Parse:   NewParseHandler(deps.Store, deps.SessionMgr),
-		Map:     NewMapHandler(deps.Store, deps.DataDir),
-		Carrier: NewCarrierHandler(deps.Store),
+		Map:     mapHandler,
+		Carrier: carrierHandler,
 		// UploadJob handler would be created here if needed
 	}
 }

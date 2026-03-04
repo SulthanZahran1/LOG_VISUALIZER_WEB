@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -43,7 +44,7 @@ func TestPLCDebugParser(t *testing.T) {
 }
 
 func TestPLCTabParser(t *testing.T) {
-        intern := NewStringIntern()
+	intern := NewStringIntern()
 	p := NewPLCTabParser()
 	// Format: ts [] path\tsignal\tdirection\tvalue\tblank\tlocation\tflag1\tflag2\tts2
 	line := "2025-09-22 13:00:00.199 [] SYSTEM/PATH/DEV-456\tMY_SIGNAL\tIN\t123\t\tLOC\tF1\tF2\t2025-09-22 13:00:00.199"
@@ -148,6 +149,145 @@ func TestCSVSignalParser(t *testing.T) {
 
 	if parsed.TimeRange == nil {
 		t.Error("Expected TimeRange to be set")
+	}
+}
+
+func TestCSVSignalParser_ParseToDuckStore(t *testing.T) {
+	p := NewCSVSignalParser()
+	content := "2025-10-21 23:08:27.995,Device1,SignalA,1\n" +
+		"2025-10-21 23:08:28.995,Device1,SignalA,2\n"
+
+	tmpFile := "test_csv_duck.log"
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+	defer os.Remove(tmpFile)
+
+	store, err := NewDuckStore(".", "test_csv_duck")
+	if err != nil {
+		t.Fatalf("NewDuckStore failed: %v", err)
+	}
+	defer store.Close()
+
+	errors, err := p.ParseToDuckStore(tmpFile, store, nil)
+	if err != nil {
+		t.Fatalf("ParseToDuckStore failed: %v", err)
+	}
+	if len(errors) != 0 {
+		t.Fatalf("unexpected parse errors: %d", len(errors))
+	}
+	if err := store.Finalize(); err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	entries, err := store.QuerySignalEntries(context.Background(), []string{"Device1::SignalA"})
+	if err != nil {
+		t.Fatalf("QuerySignalEntries failed: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].SignalType != models.SignalTypeInteger || entries[0].Value != 1 {
+		t.Fatalf("expected first entry integer 1, got type=%s value=%v", entries[0].SignalType, entries[0].Value)
+	}
+}
+
+func TestPLCTabParser_ParseToDuckStore(t *testing.T) {
+	p := NewPLCTabParser()
+	content := "2025-09-22 13:00:00.199 [] SYSTEM/PATH/DEV-456\tMY_SIGNAL\tIN\t1\t\tLOC\tF1\tF2\t2025-09-22 13:00:00.199\n" +
+		"2025-09-22 13:00:01.199 [] SYSTEM/PATH/DEV-456\tMY_SIGNAL\tIN\t2\t\tLOC\tF1\tF2\t2025-09-22 13:00:01.199\n"
+
+	tmpFile := "test_tab_duck.log"
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+	defer os.Remove(tmpFile)
+
+	store, err := NewDuckStore(".", "test_tab_duck")
+	if err != nil {
+		t.Fatalf("NewDuckStore failed: %v", err)
+	}
+	defer store.Close()
+
+	errors, err := p.ParseToDuckStore(tmpFile, store, nil)
+	if err != nil {
+		t.Fatalf("ParseToDuckStore failed: %v", err)
+	}
+	if len(errors) != 0 {
+		t.Fatalf("unexpected parse errors: %d", len(errors))
+	}
+	if err := store.Finalize(); err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	entries, err := store.QuerySignalEntries(context.Background(), []string{"DEV-456::MY_SIGNAL"})
+	if err != nil {
+		t.Fatalf("QuerySignalEntries failed: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].SignalType != models.SignalTypeInteger || entries[0].Value != 1 {
+		t.Fatalf("expected first entry integer 1, got type=%s value=%v", entries[0].SignalType, entries[0].Value)
+	}
+}
+
+func TestBinaryFormatParser_ParseToDuckStore(t *testing.T) {
+	parsed := models.NewParsedLog()
+	parsed.Entries = append(parsed.Entries, models.LogEntry{
+		DeviceID:   "Device1",
+		SignalName: "Signal1",
+		Timestamp:  time.Date(2025, 10, 21, 23, 8, 27, 995000000, time.UTC),
+		Value:      42,
+		SignalType: models.SignalTypeInteger,
+	})
+
+	tmpFile := "test_binary_duck.bin"
+	file, err := os.Create(tmpFile)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+	enc := NewBinaryEncoder(file)
+	for i := range parsed.Entries {
+		if err := enc.AddEntry(&parsed.Entries[i]); err != nil {
+			t.Fatalf("AddEntry failed: %v", err)
+		}
+	}
+	if err := enc.Encode(); err != nil {
+		t.Fatalf("Encode failed: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+	defer os.Remove(tmpFile)
+
+	p := NewBinaryFormatParser()
+	store, err := NewDuckStore(".", "test_binary_duck")
+	if err != nil {
+		t.Fatalf("NewDuckStore failed: %v", err)
+	}
+	defer store.Close()
+
+	errors, err := p.ParseToDuckStore(tmpFile, store, nil)
+	if err != nil {
+		t.Fatalf("ParseToDuckStore failed: %v", err)
+	}
+	if len(errors) != 0 {
+		t.Fatalf("unexpected parse errors: %d", len(errors))
+	}
+	if err := store.Finalize(); err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	entries, err := store.QuerySignalEntries(context.Background(), []string{"Device1::Signal1"})
+	if err != nil {
+		t.Fatalf("QuerySignalEntries failed: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Value != 42 {
+		t.Fatalf("expected value 42, got %v", entries[0].Value)
 	}
 }
 
