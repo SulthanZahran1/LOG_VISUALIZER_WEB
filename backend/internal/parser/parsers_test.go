@@ -914,6 +914,104 @@ func TestTRSParser_Parse(t *testing.T) {
 			t.Fatalf("Expected original dest to be preserved, got %q", parts[3])
 		}
 	})
+
+	t.Run("prefers column 14 for current location when present", func(t *testing.T) {
+		content := "2025-09-05 00:01:35:431`TRS`HST`66749`COMPLETED`50`BBENFB0066`BBENFB0066`B1ASTO15203-305`SN0`B1ASTO15203-102`12`204501`204501`TR_SUCCESS`2025-09-05 00:00:54`2025-09-05 00:00:54\n"
+		filePath := createTestFile(t, content)
+
+		parsedLog, errs, err := parser.Parse(filePath)
+		if err != nil {
+			t.Fatalf("Parse failed: %v", err)
+		}
+		if len(errs) != 0 {
+			t.Fatalf("Expected 0 parse errors, got %d", len(errs))
+		}
+		if len(parsedLog.Entries) != 1 {
+			t.Fatalf("Expected 1 entry, got %d", len(parsedLog.Entries))
+		}
+
+		parts := strings.Split(parsedLog.Entries[0].Value.(string), "|")
+		if len(parts) != 6 {
+			t.Fatalf("Expected 6 packed fields, got %d", len(parts))
+		}
+		if parts[4] != "204501" {
+			t.Fatalf("Expected current location from column 14, got %q", parts[4])
+		}
+	})
+
+	t.Run("falls back to column 11 when column 14 is blank", func(t *testing.T) {
+		content := "2025-09-05 00:00:54:956`TRS`HST`66749`TRANSFERRING`50`BBENFB0066`BBENFB0066`B1ASTO15203-305`SN0`B1ASTO15203-102`12`204501``TR_SUCCESS`2025-09-05 00:00:54`2025-09-05 00:00:54\n"
+		filePath := createTestFile(t, content)
+
+		parsedLog, errs, err := parser.Parse(filePath)
+		if err != nil {
+			t.Fatalf("Parse failed: %v", err)
+		}
+		if len(errs) != 0 {
+			t.Fatalf("Expected 0 parse errors, got %d", len(errs))
+		}
+		if len(parsedLog.Entries) != 1 {
+			t.Fatalf("Expected 1 entry, got %d", len(parsedLog.Entries))
+		}
+
+		parts := strings.Split(parsedLog.Entries[0].Value.(string), "|")
+		if len(parts) != 6 {
+			t.Fatalf("Expected 6 packed fields, got %d", len(parts))
+		}
+		if parts[4] != "B1ASTO15203-102" {
+			t.Fatalf("Expected current location fallback from column 11, got %q", parts[4])
+		}
+	})
+}
+
+func TestTRSParser_ParseExampleTransferFixture(t *testing.T) {
+	parser := NewTRSLogParser()
+	filePath := filepath.Join("..", "..", "..", "example-transfer.log")
+
+	if _, err := os.Stat(filePath); err != nil {
+		t.Fatalf("Expected example fixture to exist: %v", err)
+	}
+
+	parsedLog, errs, err := parser.Parse(filePath)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if len(errs) != 0 {
+		t.Fatalf("Expected 0 parse errors, got %d", len(errs))
+	}
+	if len(parsedLog.Entries) != 12 {
+		t.Fatalf("Expected 12 parsed entries from fixture, got %d", len(parsedLog.Entries))
+	}
+
+	first := strings.Split(parsedLog.Entries[0].Value.(string), "|")
+	if len(first) != 6 {
+		t.Fatalf("Expected 6 packed fields for first fixture row, got %d", len(first))
+	}
+	if first[0] != "66749" || first[1] != "QUEUED" {
+		t.Fatalf("Unexpected first row cmd/status: %q", parsedLog.Entries[0].Value)
+	}
+	if first[2] != "B1ASTO15203-305" || first[3] != "SN0" || first[4] != "B1ASTO15203-305" {
+		t.Fatalf("Unexpected first row locations: %q", parsedLog.Entries[0].Value)
+	}
+
+	completed := strings.Split(parsedLog.Entries[2].Value.(string), "|")
+	if len(completed) != 6 {
+		t.Fatalf("Expected 6 packed fields for completed fixture row, got %d", len(completed))
+	}
+	if completed[3] != "204501" {
+		t.Fatalf("Expected completed fixture dest to resolve to 204501, got %q", completed[3])
+	}
+	if completed[4] != "204501" {
+		t.Fatalf("Expected completed fixture current location to resolve to 204501, got %q", completed[4])
+	}
+
+	last := strings.Split(parsedLog.Entries[len(parsedLog.Entries)-1].Value.(string), "|")
+	if len(last) != 6 {
+		t.Fatalf("Expected 6 packed fields for last fixture row, got %d", len(last))
+	}
+	if last[0] != "66753" || last[3] != "105205" || last[4] != "B1ASTO15203-305" {
+		t.Fatalf("Unexpected last fixture row values: %q", parsedLog.Entries[len(parsedLog.Entries)-1].Value)
+	}
 }
 
 // ============ Parser Registry Tests ============

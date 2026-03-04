@@ -108,7 +108,7 @@ func (p *TRSLogParser) ParseWithProgress(filePath string, onProgress ProgressCal
 		carrierID := strings.TrimSpace(parts[6])
 		source := p.resolveTransferLocation(strings.TrimSpace(parts[8]), parts)
 		dest := p.resolveTransferLocation(strings.TrimSpace(parts[9]), parts)
-		currLoc := strings.TrimSpace(parts[10])
+		currLoc := p.resolveCurrentLocation(parts)
 		result := strings.TrimSpace(parts[14])
 
 		intern.Intern(carrierID)
@@ -200,7 +200,7 @@ func (p *TRSLogParser) ParseToDuckStore(filePath string, store *DuckStore, onPro
 		carrierID := strings.TrimSpace(parts[6])
 		source := p.resolveTransferLocation(strings.TrimSpace(parts[8]), parts)
 		dest := p.resolveTransferLocation(strings.TrimSpace(parts[9]), parts)
-		currLoc := strings.TrimSpace(parts[10])
+		currLoc := p.resolveCurrentLocation(parts)
 		result := strings.TrimSpace(parts[14])
 
 		intern.Intern(carrierID)
@@ -250,6 +250,22 @@ func (p *TRSLogParser) resolveTransferLocation(primary string, parts []string) s
 	}
 
 	return primary
+}
+
+func (p *TRSLogParser) resolveCurrentLocation(parts []string) string {
+	// In real TRS exports (see example-transfer.log), column 14 (0-based 13)
+	// tracks the effective transfer location and is more reliable than column 11.
+	// Column 11 is still used as a fallback when column 14 is blank.
+	for _, idx := range []int{13, 10} {
+		if idx >= len(parts) {
+			continue
+		}
+		if value := strings.TrimSpace(parts[idx]); value != "" {
+			return value
+		}
+	}
+
+	return ""
 }
 
 func extractTRSRackID(raw string) string {

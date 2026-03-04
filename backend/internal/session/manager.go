@@ -84,7 +84,7 @@ func (m *Manager) StartSession(fileID, filePath string) (*models.ParseSession, e
 	if m.parsedStore.IsParsed(fileID) {
 		fmt.Printf("[Session %s] File %s already parsed! Loading from persistent storage...\n",
 			shortID(sessionID), shortID(fileID))
-		go m.loadFromPersistentStore(sessionID, fileID)
+		go m.loadFromPersistentStore(sessionID, fileID, filePath)
 	} else {
 		// Run parsing in a background goroutine
 		go m.runParse(sessionID, filePath, fileID)
@@ -114,7 +114,7 @@ func (m *Manager) closeExistingStoresForFile(fileID, excludeSessionID string) {
 }
 
 // loadFromPersistentStore loads an already-parsed file from persistent storage.
-func (m *Manager) loadFromPersistentStore(sessionID, fileID string) {
+func (m *Manager) loadFromPersistentStore(sessionID, fileID, filePath string) {
 	start := time.Now()
 
 	// Close any existing DuckStore connections for the same file
@@ -136,6 +136,13 @@ func (m *Manager) loadFromPersistentStore(sessionID, fileID string) {
 		return
 	}
 
+	parserName := ""
+	if p, err := m.registry.FindParser(filePath); err != nil {
+		fmt.Printf("[Session %s] Warning: failed to infer parser for cached file: %v\n", sessionID[:8], err)
+	} else if p != nil {
+		parserName = p.Name()
+	}
+
 	elapsed := time.Since(start).Milliseconds()
 
 	m.mu.Lock()
@@ -153,7 +160,7 @@ func (m *Manager) loadFromPersistentStore(sessionID, fileID string) {
 	state.Session.EntryCount = store.Len()
 	state.Session.SignalCount = len(store.GetSignals())
 	state.Session.ProcessingTimeMs = elapsed
-	state.Session.ParserName = "plc_debug_cached"
+	state.Session.ParserName = parserName
 
 	if tr := store.GetTimeRange(); tr != nil {
 		state.Session.StartTime = tr.Start.UnixMilli()
@@ -275,6 +282,14 @@ func (m *Manager) runParseToDuckStore(sessionID, filePath, fileID string, p pars
 	}
 
 	fmt.Printf("[Parse %s] Parse complete: %d entries (DuckDB), %d errors\n", sessionID[:8], store.Len(), len(parseErrors))
+
+	if err := store.Finalize(); err != nil {
+		store.Close()
+		m.parsedStore.Delete(fileID) // Clean up on failure
+		fmt.Printf("[Parse %s] ERROR: failed to finalize DuckStore: %v\n", sessionID[:8], err)
+		m.updateSessionError(sessionID, fmt.Sprintf("failed to finalize storage: %v", err))
+		return
+	}
 
 	// Mark as successfully parsed for future reuse
 	m.parsedStore.MarkComplete(fileID)
