@@ -1,8 +1,10 @@
 package parser
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/plc-visualizer/backend/internal/models"
 )
@@ -157,6 +159,52 @@ func TestObservableParser_Parse(t *testing.T) {
 			t.Fatalf("Expected JOB_READY signal, got %s", parsedLog.Entries[0].SignalName)
 		}
 	})
+}
+
+func TestObservableParser_ParseToDuckStore(t *testing.T) {
+	parser := NewObservableLogParser()
+	content := `date  time  status  variables device-id datatype  tag
+2026-02-19 00:02:10:955` + "`" + `OBSERVABLE` + "`" + `CIM WRITE>>> TRANSFER_REQ` + "`" + `B1ASTO15203-102` + "`" + `Boolean` + "`" + `False` + "`" + `True` + "`" + `1` + "`" + `OWNERID=Devices,DEVICE_TYPE=Cranes,INDEX=2,TAG_NAME=TransferRequest
+2026-02-19 00:02:11:624` + "`" + `OBSERVABLE` + "`" + `CIM READ <<< EQUIPMENT_STATE` + "`" + `B1ASTO15203-102` + "`" + `Short` + "`" + `2` + "`" + `3` + "`" + `1` + "`" + `OWNERID=Devices,DEVICE_TYPE=Cranes,INDEX=2,TAG_NAME=EquipmentState`
+
+	filePath := createTestFile(t, content)
+	store, err := NewDuckStore(t.TempDir(), "observable-test")
+	if err != nil {
+		t.Fatalf("NewDuckStore failed: %v", err)
+	}
+	defer store.Close()
+
+	errors, err := parser.ParseToDuckStore(filePath, store, nil)
+	if err != nil {
+		t.Fatalf("ParseToDuckStore failed: %v", err)
+	}
+	if len(errors) != 0 {
+		t.Fatalf("Expected 0 errors, got %d", len(errors))
+	}
+
+	if err := store.Finalize(); err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	if store.Len() != 2 {
+		t.Fatalf("Expected 2 entries in DuckStore, got %d", store.Len())
+	}
+
+	chunk, err := store.GetChunk(
+		context.Background(),
+		time.Date(2026, 2, 19, 0, 2, 10, 0, time.UTC),
+		time.Date(2026, 2, 19, 0, 2, 12, 0, time.UTC),
+		[]string{"B1ASTO15203-102::TRANSFER_REQ"},
+	)
+	if err != nil {
+		t.Fatalf("GetChunk failed: %v", err)
+	}
+	if len(chunk) != 1 {
+		t.Fatalf("Expected 1 chunk entry, got %d", len(chunk))
+	}
+	if chunk[0].SignalName != "TRANSFER_REQ" {
+		t.Fatalf("Expected TRANSFER_REQ signal, got %s", chunk[0].SignalName)
+	}
 }
 
 func TestParserRegistry_FindsObservableFormat(t *testing.T) {

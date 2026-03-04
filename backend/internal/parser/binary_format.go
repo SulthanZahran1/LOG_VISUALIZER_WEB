@@ -54,22 +54,22 @@ const (
 
 // BinaryHeader is the file header (24 bytes)
 type BinaryHeader struct {
-	Magic          uint32    // "LLOG"
-	Version        uint8     // Format version
-	Flags          uint8     // Reserved flags
-	EntryCount     uint32    // Number of log entries
-	StringCount    uint32    // Number of strings in dictionary
-	FirstTimestamp int64     // Base timestamp (Unix milliseconds)
-	Reserved       [4]uint8  // Padding for alignment
+	Magic          uint32   // "LLOG"
+	Version        uint8    // Format version
+	Flags          uint8    // Reserved flags
+	EntryCount     uint32   // Number of log entries
+	StringCount    uint32   // Number of strings in dictionary
+	FirstTimestamp int64    // Base timestamp (Unix milliseconds)
+	Reserved       [4]uint8 // Padding for alignment
 }
 
 // BinaryEncoder writes logs in the optimized binary format
 type BinaryEncoder struct {
-	writer     io.Writer
-	strings    []string
-	stringIdx  map[string]uint32
-	entries    []BinaryEntry
-	firstTs    int64
+	writer    io.Writer
+	strings   []string
+	stringIdx map[string]uint32
+	entries   []BinaryEntry
+	firstTs   int64
 }
 
 // BinaryEntry represents a single log entry in binary format
@@ -131,7 +131,7 @@ func (enc *BinaryEncoder) AddEntry(entry *models.LogEntry) error {
 	// Intern strings
 	deviceIdx := enc.internString(entry.DeviceID)
 	signalIdx := enc.internString(entry.SignalName)
-	
+
 	var categoryIdx uint32 = 0xFFFFFFFF
 	if entry.Category != "" {
 		categoryIdx = enc.internString(entry.Category)
@@ -276,7 +276,7 @@ func (enc *BinaryEncoder) writeEntries() error {
 		if err := writeVarInt(enc.writer, uint64(entry.SignalNameIdx)); err != nil {
 			return err
 		}
-		
+
 		// Category (0xFFFFFFFF means none)
 		if entry.CategoryIdx == 0xFFFFFFFF {
 			if err := writeVarInt(enc.writer, 0xFFFFFFFF); err != nil {
@@ -354,11 +354,11 @@ func writeVarInt(w io.Writer, val uint64) error {
 
 // BinaryDecoder reads the optimized binary format
 type BinaryDecoder struct {
-	reader    io.Reader
-	header    BinaryHeader
-	strings   []string
-	entries   []models.LogEntry
-	intern    *StringIntern // Reuse for deduplication
+	reader  io.Reader
+	header  BinaryHeader
+	strings []string
+	entries []models.LogEntry
+	intern  *StringIntern // Reuse for deduplication
 }
 
 // NewBinaryDecoder creates a new decoder
@@ -399,7 +399,7 @@ func (dec *BinaryDecoder) Decode() (*models.ParsedLog, error) {
 	// Build ParsedLog
 	signals := make(map[string]struct{})
 	devices := make(map[string]struct{})
-	
+
 	for _, e := range dec.entries {
 		signals[fmt.Sprintf("%s::%s", e.DeviceID, e.SignalName)] = struct{}{}
 		devices[e.DeviceID] = struct{}{}
@@ -429,7 +429,7 @@ func (dec *BinaryDecoder) readStringTable() error {
 	}
 
 	dec.strings = make([]string, 0, count)
-	
+
 	for i := uint64(0); i < count; i++ {
 		length, err := readVarInt(dec.reader)
 		if err != nil {
@@ -451,7 +451,7 @@ func (dec *BinaryDecoder) readStringTable() error {
 
 func (dec *BinaryDecoder) readEntries() error {
 	dec.entries = make([]models.LogEntry, 0, dec.header.EntryCount)
-	
+
 	lastTimestamp := dec.header.FirstTimestamp
 
 	for i := uint32(0); i < dec.header.EntryCount; i++ {
@@ -654,4 +654,14 @@ func (p *BinaryFormatParser) ParseWithProgress(filePath string, onProgress Progr
 	}
 
 	return parsed, nil, nil
+}
+
+func (p *BinaryFormatParser) ParseToDuckStore(filePath string, store *DuckStore, onProgress ProgressCallback) ([]*models.ParseError, error) {
+	parsed, errors, err := p.ParseWithProgress(filePath, onProgress)
+	if err != nil {
+		return nil, err
+	}
+
+	WriteParsedLogToDuckStore(parsed, store)
+	return errors, nil
 }

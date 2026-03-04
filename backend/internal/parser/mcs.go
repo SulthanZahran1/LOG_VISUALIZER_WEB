@@ -116,16 +116,16 @@ func (p *MCSLogParser) ParseWithProgress(filePath string, onProgress ProgressCal
 	lineNum := 0
 	var bytesRead int64
 	lastProgressUpdate := 0
-	
+
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
 		bytesRead += int64(len(line)) + 1
-		
+
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		
+
 		// Report progress every 100K lines
 		if onProgress != nil && lineNum%100000 == 0 && lineNum != lastProgressUpdate {
 			lastProgressUpdate = lineNum
@@ -168,6 +168,68 @@ func (p *MCSLogParser) ParseWithProgress(filePath string, onProgress ProgressCal
 		Devices:   devices,
 		TimeRange: timeRange,
 	}, errors, nil
+}
+
+func (p *MCSLogParser) ParseToDuckStore(filePath string, store *DuckStore, onProgress ProgressCallback) ([]*models.ParseError, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	fileInfo, err := file.Stat()
+	if err != nil {
+		fileInfo = nil
+	}
+	totalBytes := int64(0)
+	if fileInfo != nil {
+		totalBytes = fileInfo.Size()
+	}
+
+	errors := make([]*models.ParseError, 0, 100)
+	intern := GetGlobalIntern()
+
+	scanner := bufio.NewScanner(file)
+	const maxScannerBuffer = 1024 * 1024
+	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
+	lineNum := 0
+	var bytesRead int64
+	lastProgressUpdate := 0
+
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		bytesRead += int64(len(line)) + 1
+
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		if onProgress != nil && lineNum%100000 == 0 && lineNum != lastProgressUpdate {
+			lastProgressUpdate = lineNum
+			onProgress(lineNum, bytesRead, totalBytes)
+		}
+
+		lineEntries, parseErr := p.parseLine(line, lineNum, intern)
+		if parseErr != nil {
+			errors = append(errors, parseErr)
+			continue
+		}
+
+		for i := range lineEntries {
+			store.AddEntry(&lineEntries[i])
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	if onProgress != nil {
+		onProgress(lineNum, bytesRead, totalBytes)
+	}
+
+	return errors, nil
 }
 
 func (p *MCSLogParser) parseLine(line string, lineNum int, intern *StringIntern) ([]models.LogEntry, *models.ParseError) {

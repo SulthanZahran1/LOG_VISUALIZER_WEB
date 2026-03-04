@@ -23,6 +23,15 @@ type Parser interface {
 	Parse(filePath string) (*models.ParsedLog, []*models.ParseError, error)
 	// ParseWithProgress parses with progress callbacks for large files.
 	ParseWithProgress(filePath string, onProgress ProgressCallback) (*models.ParsedLog, []*models.ParseError, error)
+	// ParseToDuckStore parses directly to DuckDB-backed storage.
+	ParseToDuckStore(filePath string, store *DuckStore, onProgress ProgressCallback) ([]*models.ParseError, error)
+}
+
+// WriteParsedLogToDuckStore writes an in-memory parsed result into DuckStore.
+func WriteParsedLogToDuckStore(parsed *models.ParsedLog, store *DuckStore) {
+	for i := range parsed.Entries {
+		store.AddEntry(&parsed.Entries[i])
+	}
 }
 
 // Common utilities for parsing

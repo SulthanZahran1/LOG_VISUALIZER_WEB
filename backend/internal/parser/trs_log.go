@@ -149,6 +149,89 @@ func (p *TRSLogParser) ParseWithProgress(filePath string, onProgress ProgressCal
 	}, errors, nil
 }
 
+func (p *TRSLogParser) ParseToDuckStore(filePath string, store *DuckStore, onProgress ProgressCallback) ([]*models.ParseError, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	fileInfo, _ := file.Stat()
+	totalBytes := int64(0)
+	if fileInfo != nil {
+		totalBytes = fileInfo.Size()
+	}
+
+	errors := make([]*models.ParseError, 0, 100)
+	intern := GetGlobalIntern()
+
+	scanner := bufio.NewScanner(file)
+	lineNum := 0
+	var bytesRead int64
+
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		bytesRead += int64(len(line)) + 1
+
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		parts := strings.Split(line, "`")
+		if len(parts) < 15 {
+			continue
+		}
+
+		tsStr := strings.TrimSpace(parts[0])
+		tsNormalized := tsStr
+		if len(tsStr) > 19 && tsStr[19] == ':' {
+			tsNormalized = tsStr[:19] + "." + tsStr[20:]
+		}
+
+		ts, err := FastTimestamp(tsNormalized)
+		if err != nil {
+			errors = append(errors, &models.ParseError{Line: lineNum, Content: line, Reason: "invalid timestamp"})
+			continue
+		}
+
+		cmdID := strings.TrimSpace(parts[3])
+		status := strings.TrimSpace(parts[4])
+		carrierID := strings.TrimSpace(parts[6])
+		source := p.resolveTransferLocation(strings.TrimSpace(parts[8]), parts)
+		dest := p.resolveTransferLocation(strings.TrimSpace(parts[9]), parts)
+		currLoc := strings.TrimSpace(parts[10])
+		result := strings.TrimSpace(parts[14])
+
+		intern.Intern(carrierID)
+		deviceID := intern.Intern(carrierID)
+		val := strings.Join([]string{cmdID, status, source, dest, currLoc, result}, "|")
+
+		entry := models.LogEntry{
+			DeviceID:   deviceID,
+			SignalName: intern.Intern("Transfer"),
+			Timestamp:  ts,
+			Value:      val,
+			SignalType: models.SignalTypeString,
+		}
+		store.AddEntry(&entry)
+
+		if onProgress != nil && lineNum%10000 == 0 {
+			onProgress(lineNum, bytesRead, totalBytes)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	if onProgress != nil {
+		onProgress(lineNum, bytesRead, totalBytes)
+	}
+
+	return errors, nil
+}
+
 func (p *TRSLogParser) resolveTransferLocation(primary string, parts []string) string {
 	primary = strings.TrimSpace(primary)
 	if primary != "" && !strings.EqualFold(primary, "SN0") {

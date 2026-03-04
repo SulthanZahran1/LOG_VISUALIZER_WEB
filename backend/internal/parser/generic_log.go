@@ -120,3 +120,73 @@ func (p *GenericLogParser) ParseWithProgress(filePath string, onProgress Progres
 
 	return parsed, errors, nil
 }
+
+func (p *GenericLogParser) ParseToDuckStore(filePath string, store *DuckStore, onProgress ProgressCallback) ([]*models.ParseError, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	fileInfo, _ := file.Stat()
+	totalBytes := int64(0)
+	if fileInfo != nil {
+		totalBytes = fileInfo.Size()
+	}
+
+	errors := make([]*models.ParseError, 0)
+	intern := GetGlobalIntern()
+
+	scanner := bufio.NewScanner(file)
+	lineNum := 0
+	var bytesRead int64
+
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		bytesRead += int64(len(line)) + 1
+
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		m := p.lineRegex.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+
+		tsStr, level, msg := m[1], m[2], m[3]
+		ts, err := FastTimestamp(tsStr)
+		if err != nil {
+			errors = append(errors, &models.ParseError{Line: lineNum, Content: line, Reason: "invalid timestamp"})
+			continue
+		}
+
+		if level == "" {
+			level = "INFO"
+		}
+
+		entry := models.LogEntry{
+			DeviceID:   intern.Intern("system"),
+			SignalName: intern.Intern(level),
+			Timestamp:  ts,
+			Value:      msg,
+			SignalType: models.SignalTypeString,
+		}
+		store.AddEntry(&entry)
+
+		if onProgress != nil && lineNum%10000 == 0 {
+			onProgress(lineNum, bytesRead, totalBytes)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	if onProgress != nil {
+		onProgress(lineNum, bytesRead, totalBytes)
+	}
+
+	return errors, nil
+}

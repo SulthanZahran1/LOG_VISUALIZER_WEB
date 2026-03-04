@@ -156,6 +156,70 @@ func (p *ObservableLogParser) ParseWithProgress(filePath string, onProgress Prog
 	}, errors, nil
 }
 
+// ParseToDuckStore parses directly into a DuckStore for consistent chunk/time queries.
+func (p *ObservableLogParser) ParseToDuckStore(filePath string, store *DuckStore, onProgress ProgressCallback) ([]*models.ParseError, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	fileInfo, err := file.Stat()
+	if err != nil {
+		fileInfo = nil
+	}
+
+	totalBytes := int64(0)
+	if fileInfo != nil {
+		totalBytes = fileInfo.Size()
+	}
+
+	errors := make([]*models.ParseError, 0, 100)
+	intern := GetGlobalIntern()
+
+	scanner := bufio.NewScanner(file)
+	const maxScannerBuffer = 1024 * 1024
+	scanner.Buffer(make([]byte, 0, maxScannerBuffer), maxScannerBuffer)
+
+	lineNum := 0
+	var bytesRead int64
+	lastProgressUpdate := 0
+
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+		bytesRead += int64(len(line)) + 1
+
+		line = normalizeObservableLine(line)
+		if line == "" || isObservableHeaderLine(line) {
+			continue
+		}
+
+		if onProgress != nil && lineNum%100000 == 0 && lineNum != lastProgressUpdate {
+			lastProgressUpdate = lineNum
+			onProgress(lineNum, bytesRead, totalBytes)
+		}
+
+		entry, parseErr := p.parseLine(line, lineNum, intern)
+		if parseErr != nil {
+			errors = append(errors, parseErr)
+			continue
+		}
+
+		store.AddEntry(entry)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	if onProgress != nil {
+		onProgress(lineNum, bytesRead, totalBytes)
+	}
+
+	return errors, nil
+}
+
 func (p *ObservableLogParser) isObservableDataLine(line string) bool {
 	parts := strings.Split(line, "`")
 	if len(parts) != 9 {

@@ -87,7 +87,7 @@ func (p *PLCTabParser) ParseWithProgress(filePath string, onProgress ProgressCal
 	errors := make([]*models.ParseError, 0, 100)
 	signals := make(map[string]struct{}, 1000)
 	devices := make(map[string]struct{}, 1000)
-	
+
 	// Track per-signal type requirements for type resolution
 	// Maps "device::signal" to the required type (boolean signals may be upgraded to integer)
 	signalTypeReqs := make(map[string]models.SignalType, 1000)
@@ -102,16 +102,16 @@ func (p *PLCTabParser) ParseWithProgress(filePath string, onProgress ProgressCal
 	lineNum := 0
 	var bytesRead int64
 	lastProgressUpdate := 0
-	
+
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
 		bytesRead += int64(len(line)) + 1
-		
+
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		
+
 		// Report progress every 100K lines
 		if onProgress != nil && lineNum%100000 == 0 && lineNum != lastProgressUpdate {
 			lastProgressUpdate = lineNum
@@ -128,7 +128,7 @@ func (p *PLCTabParser) ParseWithProgress(filePath string, onProgress ProgressCal
 		signalKey := entry.DeviceID + "::" + entry.SignalName
 		signals[signalKey] = struct{}{}
 		devices[entry.DeviceID] = struct{}{}
-		
+
 		// Track signal type requirements
 		// If a signal has any non-0/1 integer values, it should be integer type
 		if entry.SignalType == models.SignalTypeInteger {
@@ -160,7 +160,7 @@ func (p *PLCTabParser) ParseWithProgress(filePath string, onProgress ProgressCal
 	if onProgress != nil {
 		onProgress(lineNum, bytesRead, totalBytes)
 	}
-	
+
 	// Resolve signal types: upgrade boolean signals to integer if needed
 	// Convert bool values to 0/1 for signals that were upgraded
 	for i := range entries {
@@ -192,6 +192,16 @@ func (p *PLCTabParser) ParseWithProgress(filePath string, onProgress ProgressCal
 		Devices:   devices,
 		TimeRange: timeRange,
 	}, errors, nil
+}
+
+func (p *PLCTabParser) ParseToDuckStore(filePath string, store *DuckStore, onProgress ProgressCallback) ([]*models.ParseError, error) {
+	parsed, errors, err := p.ParseWithProgress(filePath, onProgress)
+	if err != nil {
+		return nil, err
+	}
+
+	WriteParsedLogToDuckStore(parsed, store)
+	return errors, nil
 }
 
 func (p *PLCTabParser) parseLine(line string, lineNum int, intern *StringIntern) (*models.LogEntry, *models.ParseError) {

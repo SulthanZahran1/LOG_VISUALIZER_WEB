@@ -74,6 +74,7 @@ go test ./...
 
 - Keep backend and frontend types/contracts in sync.
 - Prefer adding tests alongside behavior changes.
+- Avoid "legacy safekeep" branches that preserve duplicate logic paths without a hard removal plan. Prefer one canonical implementation path, and treat minimizing logic divergence as a higher priority than temporary compatibility shims.
 - Preserve backward compatibility when touching legacy entrypoints (`logStore.ts`, `mapStore.ts`, `waveformStore.ts`) unless intentionally removing them.
 - For API changes: update route registration, handlers, client, and docs together.
 

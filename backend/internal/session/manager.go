@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"sort"
 	"sync"
 	"time"
 
@@ -35,7 +34,6 @@ type Manager struct {
 // SessionState holds the session metadata and the DuckDB-backed storage.
 type SessionState struct {
 	Session      *models.ParseSession
-	Result       *models.ParsedLog // Legacy: used for backward compatibility with non-DuckDB parsers
 	DuckStore    *parser.DuckStore // Memory-efficient storage for large files
 	LastAccessed time.Time         // Last time the session was accessed (for keep-alive)
 }
@@ -244,56 +242,11 @@ func (m *Manager) runParse(sessionID, filePath, fileID string) {
 		}
 	}
 
-	// Try DuckDB-backed parsing for memory efficiency
-	if plcParser, ok := p.(*parser.PLCDebugParser); ok {
-		m.runParseToDuckStore(sessionID, filePath, fileID, plcParser, progressCb, start)
-		return
-	}
-
-	// Fallback to legacy in-memory parsing for other parsers
-	result, parseErrors, err := p.ParseWithProgress(filePath, progressCb)
-	if err != nil {
-		fmt.Printf("[Parse %s] ERROR: parse failed: %v\n", sessionID[:8], err)
-		m.updateSessionError(sessionID, fmt.Sprintf("parse failed: %v", err))
-		return
-	}
-
-	fmt.Printf("[Parse %s] Parse complete: %d entries, %d errors\n", sessionID[:8], len(result.Entries), len(parseErrors))
-
-	elapsed := time.Since(start).Milliseconds()
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	state, ok := m.sessions[sessionID]
-	if !ok {
-		return
-	}
-
-	state.Result = result
-	state.Session.Status = models.SessionStatusComplete
-	state.Session.Progress = 100
-	state.Session.EntryCount = len(result.Entries)
-	state.Session.SignalCount = len(result.Signals)
-	state.Session.ProcessingTimeMs = elapsed
-	state.Session.ParserName = p.Name()
-
-	if result.TimeRange != nil {
-		state.Session.StartTime = result.TimeRange.Start.UnixMilli()
-		state.Session.EndTime = result.TimeRange.End.UnixMilli()
-	}
-
-	errs := make([]models.ParseError, 0, len(parseErrors))
-	for _, e := range parseErrors {
-		if e != nil {
-			errs = append(errs, *e)
-		}
-	}
-	state.Session.Errors = errs
+	m.runParseToDuckStore(sessionID, filePath, fileID, p, progressCb, start)
 }
 
-// runParseToDuckStore handles DuckDB-backed parsing for memory efficiency
-func (m *Manager) runParseToDuckStore(sessionID, filePath, fileID string, p *parser.PLCDebugParser, progressCb parser.ProgressCallback, start time.Time) {
+// runParseToDuckStore stores parsed results in DuckDB for a consistent query model.
+func (m *Manager) runParseToDuckStore(sessionID, filePath, fileID string, p parser.Parser, progressCb parser.ProgressCallback, start time.Time) {
 	// Recover from panics to prevent backend crash
 	defer func() {
 		if r := recover(); r != nil {
@@ -312,7 +265,6 @@ func (m *Manager) runParseToDuckStore(sessionID, filePath, fileID string, p *par
 	}
 	fmt.Printf("[Parse %s] DuckDB store created, starting parse...\n", sessionID[:8])
 
-	// Parse directly to DuckStore
 	parseErrors, err := p.ParseToDuckStore(filePath, store, progressCb)
 	if err != nil {
 		store.Close()
@@ -491,23 +443,20 @@ func (m *Manager) QueryEntries(ctx context.Context, id string, params parser.Que
 		return nil, 0, false
 	}
 
-	// Use DuckStore if available (memory-efficient + filtered)
-	if state.DuckStore != nil {
-		entries, total, err := state.DuckStore.QueryEntries(ctx, params, page, pageSize)
-		if err != nil {
-			if err == context.DeadlineExceeded || err == context.Canceled {
-				fmt.Printf("[Manager] QueryEntries timeout/cancelled for session %s\n", id[:8])
-			} else {
-				fmt.Printf("[Manager] QueryEntries error: %v\n", err)
-			}
-			return nil, 0, false
-		}
-		return entries, total, true
+	if state.DuckStore == nil {
+		return nil, 0, false
 	}
 
-	// Fallback to legacy in-memory GetEntries (no filtering for simplicity, as legacy is for small files)
-	entries, total, ok := m.GetEntries(ctx, id, page, pageSize)
-	return entries, total, ok
+	entries, total, err := state.DuckStore.QueryEntries(ctx, params, page, pageSize)
+	if err != nil {
+		if err == context.DeadlineExceeded || err == context.Canceled {
+			fmt.Printf("[Manager] QueryEntries timeout/cancelled for session %s\n", id[:8])
+		} else {
+			fmt.Printf("[Manager] QueryEntries error: %v\n", err)
+		}
+		return nil, 0, false
+	}
+	return entries, total, true
 }
 
 // GetCategories returns all unique categories for a session.
@@ -521,25 +470,7 @@ func (m *Manager) GetCategories(ctx context.Context, id string) ([]string, bool)
 	}
 
 	if state.DuckStore == nil {
-		// Legacy in-memory parser path: session exists, but may not have category metadata.
-		if state.Result == nil {
-			return nil, false
-		}
-
-		set := make(map[string]struct{})
-		for _, entry := range state.Result.Entries {
-			if entry.Category == "" {
-				continue
-			}
-			set[entry.Category] = struct{}{}
-		}
-
-		cats := make([]string, 0, len(set))
-		for cat := range set {
-			cats = append(cats, cat)
-		}
-		sort.Strings(cats)
-		return cats, true
+		return nil, false
 	}
 
 	cats, err := state.DuckStore.GetCategories(ctx)
@@ -559,26 +490,16 @@ func (m *Manager) GetIndexByTime(ctx context.Context, id string, params parser.Q
 		return 0, false
 	}
 
-	if state.DuckStore != nil {
-		index, err := state.DuckStore.GetIndexByTime(ctx, params, ts)
-		if err != nil {
-			fmt.Printf("[Manager] GetIndexByTime error: %v\n", err)
-			return 0, false
-		}
-		return index, true
+	if state.DuckStore == nil {
+		return 0, false
 	}
 
-	// Legacy mode: linear search (since it's only for small files)
-	if state.Result != nil {
-		for i, entry := range state.Result.Entries {
-			if entry.Timestamp.UnixMilli() >= ts {
-				return i, true
-			}
-		}
-		return -1, true
+	index, err := state.DuckStore.GetIndexByTime(ctx, params, ts)
+	if err != nil {
+		fmt.Printf("[Manager] GetIndexByTime error: %v\n", err)
+		return 0, false
 	}
-
-	return 0, false
+	return index, true
 }
 
 // GetTimeTree returns distinct date/hour/minute combos for the jump-to-time UI.
@@ -613,49 +534,29 @@ func (m *Manager) GetEntries(ctx context.Context, id string, page, pageSize int)
 		return nil, 0, false
 	}
 
-	// Use DuckStore if available (memory-efficient)
-	if state.DuckStore != nil {
-		total := state.DuckStore.Len()
-		offset := (page - 1) * pageSize
-		if offset < 0 {
-			offset = 0
-		}
-		if offset >= total {
-			return []models.LogEntry{}, total, true
-		}
-
-		end := offset + pageSize
-		if end > total {
-			end = total
-		}
-
-		entries, err := state.DuckStore.GetEntries(ctx, offset, end)
-		if err != nil {
-			return nil, 0, false
-		}
-		return entries, total, true
-	}
-
-	// Fallback to legacy in-memory Result
-	if state.Result == nil {
+	if state.DuckStore == nil {
 		return nil, 0, false
 	}
 
-	total := len(state.Result.Entries)
-	start := (page - 1) * pageSize
-	if start < 0 {
-		start = 0
+	total := state.DuckStore.Len()
+	offset := (page - 1) * pageSize
+	if offset < 0 {
+		offset = 0
 	}
-	if start >= total {
+	if offset >= total {
 		return []models.LogEntry{}, total, true
 	}
 
-	end := start + pageSize
+	end := offset + pageSize
 	if end > total {
 		end = total
 	}
 
-	return state.Result.Entries[start:end], total, true
+	entries, err := state.DuckStore.GetEntries(ctx, offset, end)
+	if err != nil {
+		return nil, 0, false
+	}
+	return entries, total, true
 }
 
 // GetChunk returns entries within a time range for a session.
@@ -754,30 +655,17 @@ func (m *Manager) GetSignalTypes(id string) (map[string]string, bool) {
 		return nil, false
 	}
 
-	// Use DuckStore if available
-	if state.DuckStore != nil {
-		types, err := state.DuckStore.GetSignalTypes()
-		if err != nil {
-			return nil, false
-		}
-		result := make(map[string]string, len(types))
-		for k, v := range types {
-			result[k] = string(v)
-		}
-		return result, true
-	}
-
-	// Fallback to legacy in-memory Result
-	if state.Result == nil {
+	if state.DuckStore == nil {
 		return nil, false
 	}
 
-	result := make(map[string]string)
-	for _, entry := range state.Result.Entries {
-		key := entry.DeviceID + "::" + entry.SignalName
-		if _, exists := result[key]; !exists {
-			result[key] = string(entry.SignalType)
-		}
+	types, err := state.DuckStore.GetSignalTypes()
+	if err != nil {
+		return nil, false
+	}
+	result := make(map[string]string, len(types))
+	for k, v := range types {
+		result[k] = string(v)
 	}
 	return result, true
 }
@@ -792,26 +680,15 @@ func (m *Manager) GetSignals(id string) ([]string, bool) {
 		return nil, false
 	}
 
-	// Use DuckStore if available
-	if state.DuckStore != nil {
-		sigMap := state.DuckStore.GetSignals()
-		signals := make([]string, 0, len(sigMap))
-		for s := range sigMap {
-			signals = append(signals, s)
-		}
-		return signals, true
-	}
-
-	// Fallback to legacy in-memory Result
-	if state.Result == nil {
+	if state.DuckStore == nil {
 		return nil, false
 	}
 
-	signals := make([]string, 0, len(state.Result.Signals))
-	for s := range state.Result.Signals {
+	sigMap := state.DuckStore.GetSignals()
+	signals := make([]string, 0, len(sigMap))
+	for s := range sigMap {
 		signals = append(signals, s)
 	}
-
 	return signals, true
 }
 
