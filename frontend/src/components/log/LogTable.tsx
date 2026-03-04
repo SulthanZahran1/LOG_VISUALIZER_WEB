@@ -33,7 +33,7 @@ import { toggleSignal } from '../../stores/waveformStore';
 import type { SortColumnKey } from '../../stores/log/types';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
 import { getTRSFieldValue } from '../../utils/trsLog';
-import type { LogEntry, ParseSession } from '../../models/types';
+import type { ParseSession } from '../../models/types';
 import { colorSettings } from '../../stores/colorCodingStore';
 import { SignalSidebar } from '../waveform/SignalSidebar';
 
@@ -862,7 +862,7 @@ export function LogTable() {
                                                     case 'dest':
                                                     case 'currLoc':
                                                     case 'result': {
-                                                        const val = getTRSFieldValue(entry, colKey);
+                                                        const val = getTRSFieldValue(entry, colKey as 'cmdID' | 'status' | 'source' | 'dest' | 'currLoc' | 'result');
                                                         return <div key={colKey} className="log-col" style={{ width }}><HighlightText text={val} query={searchQuery.value} useRegex={searchRegex.value} caseSensitive={searchCaseSensitive.value} /></div>;
                                                     }
                                                     default:
