@@ -241,7 +241,7 @@ export function MapViewer() {
                 <>
                     <div class="map-toolbar">
                         <div class="toolbar-left">
-                            <h3>{mapLayout.value.name || 'Conveyor Map'}</h3>
+                            <h3>{mapLayout.value?.name || 'Conveyor Map'}</h3>
                             {!mapRules.value?.rules?.length && (
                                 <span class="rules-warning"><AlertTriangleIcon size={14} /> No rules loaded</span>
                             )}
