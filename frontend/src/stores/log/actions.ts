@@ -234,6 +234,10 @@ async function handleSessionComplete(session: ParseSession): Promise<void> {
                 streamProgress.value = 100;
                 totalEntries.value = total;
                 finalizeSessionLoad(session);
+                // Auto-open log table for generic and TRS logs
+                if (isGenericLogSession(session) || isTRSLogSession(session)) {
+                    openView('log-table');
+                }
             },
             (error) => {
                 isStreaming.value = false;

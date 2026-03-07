@@ -128,17 +128,15 @@ func NewDuckStoreAtPath(dbPath string) (*DuckStore, error) {
 	}, nil
 }
 
-// OpenDuckStoreReadOnly opens an existing DuckDB file in read-only mode.
+// OpenDuckStoreReadOnly opens an existing DuckDB file for reading.
 // Used for loading previously parsed files from persistent storage.
-// Read-only mode allows multiple processes to access the same file without locking conflicts.
+// Opens in read-write mode so DuckDB can replay the WAL (write-ahead log)
+// which is required for data written by the Appender API to be visible.
+// The caller (closeExistingStoresForFile) ensures no other connections exist.
 func OpenDuckStoreReadOnly(dbPath string) (*DuckStore, error) {
-	fmt.Printf("[DuckStore] Opening existing database (read-only) at: %s\n", dbPath)
+	fmt.Printf("[DuckStore] Opening existing database at: %s\n", dbPath)
 
-	// Open with read-only mode to avoid file locking issues
-	// This allows multiple processes/connections to read the same database
-	readOnlyPath := dbPath + "?access_mode=read_only"
-	connector, err := duckdb.NewConnector(readOnlyPath, func(execer driver.ExecerContext) error {
-		// Set pragmas optimized for read-only queries
+	connector, err := duckdb.NewConnector(dbPath, func(execer driver.ExecerContext) error {
 		pragmas := []string{
 			"PRAGMA memory_limit='1GB'",
 			"PRAGMA threads=4",
@@ -147,7 +145,6 @@ func OpenDuckStoreReadOnly(dbPath string) (*DuckStore, error) {
 		for _, pragma := range pragmas {
 			if _, err := execer.ExecContext(context.Background(), pragma, nil); err != nil {
 				fmt.Printf("[DuckStore] Pragma warning: %v\n", err)
-				// Non-fatal - continue even if pragma fails
 			}
 		}
 		return nil
@@ -157,6 +154,11 @@ func OpenDuckStoreReadOnly(dbPath string) (*DuckStore, error) {
 	}
 
 	db := sql.OpenDB(connector)
+
+	// Force WAL replay so data written via Appender is visible
+	if _, err := db.Exec("CHECKPOINT"); err != nil {
+		fmt.Printf("[DuckStore] CHECKPOINT warning on open: %v\n", err)
+	}
 
 	// Get entry count
 	var entryCount int
