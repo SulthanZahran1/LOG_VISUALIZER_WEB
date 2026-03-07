@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { ensureFileLoaded } from './test-helpers';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -67,12 +68,7 @@ test.describe('Map Viewer Time Range', () => {
         await page.goto('/');
         await expect(page.locator('.status-dot.connected')).toBeVisible({ timeout: 10000 });
 
-        // Check if we have an existing session
-        const hasSession = await page.evaluate(() => {
-            return window.logStore?.currentSession?.value?.status === 'complete';
-        }).catch(() => false);
-
-        if (!hasSession) {
+        if (!await ensureFileLoaded(page)) {
             test.skip(true, 'No existing session available');
             return;
         }

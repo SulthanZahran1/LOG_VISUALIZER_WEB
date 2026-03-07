@@ -37,6 +37,17 @@ export const PRELOADED_SESSIONS = {
     tab: sessionData['plc_tab'] || process.env.TEST_SESSION_PLC_TAB || '',
 }
 
+function escapeRegex(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function getNavButtonByTitle(page: Page, title: string) {
+    const titlePattern = new RegExp(`^${escapeRegex(title)}$`)
+    return page
+        .locator('.nav-grid button.nav-button')
+        .filter({ has: page.locator('.nav-button-title', { hasText: titlePattern }) })
+}
+
 /**
  * Check if a preloaded session is available
  */
@@ -126,12 +137,12 @@ export async function gotoWithSession(
             }
             
             // Wait for navigation buttons to be enabled (not disabled)
-            const viewLabel = view === 'log-table' ? 'Log Table' : 
-                              view === 'timing-diagram' ? 'Timing Diagram' : 
-                              view === 'map' ? 'Map' : 'Transitions'
+            const viewLabel = view === 'log-table' ? 'Log Table' :
+                              view === 'timing-diagram' ? 'Timing Diagram' :
+                              view === 'map' ? 'Map Viewer' : 'Transitions'
             
             // Try to click the navigation button, waiting for it to be enabled
-            const navButton = page.locator('.nav-grid button.nav-button').filter({ hasText: viewLabel })
+            const navButton = getNavButtonByTitle(page, viewLabel)
             
             // Wait for button to be visible and not disabled
             await expect(navButton).toBeVisible({ timeout: 10000 })
@@ -161,11 +172,11 @@ export async function gotoWithSession(
     // Fallback: upload file directly
     if (await uploadFixtureFile(page, sessionType)) {
         // Now navigate to the requested view
-        const viewLabel = view === 'log-table' ? 'Log Table' : 
-                          view === 'timing-diagram' ? 'Timing Diagram' : 
-                          view === 'map' ? 'Map' : 'Transitions'
+        const viewLabel = view === 'log-table' ? 'Log Table' :
+                          view === 'timing-diagram' ? 'Timing Diagram' :
+                          view === 'map' ? 'Map Viewer' : 'Transitions'
         
-        const navButton = page.locator('.nav-grid button.nav-button').filter({ hasText: viewLabel })
+        const navButton = getNavButtonByTitle(page, viewLabel)
         await expect(navButton).toBeVisible({ timeout: 10000 })
         
         // Wait for button to be enabled
@@ -205,7 +216,7 @@ export async function ensureFileLoaded(page: Page): Promise<boolean> {
             }
             
             // Open Log Table view using the navigation button
-            const logTableNavButton = page.locator('.nav-grid button.nav-button').filter({ hasText: 'Log Table' })
+            const logTableNavButton = getNavButtonByTitle(page, 'Log Table')
             if (await logTableNavButton.isVisible({ timeout: 5000 }).catch(() => false)) {
                 // Wait for button to be enabled
                 let attempts = 0
@@ -227,7 +238,7 @@ export async function ensureFileLoaded(page: Page): Promise<boolean> {
     
     // Fallback: upload file directly
     if (await uploadFixtureFile(page, 'plc')) {
-        const logTableNavButton = page.locator('.nav-grid button.nav-button').filter({ hasText: 'Log Table' })
+        const logTableNavButton = getNavButtonByTitle(page, 'Log Table')
         if (await logTableNavButton.isVisible({ timeout: 5000 }).catch(() => false)) {
             let attempts = 0
             while (attempts < 20) {
@@ -263,7 +274,7 @@ export async function ensureFileLoaded(page: Page): Promise<boolean> {
         
         // Click the Log Table button in the Loaded panel (if available) or use nav button
         const loadedLogTableButton = page.locator('.loaded-file-card button, [class*="loaded"] button').filter({ hasText: 'Log Table' })
-        const navLogTableButton = page.locator('.nav-grid button.nav-button').filter({ hasText: 'Log Table' })
+        const navLogTableButton = getNavButtonByTitle(page, 'Log Table')
         
         if (await loadedLogTableButton.isVisible({ timeout: 5000 }).catch(() => false)) {
             await loadedLogTableButton.click()
@@ -307,7 +318,7 @@ export async function openLogTable(page: Page): Promise<void> {
         await loadedButton.click()
     } else {
         // Use nav grid button
-        const navButton = page.locator('.nav-grid button.nav-button').filter({ hasText: 'Log Table' })
+        const navButton = getNavButtonByTitle(page, 'Log Table')
         await expect(navButton).toBeVisible({ timeout: 5000 })
         
         // Wait for enabled

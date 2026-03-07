@@ -313,11 +313,6 @@ func (p *PLCDebugParser) ParseToDuckStore(filePath string, store *DuckStore, onP
 	fmt.Printf("[Parse] Performance: %.0f lines/sec, final mem=%.1fMB\n", linesPerSec, float64(memStats.Alloc)/1024/1024)
 	os.Stdout.Sync()
 
-	// Finalize: flush remaining batch and create indexes
-	if err := store.Finalize(); err != nil {
-		return nil, fmt.Errorf("DuckDB finalization error: %w", err)
-	}
-
 	// Final progress update
 	if onProgress != nil {
 		onProgress(lineNum, bytesRead, totalBytes)

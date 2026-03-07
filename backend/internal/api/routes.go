@@ -85,6 +85,7 @@ func RegisterRoutes(e *echo.Echo, handlers *Handlers) {
 	mapGroup.POST("/upload", handlers.Map.HandleUploadMapLayout)
 	mapGroup.POST("/active", handlers.Map.HandleSetActiveMap)
 	mapGroup.POST("/rules/upload", handlers.Map.HandleUploadMapRules)
+	mapGroup.POST("/rules/active", handlers.Map.HandleSetActiveRules)
 	mapGroup.GET("/rules", handlers.Map.HandleGetMapRules)
 	mapGroup.GET("/files/recent", handlers.Map.HandleRecentMapFiles)
 	mapGroup.GET("/defaults", handlers.Map.HandleGetDefaultMaps)

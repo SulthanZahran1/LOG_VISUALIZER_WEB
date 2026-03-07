@@ -57,7 +57,7 @@ export interface LogTableViewportProps {
     /** Handler for row mouse down */
     onRowMouseDown?: (index: number, e: MouseEvent) => void;
     /** Handler for row context menu */
-    onRowContextMenu?: (e: MouseEvent) => void;
+    onRowContextMenu?: (index: number, e: MouseEvent) => void;
     /** Handler for scroll */
     onScroll?: (e: Event) => void;
 }
@@ -162,7 +162,7 @@ export const LogTableViewport = forwardRef<HTMLDivElement, LogTableViewportProps
                                     rowHeight={rowHeight}
                                     colorSettings={colorSettings}
                                     onMouseDown={onRowMouseDown}
-                                    onContextMenu={onRowContextMenu}
+                                    onContextMenu={onRowContextMenu ? (e) => onRowContextMenu(actualIndex, e) : undefined}
                                 />
                             );
                         })}

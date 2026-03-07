@@ -41,6 +41,7 @@ export {
     selectedUnitId,
     // Rules
     mapRules,
+    activeRulesId,
     rulesLoading,
     rulesError,
     canEnableRules,
@@ -91,6 +92,7 @@ export {
     fetchMapRules,
     fetchRecentMapFiles,
     loadMap,
+    loadRules,
     // Default maps
     fetchDefaultMaps,
     loadDefaultMapByName,

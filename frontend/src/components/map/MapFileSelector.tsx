@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
     mapLayout,
     mapRules,
+    activeRulesId,
     recentMapFiles,
     recentFilesLoading,
     fetchMapLayout,
@@ -13,9 +14,10 @@ import {
     signalLogSessionId,
     signalLogFileName,
     signalLogEntryCount,
-    linkSignalLogSession,
+    loadMap,
+    loadRules,
 } from '../../stores/mapStore';
-import { currentSession, logEntries } from '../../stores/logStore';
+import { currentSession } from '../../stores/logStore';
 import { uploadMapLayout, uploadMapRules, uploadCarrierLog } from '../../api/client';
 import type { FileInfo } from '../../models/types';
 import { CheckIcon } from '../icons';
@@ -24,17 +26,54 @@ import './MapFileSelector.css';
 
 interface MapFileSelectorProps {
     onFilesChanged?: () => void;
+    openDialogRequest?: MapDialogRequest | null;
+    onUseCurrentSession?: () => Promise<void>;
 }
 
-export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
+export type MapDialogSection = 'xml' | 'yaml' | 'signal' | 'carrier';
+
+export interface MapDialogRequest {
+    key: number;
+    section?: MapDialogSection;
+}
+
+export function MapFileSelector({ onFilesChanged, openDialogRequest, onUseCurrentSession }: MapFileSelectorProps) {
     const [showDialog, setShowDialog] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [carrierError, setCarrierError] = useState<string | null>(null);
+    const [highlightedSection, setHighlightedSection] = useState<MapDialogSection | null>(null);
+    const xmlSectionRef = useRef<HTMLDivElement>(null);
+    const yamlSectionRef = useRef<HTMLDivElement>(null);
+    const signalSectionRef = useRef<HTMLDivElement>(null);
+    const carrierSectionRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         fetchRecentMapFiles();
         fetchCarrierLog();
     }, []);
+
+    useEffect(() => {
+        if (!openDialogRequest || openDialogRequest.key <= 0) {
+            return;
+        }
+        setShowDialog(true);
+        setHighlightedSection(openDialogRequest.section ?? null);
+    }, [openDialogRequest]);
+
+    useEffect(() => {
+        if (!showDialog || !highlightedSection) {
+            return;
+        }
+        const sectionRef =
+            highlightedSection === 'xml'
+                ? xmlSectionRef
+                : highlightedSection === 'yaml'
+                    ? yamlSectionRef
+                    : highlightedSection === 'signal'
+                        ? signalSectionRef
+                        : carrierSectionRef;
+        sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, [showDialog, highlightedSection]);
 
     const handleUploadXML = async (e: Event) => {
         const input = e.target as HTMLInputElement;
@@ -72,19 +111,26 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
         }
     };
 
-    const handleSelectXML = async (_file: FileInfo) => {
-        // For now, just re-fetch the layout (the backend uses the most recently uploaded)
-        // In a full implementation, we'd add an endpoint to set active map by ID
-        setShowDialog(false);
-        await fetchMapLayout();
-        onFilesChanged?.();
+    const handleSelectXML = async (file: FileInfo) => {
+        try {
+            await loadMap(file.id);
+            setShowDialog(false);
+            setHighlightedSection(null);
+            onFilesChanged?.();
+        } catch (err) {
+            console.error('Failed to activate XML layout:', err);
+        }
     };
 
-    const handleSelectYAML = async (_file: FileInfo) => {
-        // Similar - for now just re-fetch
-        setShowDialog(false);
-        await fetchMapRules();
-        onFilesChanged?.();
+    const handleSelectYAML = async (file: FileInfo) => {
+        try {
+            await loadRules(file.id);
+            setShowDialog(false);
+            setHighlightedSection(null);
+            onFilesChanged?.();
+        } catch (err) {
+            console.error('Failed to activate YAML rules:', err);
+        }
     };
 
     const handleUploadCarrierLog = async (e: Event) => {
@@ -110,51 +156,17 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
 
     const currentXML = mapLayout.value?.name || 'No XML loaded';
     const currentYAML = mapRules.value?.name || 'No rules loaded';
+    const currentMapId = mapLayout.value?.id || null;
+    const currentRulesId = activeRulesId.value;
     const currentSignalLog = signalLogSessionId.value
         ? `${signalLogFileName.value || 'Session'} (${signalLogEntryCount.value})`
         : 'No signal log';
 
     const handleUseCurrentSession = async () => {
-        if (!currentSession.value || currentSession.value.status !== 'complete') return;
-
-        const sessionId = currentSession.value.id;
-        const sessionName = currentSession.value.fileId || 'Unnamed session';
-        const startTime = currentSession.value.startTime;
-        const endTime = currentSession.value.endTime;
-        const totalCount = currentSession.value.entryCount;
-
-        // Link with available entries for immediate feedback
-        // For large files (server-side mode), this also fetches initial signal state
-        await linkSignalLogSession(
-            sessionId,
-            sessionName,
-            logEntries.value,
-            startTime,
-            endTime,
-            totalCount
-        );
-
-        // Only fetch all entries for small files (client-side mode)
-        // Large files use server-side API for on-demand value fetching
-        const { useServerSide } = await import('../../stores/logStore');
-        if (!useServerSide.value) {
-            try {
-                const { fetchAllEntries } = await import('../../stores/logStore');
-                const allEntries = await fetchAllEntries(sessionId);
-
-                // Re-link with full data (this will update history and entry count)
-                await linkSignalLogSession(
-                    sessionId,
-                    sessionName,
-                    allEntries,
-                    startTime,
-                    endTime,
-                    totalCount
-                );
-            } catch (err) {
-                console.error('Failed to load full session data for map:', err);
-            }
+        if (!onUseCurrentSession) {
+            return;
         }
+        await onUseCurrentSession();
     };
 
     const sessionAvailable = currentSession.value?.status === 'complete';
@@ -175,19 +187,29 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
 
             <button
                 className="select-files-btn"
-                onClick={() => setShowDialog(true)}
+                onClick={() => {
+                    setShowDialog(true);
+                    setHighlightedSection(null);
+                }}
                 disabled={uploading}
             >
                 {uploading ? 'Uploading...' : 'Select Files'}
             </button>
 
             {showDialog && (
-                <div className="file-dialog-overlay" onClick={() => setShowDialog(false)}>
+                <div className="file-dialog-overlay" onClick={() => {
+                    setShowDialog(false);
+                    setHighlightedSection(null);
+                }}>
                     <div className="file-dialog" onClick={e => e.stopPropagation()}>
                         <h3>Map Configuration Files</h3>
 
-                        <div className="file-section">
+                        <div
+                            ref={xmlSectionRef}
+                            className={`file-section ${highlightedSection === 'xml' ? 'focus-target' : ''}`}
+                        >
                             <h4>XML Layout File</h4>
+                            <p className="section-hint">Select a file below to activate it as the current layout.</p>
                             <input
                                 type="file"
                                 accept=".xml"
@@ -205,10 +227,11 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
                                     recentMapFiles.value.xmlFiles.map(file => (
                                         <button
                                             key={file.id}
-                                            className="file-item"
+                                            className={`file-item ${currentMapId === file.id ? 'active' : ''}`}
                                             onClick={() => handleSelectXML(file)}
                                         >
-                                            {file.name}
+                                            <span>{file.name}</span>
+                                            {currentMapId === file.id && <span className="active-pill">Active</span>}
                                         </button>
                                     ))
                                 ) : (
@@ -217,8 +240,12 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
                             </div>
                         </div>
 
-                        <div className="file-section">
+                        <div
+                            ref={yamlSectionRef}
+                            className={`file-section ${highlightedSection === 'yaml' ? 'focus-target' : ''}`}
+                        >
                             <h4>YAML Rules File</h4>
+                            <p className="section-hint">Select a file below to activate it for map coloring/tracking rules.</p>
                             <input
                                 type="file"
                                 accept=".yaml,.yml"
@@ -236,10 +263,11 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
                                     recentMapFiles.value.yamlFiles.map(file => (
                                         <button
                                             key={file.id}
-                                            className="file-item"
+                                            className={`file-item ${currentRulesId === file.id ? 'active' : ''}`}
                                             onClick={() => handleSelectYAML(file)}
                                         >
-                                            {file.name}
+                                            <span>{file.name}</span>
+                                            {currentRulesId === file.id && <span className="active-pill">Active</span>}
                                         </button>
                                     ))
                                 ) : (
@@ -248,7 +276,10 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
                             </div>
                         </div>
 
-                        <div className="file-section">
+                        <div
+                            ref={signalSectionRef}
+                            className={`file-section ${highlightedSection === 'signal' ? 'focus-target' : ''}`}
+                        >
                             <h4>Signal Log (PLC)</h4>
                             <p className="section-hint">Use your loaded log session for time-based coloring</p>
                             <button
@@ -267,7 +298,10 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
                             )}
                         </div>
 
-                        <div className="file-section">
+                        <div
+                            ref={carrierSectionRef}
+                            className={`file-section ${highlightedSection === 'carrier' ? 'focus-target' : ''}`}
+                        >
                             <h4>Carrier Log (MCS Format)</h4>
                             <p className="section-hint">Upload an MCS/AMHS log for carrier tracking</p>
                             <input
@@ -290,7 +324,10 @@ export function MapFileSelector({ onFilesChanged }: MapFileSelectorProps) {
                             )}
                         </div>
 
-                        <button className="close-btn" onClick={() => setShowDialog(false)}>
+                        <button className="close-btn" onClick={() => {
+                            setShowDialog(false);
+                            setHighlightedSection(null);
+                        }}>
                             Close
                         </button>
                     </div>

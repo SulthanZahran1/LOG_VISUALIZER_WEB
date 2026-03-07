@@ -24,6 +24,7 @@ export const selectedUnitId = signal<string | null>(null);
 // Rules State
 // ======================
 export const mapRules = signal<MapRules | null>(null);
+export const activeRulesId = signal<string | null>(null);
 export const rulesLoading = signal(false);
 export const rulesError = signal<string | null>(null);
 

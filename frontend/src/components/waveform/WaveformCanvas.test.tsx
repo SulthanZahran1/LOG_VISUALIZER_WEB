@@ -189,6 +189,18 @@ describe('WaveformCanvas', () => {
             expect(hoverRow.value).not.toBeNull();
         });
 
+        it('ignores hover time mapping in the signal label gutter', () => {
+            const { container } = render(<WaveformCanvas />);
+            const canvas = container.querySelector('canvas');
+
+            // Left side reserved for signal labels; should not produce timeline hover values.
+            fireEvent.mouseMove(canvas!, { clientX: 40, clientY: 100 });
+
+            expect(hoverX.value).toBeNull();
+            expect(hoverTime.value).toBeNull();
+            expect(hoverRow.value).toBeNull();
+        });
+
         // Note: Hover state tests are covered in E2E: e2e/canvas-interactions.spec.ts
     });
 

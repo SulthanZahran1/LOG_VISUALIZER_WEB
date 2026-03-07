@@ -79,6 +79,11 @@
     border-radius: 6px;
 }
 
+.file-section.focus-target {
+    border: 1px solid var(--primary, #003D82);
+    box-shadow: 0 0 0 2px rgba(0, 61, 130, 0.25);
+}
+
 .file-section h4 {
     margin: 0 0 0.75rem 0;
     color: var(--text-primary, #fff);
@@ -119,11 +124,30 @@
     text-align: left;
     font-size: 0.85rem;
     transition: background 0.2s, border-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
 }
 
 .file-item:hover {
     background: var(--surface-4, #4a4a4a);
     border-color: var(--primary, #003D82);
+}
+
+.file-item.active {
+    border-color: #4a90d9;
+    background: rgba(74, 144, 217, 0.2);
+}
+
+.active-pill {
+    font-size: 0.72rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(144, 238, 144, 0.2);
+    border: 1px solid #90EE90;
+    color: #90EE90;
+    white-space: nowrap;
 }
 
 .no-files,

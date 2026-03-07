@@ -58,3 +58,26 @@ go test ./...
 - Session cleanup runs periodically in a background goroutine.
 - Large PLC parses use DuckDB-backed storage path for memory efficiency.
 - File deletion endpoint is config-gated (`AllowFileDeletion`).
+
+## XLSX Parsing Strategy (Machine/DateTime/Contents)
+
+When adding `.xlsx` support for spreadsheet logs with columns:
+- `Machine`
+- `DateTime`
+- `Contents`
+
+Use this mapping/flow:
+- `Machine` -> `LogEntry.DeviceID`
+- `DateTime` -> `LogEntry.Timestamp`
+- `Contents` -> delegated to a flexible content parser chain
+
+Recommended parser design:
+- Add an `XLSXMachineContentParser` in `internal/parser`.
+- Introduce pluggable `ContentParser` handlers with:
+  - `Match(contents string) bool`
+  - `Parse(deviceID string, timestamp time.Time, contents string) ([]models.LogEntry, *models.ParseError)`
+- Run handlers in order; first match parses the row.
+- Include a fallback handler that preserves unknown formats as raw content (for example `_RawContent`) instead of failing the entire file.
+- Treat malformed rows as non-fatal parse errors, consistent with existing parser behavior.
+
+This enables mixed `Contents` formats in one workbook while keeping parse sessions resilient.

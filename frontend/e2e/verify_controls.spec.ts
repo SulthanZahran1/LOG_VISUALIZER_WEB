@@ -1,39 +1,14 @@
 import { test, expect } from '@playwright/test';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { gotoWithSession } from './test-helpers';
 
 test('verify waveform controls and panning', async ({ page }) => {
-    // NOTE: This test requires an existing session with parsed data
-    // or working file upload. Skip if neither is available.
     await page.goto('/');
     await expect(page.locator('.status-dot.connected')).toBeVisible({ timeout: 10000 });
-    
-    // Check if we have an existing session
-    const hasSession = await page.evaluate(() => {
-        return window.logStore?.currentSession?.value?.status === 'complete' &&
-               window.logStore?.logEntries?.value?.length > 0;
-    }).catch(() => false);
-    
-    if (!hasSession) {
-        // Try to upload a file
-        const fileInput = page.locator('input[type="file"]');
-        const fixturePath = path.join(__dirname, 'fixtures', 'sample-plc.log');
-        await fileInput.setInputFiles(fixturePath);
-        
-        // Wait for parsing with timeout
-        try {
-            await page.waitForFunction(
-                () => window.logStore?.currentSession?.value?.status === 'complete' && 
-                     window.logStore?.logEntries?.value?.length > 0,
-                { timeout: 30000 }
-            );
-        } catch {
-            test.skip(true, 'File upload not working in test environment');
-            return;
-        }
+
+    const sessionReady = await gotoWithSession(page, 'timing-diagram', 'plc');
+    if (!sessionReady) {
+        test.skip(true, 'File upload not working in test environment');
+        return;
     }
 
     // 2. Add signal to waveform programmatically
@@ -46,10 +21,6 @@ test('verify waveform controls and panning', async ({ page }) => {
             }
         }
     });
-
-    // 3. Navigate to Timing Diagram
-    await page.getByRole('button', { name: 'Home' }).first().click();
-    await page.locator('.nav-grid .nav-button').filter({ hasText: 'Timing Diagram' }).click();
 
     // Wait for canvas and slider
     await expect(page.locator('canvas')).toBeVisible();

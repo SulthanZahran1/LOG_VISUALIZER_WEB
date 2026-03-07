@@ -49,6 +49,7 @@ type MapHandler interface {
 	HandleUploadMapLayout(c echo.Context) error
 	HandleSetActiveMap(c echo.Context) error
 	HandleUploadMapRules(c echo.Context) error
+	HandleSetActiveRules(c echo.Context) error
 	HandleGetMapRules(c echo.Context) error
 	HandleRecentMapFiles(c echo.Context) error
 	HandleGetDefaultMaps(c echo.Context) error

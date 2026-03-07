@@ -30,6 +30,7 @@ import {
 import { getTimeTree } from '../../api/client';
 import type { TimeTreeEntry } from '../../api/client';
 import { toggleSignal } from '../../stores/waveformStore';
+import { setPlaybackTime } from '../../stores/mapStore';
 import type { SortColumnKey } from '../../stores/log/types';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
 import type { ParseSession } from '../../models/types';
@@ -400,7 +401,7 @@ function JumpToTimePopover({ onClose, onJump }: { onClose: () => void, onJump: (
 export function LogTable() {
     const tableRef = useRef<HTMLDivElement>(null);
     const scrollSignal = useSignal(0);
-    const contextMenu = useSignal<{ x: number, y: number, visible: boolean }>({ x: 0, y: 0, visible: false });
+    const contextMenu = useSignal<{ x: number, y: number, visible: boolean, rowIndex: number | null }>({ x: 0, y: 0, visible: false, rowIndex: null });
     const categoryFilterOpenColumn = useSignal<FilterableColumn | null>(null);
     const jumpToTimeOpen = useSignal(false);
     const [isFetchingPage, setIsFetchingPage] = useState(false);
@@ -536,21 +537,24 @@ export function LogTable() {
         }
 
         if (contextMenu.value.visible) {
-            contextMenu.value = { ...contextMenu.value, visible: false };
+            contextMenu.value = { ...contextMenu.value, visible: false, rowIndex: null };
         }
     }, [virtualActions, contextMenu, scrollSignal]);
 
     // Row mouse handlers
     const handleRowMouseDown = useCallback((idx: number, e: MouseEvent) => {
         if (e.button === 2) return;
-        contextMenu.value = { ...contextMenu.value, visible: false };
+        contextMenu.value = { ...contextMenu.value, visible: false, rowIndex: null };
         selectionActions.handleRowClick(e, idx);
     }, [selectionActions, contextMenu]);
 
-    const handleRowContextMenu = useCallback((e: MouseEvent) => {
+    const handleRowContextMenu = useCallback((idx: number, e: MouseEvent) => {
         e.preventDefault();
-        contextMenu.value = { x: e.clientX, y: e.clientY, visible: true };
-    }, [contextMenu]);
+        if (!selectionState.selectedRows.has(idx)) {
+            selectionActions.selectRow(idx);
+        }
+        contextMenu.value = { x: e.clientX, y: e.clientY, visible: true, rowIndex: idx };
+    }, [contextMenu, selectionActions, selectionState.selectedRows]);
 
     // Keyboard shortcuts
     const selectedIndex = selectionState.selectedIndices.length > 0
@@ -597,7 +601,7 @@ export function LogTable() {
                 .filter(line => line !== '')
                 .join('\n');
             navigator.clipboard.writeText(text);
-            contextMenu.value = { ...contextMenu.value, visible: false };
+            contextMenu.value = { ...contextMenu.value, visible: false, rowIndex: null };
         },
         onJumpToIndex: (page) => fetchEntries(page, SERVER_PAGE_SIZE),
         onJumpToTime: () => jumpToTimeOpen.value = !jumpToTimeOpen.value
@@ -625,7 +629,7 @@ export function LogTable() {
             .filter(line => line !== '')
             .join('\n');
         navigator.clipboard.writeText(text);
-        contextMenu.value = { ...contextMenu.value, visible: false };
+        contextMenu.value = { ...contextMenu.value, visible: false, rowIndex: null };
     }, [selectionState.selectedIndices, contextMenu]);
 
     const handleAddToWaveform = useCallback(() => {
@@ -643,8 +647,39 @@ export function LogTable() {
                 }
             }
         });
-        contextMenu.value = { ...contextMenu.value, visible: false };
-    }, [selectionState.selectedIndices]);
+        contextMenu.value = { ...contextMenu.value, visible: false, rowIndex: null };
+    }, [contextMenu, selectionState.selectedIndices]);
+
+    const getEntryForRowIndex = useCallback((idx: number | null) => {
+        if (idx === null) return null;
+        const entries = filteredEntries.value;
+        const offset = useServerSide.value ? serverPageOffset.value : 0;
+        return entries[idx - offset] || null;
+    }, []);
+
+    const handleOpenWaveformAtTime = useCallback(() => {
+        const entry = getEntryForRowIndex(contextMenu.value.rowIndex);
+        if (!entry) {
+            contextMenu.value = { ...contextMenu.value, visible: false, rowIndex: null };
+            return;
+        }
+        selectedLogTime.value = new Date(entry.timestamp).getTime();
+        openView('waveform');
+        contextMenu.value = { ...contextMenu.value, visible: false, rowIndex: null };
+    }, [contextMenu, getEntryForRowIndex]);
+
+    const handleOpenMapAtTime = useCallback(() => {
+        const entry = getEntryForRowIndex(contextMenu.value.rowIndex);
+        if (!entry) {
+            contextMenu.value = { ...contextMenu.value, visible: false, rowIndex: null };
+            return;
+        }
+        const ts = new Date(entry.timestamp).getTime();
+        selectedLogTime.value = ts;
+        setPlaybackTime(ts);
+        openView('map-viewer');
+        contextMenu.value = { ...contextMenu.value, visible: false, rowIndex: null };
+    }, [contextMenu, getEntryForRowIndex]);
 
     const handleReload = useCallback(() => {
         if (useServerSide.value) {
@@ -680,7 +715,7 @@ export function LogTable() {
         <div
             className="log-table-container"
             onKeyDown={keyboardActions.handleKeyDown}
-            onClick={() => contextMenu.value = { ...contextMenu.value, visible: false }}
+            onClick={() => contextMenu.value = { ...contextMenu.value, visible: false, rowIndex: null }}
             tabIndex={0}
         >
             {/* Toolbar */}
@@ -823,8 +858,10 @@ export function LogTable() {
                     {contextMenu.value.visible && (
                         <div className="context-menu" style={{ top: contextMenu.value.y, left: contextMenu.value.x }}>
                             {!isGenericLog && <div className="menu-item" onClick={handleAddToWaveform}>Add to Waveform</div>}
+                            {!isGenericLog && <div className="menu-item" onClick={handleOpenWaveformAtTime}>Open Waveform at This Time</div>}
+                            <div className="menu-item" onClick={handleOpenMapAtTime}>Open Map at This Time</div>
                             <div className="menu-item" onClick={handleCopy}>Copy Selected Rows</div>
-                            <div className="menu-item" onClick={() => { selectionActions.clearSelection(); contextMenu.value = { ...contextMenu.value, visible: false }; }}>Clear Selection</div>
+                            <div className="menu-item" onClick={() => { selectionActions.clearSelection(); contextMenu.value = { ...contextMenu.value, visible: false, rowIndex: null }; }}>Clear Selection</div>
                         </div>
                     )}
                 </div>

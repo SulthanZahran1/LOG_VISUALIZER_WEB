@@ -45,6 +45,7 @@ type DuckStore struct {
 	// persistent means Close() should not delete the database file.
 	// Set for parsed files stored in the persistent cache.
 	persistent bool
+	finalized  bool
 }
 
 // NewDuckStore creates a new DuckDB-backed store in the given temp directory.
@@ -309,6 +310,10 @@ func (ds *DuckStore) flushBatch() error {
 
 // Finalize flushes any remaining entries and creates indexes
 func (ds *DuckStore) Finalize() error {
+	if ds.finalized {
+		return nil
+	}
+
 	if err := ds.flushBatch(); err != nil {
 		return err
 	}
@@ -346,6 +351,7 @@ func (ds *DuckStore) Finalize() error {
 		}
 	}
 
+	ds.finalized = true
 	fmt.Printf("[DuckStore] Finalization complete in %v\n", time.Since(start))
 	return nil
 }

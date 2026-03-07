@@ -568,6 +568,12 @@ export interface MapRules {
     rules: ColorRule[];
 }
 
+export interface MapRulesResponse {
+    rules: MapRules | null;
+    rulesId?: string;
+    name?: string;
+}
+
 export async function uploadMapRules(file: File): Promise<RulesInfo> {
     const base64Data = await fileToBase64(file);
 
@@ -588,14 +594,21 @@ export async function uploadMapRules(file: File): Promise<RulesInfo> {
     return response.json();
 }
 
-export async function getMapRules(): Promise<MapRules> {
-    return request<MapRules>('/map/rules');
+export async function getMapRules(): Promise<MapRulesResponse | MapRules> {
+    return request<MapRulesResponse | MapRules>('/map/rules');
 }
 
 export async function setActiveMap(id: string): Promise<void> {
     await request<void>('/map/active', {
         method: 'POST',
         body: JSON.stringify({ mapId: id }),
+    });
+}
+
+export async function setActiveRules(id: string): Promise<void> {
+    await request<void>('/map/rules/active', {
+        method: 'POST',
+        body: JSON.stringify({ rulesId: id }),
     });
 }
 

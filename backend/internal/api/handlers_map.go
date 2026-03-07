@@ -208,17 +208,58 @@ func (h *MapHandlerImpl) HandleUploadMapRules(c echo.Context) error {
 	return c.JSON(http.StatusCreated, info)
 }
 
+// HandleSetActiveRules sets the currently active rules by file ID
+func (h *MapHandlerImpl) HandleSetActiveRules(c echo.Context) error {
+	var req setActiveRulesRequest
+	if err := c.Bind(&req); err != nil {
+		return NewBadRequestError("invalid request body", err)
+	}
+
+	if req.RulesID == "" {
+		return NewValidationError("rulesId")
+	}
+
+	path, _, err := h.resolveRulesPath(req.RulesID)
+	if err != nil {
+		return NewNotFoundError("rules", req.RulesID)
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return NewInternalError("failed to open rules file", err)
+	}
+	defer file.Close()
+
+	rules, err := parser.ParseMapRulesFromReader(file)
+	if err != nil {
+		return NewBadRequestError("invalid rules YAML", err)
+	}
+
+	h.currentRulesID = req.RulesID
+	h.currentRules = rules
+
+	return c.JSON(http.StatusOK, map[string]string{"rulesId": h.currentRulesID})
+}
+
 // HandleGetMapRules returns the currently active map rules
 func (h *MapHandlerImpl) HandleGetMapRules(c echo.Context) error {
 	if h.currentRules == nil {
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"rules": nil,
+			"rules":   nil,
+			"rulesId": "",
+			"name":    "",
 		})
+	}
+
+	_, rulesName, err := h.resolveRulesPath(h.currentRulesID)
+	if err != nil {
+		rulesName = ""
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"rules":   h.currentRules,
 		"rulesId": h.currentRulesID,
+		"name":    rulesName,
 	})
 }
 
@@ -350,6 +391,29 @@ func (h *MapHandlerImpl) resolveMapPath(mapID string) (string, string, error) {
 	return path, info.Name, nil
 }
 
+func (h *MapHandlerImpl) resolveRulesPath(rulesID string) (string, string, error) {
+	if strings.HasPrefix(rulesID, "default:") {
+		cleanName := filepath.Base(strings.TrimPrefix(rulesID, "default:"))
+		path := filepath.Join(h.dataDir, "defaults", cleanName)
+		if _, err := os.Stat(path); err != nil {
+			return "", "", fmt.Errorf("default rules not found: %w", err)
+		}
+		return path, cleanName, nil
+	}
+
+	info, err := h.store.Get(rulesID)
+	if err != nil {
+		return "", "", fmt.Errorf("rules not found: %w", err)
+	}
+
+	path, err := h.store.GetFilePath(rulesID)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get rules file path: %w", err)
+	}
+
+	return path, info.Name, nil
+}
+
 // Request types
 
 type uploadMapRequest struct {
@@ -384,4 +448,8 @@ func (r *uploadRulesRequest) validate() error {
 
 type setActiveMapRequest struct {
 	MapID string `json:"mapId"`
+}
+
+type setActiveRulesRequest struct {
+	RulesID string `json:"rulesId"`
 }

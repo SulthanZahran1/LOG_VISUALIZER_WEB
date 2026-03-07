@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { MapCanvas } from '../components/map/MapCanvas';
-import { MapFileSelector } from '../components/map/MapFileSelector';
+import { MapFileSelector, type MapDialogRequest, type MapDialogSection } from '../components/map/MapFileSelector';
 import { MapFollowControls } from '../components/map/MapFollowControls';
 import { CarrierPanel } from '../components/map/CarrierPanel';
 import { FileUpload } from '../components/file/FileUpload';
@@ -8,8 +8,10 @@ import { RecentFiles } from '../components/file/RecentFiles';
 import { uploadMapLayout } from '../api/client';
 import type { FileInfo } from '../models/types';
 import { AlertTriangleIcon, MapIcon } from '../components/icons';
+import { currentSession, logEntries, useServerSide, fetchAllEntries, openView } from '../stores/logStore';
 import {
     fetchMapLayout, fetchMapRules, mapLayout, mapRules,
+    activeRulesId, signalLogSessionId, carrierLogInfo, linkSignalLogSession,
     carrierTrackingEnabled, toggleCarrierTracking, canEnableRules,
     recentMapFiles, fetchRecentMapFiles, loadMap,
     defaultMaps, fetchDefaultMaps, loadDefaultMapByName
@@ -17,6 +19,7 @@ import {
 
 export function MapViewer() {
     const [initialized, setInitialized] = useState(false);
+    const [dialogRequest, setDialogRequest] = useState<MapDialogRequest | null>(null);
 
     useEffect(() => {
         const init = async () => {
@@ -36,6 +39,13 @@ export function MapViewer() {
         await fetchRecentMapFiles();
     };
 
+    const requestFileDialog = (section: MapDialogSection) => {
+        setDialogRequest(prev => ({
+            key: (prev?.key || 0) + 1,
+            section
+        }));
+    };
+
     const handleFilesChanged = () => {
         // Refresh data when files change
         fetchRecentMapFiles();
@@ -49,6 +59,88 @@ export function MapViewer() {
         await loadDefaultMapByName(name);
     };
 
+    const handleUseCurrentSession = async () => {
+        if (!currentSession.value || currentSession.value.status !== 'complete') return;
+
+        const sessionId = currentSession.value.id;
+        const sessionName = currentSession.value.fileId || 'Unnamed session';
+        const startTime = currentSession.value.startTime;
+        const endTime = currentSession.value.endTime;
+        const totalCount = currentSession.value.entryCount;
+
+        // Link with currently available entries for immediate feedback.
+        await linkSignalLogSession(
+            sessionId,
+            sessionName,
+            logEntries.value,
+            startTime,
+            endTime,
+            totalCount
+        );
+
+        // Load full client-side history when available.
+        if (!useServerSide.value) {
+            try {
+                const allEntries = await fetchAllEntries(sessionId);
+                await linkSignalLogSession(
+                    sessionId,
+                    sessionName,
+                    allEntries,
+                    startTime,
+                    endTime,
+                    totalCount
+                );
+            } catch (err) {
+                console.error('Failed to load full session data for map:', err);
+            }
+        }
+    };
+
+    const hasMapLayout = !!mapLayout.value?.objects && Object.keys(mapLayout.value.objects).length > 0;
+    const hasRules = !!activeRulesId.value;
+    const hasSignalSession = !!signalLogSessionId.value;
+    const hasCarrierLog = carrierLogInfo.value?.loaded === true;
+    const sessionReady = currentSession.value?.status === 'complete';
+
+    const checklistItems = [
+        {
+            key: 'layout',
+            label: 'Layout XML',
+            ready: hasMapLayout,
+            detail: mapLayout.value?.name || 'No layout selected',
+            actionLabel: 'Select Layout',
+            onAction: () => requestFileDialog('xml')
+        },
+        {
+            key: 'rules',
+            label: 'Rules YAML',
+            ready: hasRules,
+            detail: mapRules.value?.name || 'No rules selected',
+            actionLabel: 'Select Rules',
+            onAction: () => requestFileDialog('yaml')
+        },
+        {
+            key: 'signals',
+            label: 'Signal Session',
+            ready: hasSignalSession,
+            detail: hasSignalSession
+                ? 'Linked to map playback'
+                : (sessionReady ? 'Current session can be linked' : 'No completed parse session'),
+            actionLabel: sessionReady ? 'Link Current Session' : 'Go to Home',
+            onAction: sessionReady ? handleUseCurrentSession : () => openView('home')
+        },
+        {
+            key: 'carrier',
+            label: 'Carrier Log',
+            ready: hasCarrierLog,
+            detail: hasCarrierLog ? 'Carrier tracking data loaded' : 'No carrier log loaded',
+            actionLabel: 'Upload Carrier Log',
+            onAction: () => requestFileDialog('carrier')
+        }
+    ] as const;
+
+    const readyCount = checklistItems.filter(item => item.ready).length;
+
     if (!initialized) {
         return (
             <div class="view-container">
@@ -59,7 +151,38 @@ export function MapViewer() {
 
     return (
         <div class="view-container map-viewer">
-            {!mapLayout.value?.objects || Object.keys(mapLayout.value.objects).length === 0 ? (
+            <div class="map-setup-strip">
+                <div class="setup-summary">
+                    <strong>Map Readiness</strong>
+                    <span>{readyCount}/4 ready</span>
+                </div>
+                <div class="readiness-list">
+                    {checklistItems.map(item => (
+                        <div key={item.key} class={`readiness-item ${item.ready ? 'ready' : 'pending'}`}>
+                            <div class="readiness-main">
+                                <span class={`readiness-dot ${item.ready ? 'ready' : 'pending'}`}></span>
+                                <span class="readiness-label">{item.label}</span>
+                            </div>
+                            <span class="readiness-detail">{item.detail}</span>
+                            {!item.ready && (
+                                <button
+                                    class="readiness-action"
+                                    onClick={() => void item.onAction()}
+                                >
+                                    {item.actionLabel}
+                                </button>
+                            )}
+                        </div>
+                    ))}
+                </div>
+                <MapFileSelector
+                    onFilesChanged={handleFilesChanged}
+                    openDialogRequest={dialogRequest}
+                    onUseCurrentSession={handleUseCurrentSession}
+                />
+            </div>
+
+            {!hasMapLayout ? (
                 <div class="map-placeholder">
                     <h2>Select a Map</h2>
 
@@ -134,7 +257,6 @@ export function MapViewer() {
                             </button>
                             {carrierTrackingEnabled.value && <MapFollowControls />}
                         </div>
-                        <MapFileSelector onFilesChanged={handleFilesChanged} />
                     </div>
                     <MapCanvas />
                     <CarrierPanel />
@@ -148,6 +270,94 @@ export function MapViewer() {
                     height: 100%;
                     width: 100%;
                     position: relative;
+                }
+                .map-setup-strip {
+                    display: grid;
+                    grid-template-columns: minmax(300px, 1fr) auto;
+                    gap: var(--spacing-md);
+                    padding: var(--spacing-sm) var(--spacing-md);
+                    background: var(--bg-secondary);
+                    border-bottom: 1px solid var(--border-color);
+                    align-items: center;
+                }
+                .setup-summary {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--spacing-sm);
+                    font-size: 0.8rem;
+                    color: var(--text-secondary);
+                    margin-bottom: 0.35rem;
+                }
+                .setup-summary strong {
+                    color: var(--text-primary);
+                    font-size: 0.88rem;
+                }
+                .readiness-list {
+                    display: grid;
+                    grid-template-columns: repeat(4, minmax(0, 1fr));
+                    gap: 0.5rem;
+                    min-width: 0;
+                }
+                .readiness-item {
+                    border: 1px solid var(--border-color);
+                    border-radius: 6px;
+                    padding: 0.45rem 0.55rem;
+                    background: var(--bg-primary);
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.25rem;
+                    min-width: 0;
+                }
+                .readiness-item.ready {
+                    border-color: rgba(63, 185, 80, 0.45);
+                }
+                .readiness-main {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.45rem;
+                }
+                .readiness-dot {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    flex-shrink: 0;
+                }
+                .readiness-dot.ready {
+                    background: var(--accent-success);
+                    box-shadow: 0 0 4px var(--accent-success);
+                }
+                .readiness-dot.pending {
+                    background: var(--text-muted);
+                }
+                .readiness-label {
+                    font-size: 0.78rem;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                .readiness-detail {
+                    font-size: 0.72rem;
+                    color: var(--text-muted);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                .readiness-action {
+                    margin-top: 0.15rem;
+                    font-size: 0.72rem;
+                    border: 1px solid var(--border-color);
+                    background: var(--bg-tertiary);
+                    color: var(--text-secondary);
+                    border-radius: 4px;
+                    padding: 0.2rem 0.45rem;
+                    cursor: pointer;
+                    align-self: flex-start;
+                }
+                .readiness-action:hover {
+                    border-color: var(--primary-accent);
+                    color: var(--primary-accent);
                 }
                 .map-placeholder {
                     flex: 1;
@@ -311,6 +521,19 @@ export function MapViewer() {
                 }
                 .divider-or span {
                     padding: 0 var(--spacing-md);
+                }
+                @media (max-width: 1200px) {
+                    .map-setup-strip {
+                        grid-template-columns: 1fr;
+                    }
+                    .readiness-list {
+                        grid-template-columns: repeat(2, minmax(0, 1fr));
+                    }
+                }
+                @media (max-width: 720px) {
+                    .readiness-list {
+                        grid-template-columns: 1fr;
+                    }
                 }
             `}</style>
 

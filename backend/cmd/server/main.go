@@ -227,6 +227,7 @@ func main() {
 	apiGroup.POST("/map/active", handlers.Map.HandleSetActiveMap)
 	apiGroup.GET("/map/rules", handlers.Map.HandleGetMapRules)
 	apiGroup.POST("/map/rules", handlers.Map.HandleUploadMapRules)
+	apiGroup.POST("/map/rules/active", handlers.Map.HandleSetActiveRules)
 	apiGroup.GET("/map/files/recent", handlers.Map.HandleRecentMapFiles)
 
 	// Default maps (new handlers)

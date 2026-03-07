@@ -24,7 +24,7 @@ test.describe('Home Page', () => {
         await page.goto('/')
 
         // Check nav buttons exist in the Open Views section
-        await expect(page.locator('.nav-grid .nav-button')).toHaveCount(4)
+        await expect(page.locator('.nav-grid .nav-button')).toHaveCount(5)
 
         // Check buttons are disabled without a session
         const timingDiagram = page.locator('.nav-grid .nav-button').filter({ hasText: 'Timing Diagram' })

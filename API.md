@@ -88,6 +88,7 @@ Common query params for filtered parse views (`entries`, `index-of-time`, `time-
 | POST | `/map/active` | Set active map by id |
 | GET | `/map/rules` | Get active rules |
 | POST | `/map/rules` | Upload rules YAML |
+| POST | `/map/rules/active` | Set active rules by id |
 | GET | `/map/files/recent` | Recent map/rules files |
 | GET | `/map/defaults` | List packaged default maps |
 | POST | `/map/defaults/load` | Load packaged default map |

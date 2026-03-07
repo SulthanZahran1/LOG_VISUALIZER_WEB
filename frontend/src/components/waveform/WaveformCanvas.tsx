@@ -24,6 +24,9 @@ import type { LogEntry } from '../../models/types';
 import { formatTimestamp, getTickIntervals, findFirstIndexAtTime } from '../../utils/TimeAxisUtils';
 
 const ROW_HEIGHT = 60;
+const SIGNAL_LABEL_GUTTER_WIDTH = 170;
+const SIGNAL_LABEL_PADDING_X = 10;
+const MIN_PLOT_WIDTH = 40;
 
 /**
  * Safely get timestamp as a number (Unix ms).
@@ -50,6 +53,13 @@ const COLORS = {
     axisTextBold: '#e6edf3',
     gridMajor: 'rgba(48, 54, 61, 0.8)',
     gridMinor: 'rgba(48, 54, 61, 0.4)',
+    signalLabelHeaderBg: 'rgba(9, 12, 16, 0.98)',
+    signalLabelRowBg: 'rgba(9, 12, 16, 0.9)',
+    signalLabelRowFocusedBg: 'rgba(77, 182, 226, 0.2)',
+    signalLabelHeaderText: '#e6edf3',
+    signalLabelSignalText: '#e6edf3',
+    signalLabelDeviceText: '#8b949e',
+    signalLabelDivider: 'rgba(48, 54, 61, 0.95)',
 
     // Signal colors
     booleanHigh: '#3fb950',       // Green for HIGH
@@ -83,6 +93,15 @@ const COLORS = {
     bookmarkFlag: 'rgba(240, 136, 62, 0.9)',
     bookmarkText: '#ffffff',
 };
+
+function getPlotLayout(totalWidth: number) {
+    // Keep a minimum waveform area on narrow screens by shrinking the gutter first.
+    const gutterWidth = Math.min(SIGNAL_LABEL_GUTTER_WIDTH, Math.max(0, totalWidth - MIN_PLOT_WIDTH));
+    const plotStartX = gutterWidth;
+    const plotWidth = Math.max(1, totalWidth - plotStartX);
+
+    return { gutterWidth, plotStartX, plotWidth };
+}
 
 export function WaveformCanvas() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -154,7 +173,9 @@ export function WaveformCanvas() {
         const range = viewRange.value;
         if (!range) return;
 
-        const pixelsPerMs = zoomLevel.value;
+        const { gutterWidth, plotStartX, plotWidth } = getPlotLayout(width);
+        const rangeDuration = Math.max(1, range.end - range.start);
+        const pixelsPerMs = plotWidth / rangeDuration;
 
         // Calculate visible row range for virtualization
         const scrollTop = scrollTopRef.current;
@@ -200,7 +221,7 @@ export function WaveformCanvas() {
         }
 
         // Draw Time Axis
-        drawTimeAxis(ctx, range.start, range.end, pixelsPerMs, width, height);
+        drawTimeAxis(ctx, range.start, range.end, pixelsPerMs, plotStartX, plotWidth, width, height);
 
         // Get boundary values for edge rendering
         const boundaries = waveformBoundaries.value;
@@ -222,22 +243,22 @@ export function WaveformCanvas() {
             const beforeBoundary = boundaries.before[key];
 
             ctx.save();
-            ctx.translate(0, yBase + yPadding);
+            ctx.translate(plotStartX, yBase + yPadding);
 
             if (visibleEntries.length > 0) {
                 const firstEntry = visibleEntries[0];
                 if (firstEntry.signalType === 'boolean' || typeof firstEntry.value === 'boolean') {
-                    drawBooleanSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, width, beforeBoundary);
+                    drawBooleanSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, plotWidth, beforeBoundary);
                 } else {
-                    drawStateSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, width, rowIndex, beforeBoundary);
+                    drawStateSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, plotWidth, rowIndex, beforeBoundary);
                 }
             } else if (beforeBoundary) {
                 // No visible entries but we have a boundary - draw the continuous state
                 const firstEntry = beforeBoundary;
                 if (firstEntry.signalType === 'boolean' || typeof firstEntry.value === 'boolean') {
-                    drawBooleanSignal(ctx, [beforeBoundary], range.start, pixelsPerMs, plotHeight, width, beforeBoundary);
+                    drawBooleanSignal(ctx, [beforeBoundary], range.start, pixelsPerMs, plotHeight, plotWidth, beforeBoundary);
                 } else {
-                    drawStateSignal(ctx, [beforeBoundary], range.start, pixelsPerMs, plotHeight, width, rowIndex, beforeBoundary);
+                    drawStateSignal(ctx, [beforeBoundary], range.start, pixelsPerMs, plotHeight, plotWidth, rowIndex, beforeBoundary);
                 }
             }
 
@@ -247,12 +268,12 @@ export function WaveformCanvas() {
         // Draw selection
         const selection = selectionRange.value;
         if (selection) {
-            drawSelection(ctx, selection, range.start, pixelsPerMs, height, width);
+            drawSelection(ctx, selection, range.start, pixelsPerMs, height, plotStartX, plotWidth);
         }
 
         // Draw cursor line if hovering
         const currentHoverX = hoverX.value;
-        if (currentHoverX !== null && currentHoverX >= 0 && currentHoverX <= width) {
+        if (currentHoverX !== null && currentHoverX >= plotStartX && currentHoverX <= plotStartX + plotWidth) {
             ctx.strokeStyle = 'rgba(77, 182, 226, 0.8)';
             ctx.lineWidth = 1;
             ctx.setLineDash([4, 4]);
@@ -264,7 +285,10 @@ export function WaveformCanvas() {
         }
 
         // Draw bookmark markers
-        drawBookmarks(ctx, sortedBookmarks.value, range.start, pixelsPerMs, height, width);
+        drawBookmarks(ctx, sortedBookmarks.value, range.start, pixelsPerMs, height, plotStartX, plotWidth);
+
+        // Draw signal labels in left gutter so each row is identifiable in-canvas
+        drawSignalLabels(ctx, selectedSignals.value, drawStart, drawEnd, gutterWidth);
 
         // Draw hover tooltip
         const hoverRowValue = hoverRow.value;
@@ -282,21 +306,35 @@ export function WaveformCanvas() {
             }
         }
         // Dependencies: all the signals that should trigger a re-render
-    }, [viewportWidth.value, selectedSignals.value.length, viewRange.value?.start, viewRange.value?.end,
+    }, [viewportWidth.value, selectedSignals.value, selectedSignals.value.length, viewRange.value?.start, viewRange.value?.end,
     zoomLevel.value, waveformEntries.value, selectionRange.value, hoverX.value, hoverRow.value,
     hoverTime.value, focusedSignal.value, deviceColors.value, sortedBookmarks.value]);
 
     const handleWheel = (e: WheelEvent) => {
+        const totalWidth = viewportWidth.value;
+        const { plotStartX, plotWidth } = getPlotLayout(totalWidth);
+
         if (e.ctrlKey) {
             e.preventDefault();
             const rect = canvasRef.current?.getBoundingClientRect();
             if (!rect) return;
             const x = e.clientX - rect.left;
-            zoomAt(e.deltaY, x);
+
+            // Ignore wheel-zoom gestures over the label gutter.
+            if (x < plotStartX || x > plotStartX + plotWidth) {
+                return;
+            }
+
+            const plotX = x - plotStartX;
+            const zoomAnchorX = (plotX * totalWidth) / plotWidth;
+            zoomAt(e.deltaY, zoomAnchorX);
         } else {
             if (e.deltaX !== 0) {
                 e.preventDefault();
-                pan(-e.deltaX);
+
+                // Keep pan speed consistent with the effective plot width.
+                const scaledDeltaX = e.deltaX * (totalWidth / plotWidth);
+                pan(-scaledDeltaX);
             }
         }
     };
@@ -305,6 +343,16 @@ export function WaveformCanvas() {
         const rect = canvasRef.current?.getBoundingClientRect();
         if (!rect) return;
         const x = e.clientX - rect.left;
+        const totalWidth = viewportWidth.value;
+        const { plotStartX, plotWidth } = getPlotLayout(totalWidth);
+        const inPlot = x >= plotStartX && x <= plotStartX + plotWidth;
+
+        if (!inPlot) {
+            if (!e.shiftKey && e.button === 0) {
+                selectionRange.value = null;
+            }
+            return;
+        }
 
         if (e.shiftKey && e.button === 0) {
             // Start selection
@@ -313,7 +361,9 @@ export function WaveformCanvas() {
 
             const range = viewRange.value;
             if (range) {
-                const startTime = range.start + (x / zoomLevel.value);
+                const rangeDuration = Math.max(1, range.end - range.start);
+                const plotX = Math.max(0, Math.min(plotWidth, x - plotStartX));
+                const startTime = range.start + ((plotX / plotWidth) * rangeDuration);
                 selectionStartTimeRef.current = startTime;
                 selectionRange.value = { start: startTime, end: startTime };
             }
@@ -351,11 +401,14 @@ export function WaveformCanvas() {
 
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
+        const totalWidth = viewportWidth.value;
+        const { plotStartX, plotWidth } = getPlotLayout(totalWidth);
 
         // Handle panning
         if (isPanningRef.current) {
             const deltaX = e.clientX - panStartXRef.current;
-            pan(deltaX);
+            const scaledDeltaX = deltaX * (totalWidth / plotWidth);
+            pan(scaledDeltaX);
             panStartXRef.current = e.clientX;
         }
 
@@ -363,7 +416,9 @@ export function WaveformCanvas() {
         if (isSelectingRef.current) {
             const range = viewRange.value;
             if (range) {
-                const currentTime = range.start + (x / zoomLevel.value);
+                const rangeDuration = Math.max(1, range.end - range.start);
+                const plotX = Math.max(0, Math.min(plotWidth, x - plotStartX));
+                const currentTime = range.start + ((plotX / plotWidth) * rangeDuration);
                 selectionRange.value = {
                     start: selectionStartTimeRef.current,
                     end: currentTime
@@ -374,13 +429,25 @@ export function WaveformCanvas() {
         // Calculate raw time and possibly snap to signal
         const range = viewRange.value;
         if (!range) {
-            hoverX.value = x;
+            hoverX.value = null;
+            hoverTime.value = null;
+            hoverRow.value = null;
             return;
         }
 
-        const rawTime = range.start + (x / zoomLevel.value);
+        if (x < plotStartX || x > plotStartX + plotWidth) {
+            hoverX.value = null;
+            hoverTime.value = null;
+            hoverRow.value = null;
+            return;
+        }
+
+        const rawPlotX = x - plotStartX;
+        const rangeDuration = Math.max(1, range.end - range.start);
+        const pixelsPerMs = plotWidth / rangeDuration;
+        const rawTime = range.start + (rawPlotX / pixelsPerMs);
         let snappedTime = rawTime;
-        let snappedX = x;
+        let snappedX = rawPlotX;
 
         // Snap to signal transitions if hovering over a signal row (below time axis)
         if (y > AXIS_HEIGHT) {
@@ -392,7 +459,7 @@ export function WaveformCanvas() {
 
                 // Find nearest signal change within snap threshold (in pixels, ~20px)
                 const snapThresholdPx = 20;
-                const snapThresholdMs = snapThresholdPx / zoomLevel.value;
+                const snapThresholdMs = snapThresholdPx / pixelsPerMs;
 
                 let closestDiff = snapThresholdMs;
 
@@ -407,11 +474,11 @@ export function WaveformCanvas() {
                 }
 
                 // Calculate snapped X position
-                snappedX = (snappedTime - range.start) * zoomLevel.value;
+                snappedX = (snappedTime - range.start) * pixelsPerMs;
             }
         }
 
-        hoverX.value = snappedX;
+        hoverX.value = plotStartX + snappedX;
         hoverTime.value = snappedTime;
 
         // Track row for tooltip
@@ -453,16 +520,20 @@ export function WaveformCanvas() {
 
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
+        const totalWidth = viewportWidth.value;
+        const { plotStartX, plotWidth } = getPlotLayout(totalWidth);
 
         // If the user dragged more than 5 pixels, treat it as a pan/scroll, not a click
         const dragDistance = Math.abs(e.clientX - totalDragStartXRef.current);
         if (dragDistance > 5) return;
 
         // If click is on the time axis area, jump to that time
-        if (y < AXIS_HEIGHT) {
+        if (y < AXIS_HEIGHT && x >= plotStartX && x <= plotStartX + plotWidth) {
             const range = viewRange.value;
             if (range) {
-                const clickTime = range.start + (x / zoomLevel.value);
+                const rangeDuration = Math.max(1, range.end - range.start);
+                const plotX = x - plotStartX;
+                const clickTime = range.start + ((plotX / plotWidth) * rangeDuration);
                 jumpToTime(clickTime);
             }
         }
@@ -624,18 +695,27 @@ export function WaveformCanvas() {
     );
 }
 
-function drawTimeAxis(ctx: CanvasRenderingContext2D, start: number, end: number, pixelsPerMs: number, width: number, totalHeight: number) {
+function drawTimeAxis(
+    ctx: CanvasRenderingContext2D,
+    start: number,
+    end: number,
+    pixelsPerMs: number,
+    plotStartX: number,
+    plotWidth: number,
+    totalWidth: number,
+    totalHeight: number
+) {
     const [major] = getTickIntervals(pixelsPerMs);
 
     // Axis background
     ctx.fillStyle = COLORS.axisBg;
-    ctx.fillRect(0, 0, width, AXIS_HEIGHT);
+    ctx.fillRect(0, 0, totalWidth, AXIS_HEIGHT);
 
     // Major ticks and labels
     const startTick = Math.floor(start / major) * major;
     for (let t = startTick; t <= end + major; t += major) {
-        const x = (t - start) * pixelsPerMs;
-        if (x < -100 || x > width + 100) continue;
+        const x = plotStartX + ((t - start) * pixelsPerMs);
+        if (x < plotStartX - 100 || x > plotStartX + plotWidth + 100) continue;
 
         // Tick mark
         ctx.strokeStyle = COLORS.axisText;
@@ -664,7 +744,7 @@ function drawTimeAxis(ctx: CanvasRenderingContext2D, start: number, end: number,
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, AXIS_HEIGHT);
-    ctx.lineTo(width, AXIS_HEIGHT);
+    ctx.lineTo(totalWidth, AXIS_HEIGHT);
     ctx.stroke();
 }
 
@@ -829,18 +909,27 @@ function drawStateSignal(ctx: CanvasRenderingContext2D, entries: LogEntry[], sta
     });
 }
 
-function drawSelection(ctx: CanvasRenderingContext2D, range: { start: number, end: number }, startTime: number, pixelsPerMs: number, height: number, width: number) {
-    const x1 = (range.start - startTime) * pixelsPerMs;
-    const x2 = (range.end - startTime) * pixelsPerMs;
+function drawSelection(
+    ctx: CanvasRenderingContext2D,
+    range: { start: number, end: number },
+    startTime: number,
+    pixelsPerMs: number,
+    height: number,
+    plotStartX: number,
+    plotWidth: number
+) {
+    const x1 = plotStartX + ((range.start - startTime) * pixelsPerMs);
+    const x2 = plotStartX + ((range.end - startTime) * pixelsPerMs);
 
     const startX = Math.min(x1, x2);
     const endX = Math.max(x1, x2);
+    const plotEndX = plotStartX + plotWidth;
 
     // Boundary check
-    if (endX < 0 || startX > width) return;
+    if (endX < plotStartX || startX > plotEndX) return;
 
-    const visibleX1 = Math.max(0, startX);
-    const visibleX2 = Math.min(width, endX);
+    const visibleX1 = Math.max(plotStartX, startX);
+    const visibleX2 = Math.min(plotEndX, endX);
 
     // Draw highlight area
     ctx.fillStyle = COLORS.selectionBg;
@@ -851,14 +940,14 @@ function drawSelection(ctx: CanvasRenderingContext2D, range: { start: number, en
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
 
-    if (startX >= 0 && startX <= width) {
+    if (startX >= plotStartX && startX <= plotEndX) {
         ctx.beginPath();
         ctx.moveTo(startX, 0);
         ctx.lineTo(startX, height);
         ctx.stroke();
     }
 
-    if (endX >= 0 && endX <= width) {
+    if (endX >= plotStartX && endX <= plotEndX) {
         ctx.beginPath();
         ctx.moveTo(endX, 0);
         ctx.lineTo(endX, height);
@@ -892,12 +981,22 @@ function drawSelection(ctx: CanvasRenderingContext2D, range: { start: number, en
     ctx.fillText(label, labelX + labelWidth / 2, labelY + 10);
 }
 
-function drawBookmarks(ctx: CanvasRenderingContext2D, bookmarks: Bookmark[], startTime: number, pixelsPerMs: number, height: number, width: number) {
+function drawBookmarks(
+    ctx: CanvasRenderingContext2D,
+    bookmarks: Bookmark[],
+    startTime: number,
+    pixelsPerMs: number,
+    height: number,
+    plotStartX: number,
+    plotWidth: number
+) {
+    const plotEndX = plotStartX + plotWidth;
+
     bookmarks.forEach(bookmark => {
-        const x = (bookmark.time - startTime) * pixelsPerMs;
+        const x = plotStartX + ((bookmark.time - startTime) * pixelsPerMs);
 
         // Skip if bookmark is outside visible area
-        if (x < -20 || x > width + 20) return;
+        if (x < plotStartX - 20 || x > plotEndX + 20) return;
 
         // Draw vertical line
         ctx.strokeStyle = COLORS.bookmarkLine;
@@ -967,4 +1066,70 @@ function drawTooltip(ctx: CanvasRenderingContext2D, x: number, rowY: number, sig
     ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
     ctx.fillStyle = '#8b949e';
     ctx.fillText(device, tooltipX + padding, tooltipY - 8);
+}
+
+function fitLabelToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+    if (maxWidth <= 0) return '';
+    if (ctx.measureText(text).width <= maxWidth) return text;
+
+    let end = text.length;
+    while (end > 0 && ctx.measureText(`${text.slice(0, end)}...`).width > maxWidth) {
+        end--;
+    }
+
+    if (end <= 0) return '...';
+    return `${text.slice(0, end)}...`;
+}
+
+function drawSignalLabels(
+    ctx: CanvasRenderingContext2D,
+    signals: string[],
+    drawStart: number,
+    drawEnd: number,
+    gutterWidth: number
+) {
+    if (signals.length === 0 || drawEnd < drawStart) return;
+
+    const textWidth = gutterWidth - SIGNAL_LABEL_PADDING_X * 2;
+
+    // Header ("Signal")
+    ctx.fillStyle = COLORS.signalLabelHeaderBg;
+    ctx.fillRect(0, 0, gutterWidth, AXIS_HEIGHT);
+    ctx.fillStyle = COLORS.signalLabelHeaderText;
+    ctx.font = '600 11px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Signal', SIGNAL_LABEL_PADDING_X, AXIS_HEIGHT / 2);
+
+    for (let rowIndex = drawStart; rowIndex <= drawEnd; rowIndex++) {
+        const signalKey = signals[rowIndex];
+        if (!signalKey) continue;
+
+        const [device, signal] = signalKey.split('::');
+        const y = AXIS_HEIGHT + (rowIndex * ROW_HEIGHT);
+        const isFocused = focusedSignal.value === signalKey;
+
+        ctx.fillStyle = isFocused ? COLORS.signalLabelRowFocusedBg : COLORS.signalLabelRowBg;
+        ctx.fillRect(0, y, gutterWidth, ROW_HEIGHT);
+
+        const signalText = fitLabelToWidth(ctx, signal || signalKey, textWidth);
+        ctx.fillStyle = COLORS.signalLabelSignalText;
+        ctx.font = '600 12px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillText(signalText, SIGNAL_LABEL_PADDING_X, y + 24);
+
+        if (device && signal) {
+            const deviceText = fitLabelToWidth(ctx, device, textWidth);
+            ctx.fillStyle = COLORS.signalLabelDeviceText;
+            ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+            ctx.fillText(deviceText, SIGNAL_LABEL_PADDING_X, y + 41);
+        }
+    }
+
+    // Vertical divider between label gutter and waveform area
+    ctx.strokeStyle = COLORS.signalLabelDivider;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(gutterWidth + 0.5, 0);
+    ctx.lineTo(gutterWidth + 0.5, AXIS_HEIGHT + signals.length * ROW_HEIGHT);
+    ctx.stroke();
 }

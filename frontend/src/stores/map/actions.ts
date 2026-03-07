@@ -6,11 +6,11 @@
 
 import {
     getMapLayout, getMapRules, getRecentMapFiles, getCarrierLog, getCarrierEntries,
-    setActiveMap, getDefaultMaps, loadDefaultMap, getValuesAtTime
+    setActiveMap, setActiveRules, getDefaultMaps, loadDefaultMap, getValuesAtTime
 } from '../../api/client';
 import {
     mapLayout, mapLoading, mapError,
-    mapRules, rulesLoading, rulesError,
+    mapRules, activeRulesId, rulesLoading, rulesError,
     recentMapFiles, recentFilesLoading,
     defaultMaps, defaultMapsLoading,
     carrierLogInfo, carrierLogEntries, carrierLogLoading,
@@ -43,7 +43,11 @@ export async function fetchMapLayout(): Promise<void> {
             //     'with unitId:', withUnitId.length,
             //     'sample unitIds:', withUnitId.slice(0, 5).map((o: MapObject) => o.unitId));
         }
-        mapLayout.value = { ...(layoutData as MapLayout), name: data.name } as MapLayout;
+        mapLayout.value = {
+            ...(layoutData as MapLayout),
+            id: data.mapId ?? (layoutData as MapLayout).id,
+            name: data.name ?? (layoutData as MapLayout).name
+        } as MapLayout;
     } catch (err: unknown) {
         mapError.value = err instanceof Error ? err.message : 'Failed to fetch map layout';
     } finally {
@@ -56,9 +60,60 @@ export async function fetchMapRules(): Promise<void> {
     rulesError.value = null;
     try {
         const data = await getMapRules();
-        mapRules.value = data;
+        // Supports both legacy direct shape and current wrapped API response.
+        if (Array.isArray((data as { rules?: unknown }).rules)) {
+            const directRules = data as {
+                id?: string;
+                name?: string;
+                defaultColor: string;
+                deviceToUnit: Array<{ pattern: string; unitId: string }>;
+                rules: Array<{
+                    signal: string;
+                    op: string;
+                    value: string | number | boolean;
+                    color?: string;
+                    bgColor?: string;
+                    text?: string;
+                    textColor?: string;
+                    priority: number;
+                }>;
+            };
+            mapRules.value = directRules;
+            activeRulesId.value = directRules.id ?? null;
+        } else {
+            const wrapped = data as {
+                rules: {
+                    id?: string;
+                    name?: string;
+                    defaultColor: string;
+                    deviceToUnit: Array<{ pattern: string; unitId: string }>;
+                    rules: Array<{
+                        signal: string;
+                        op: string;
+                        value: string | number | boolean;
+                        color?: string;
+                        bgColor?: string;
+                        text?: string;
+                        textColor?: string;
+                        priority: number;
+                    }>;
+                } | null;
+                rulesId?: string;
+                name?: string;
+            };
+            mapRules.value = wrapped.rules
+                ? {
+                    ...wrapped.rules,
+                    id: wrapped.rulesId ?? wrapped.rules.id,
+                    name: wrapped.name ?? wrapped.rules.name
+                }
+                : null;
+            activeRulesId.value = wrapped.rulesId ?? wrapped.rules?.id ?? null;
+        }
     } catch (err: unknown) {
         rulesError.value = err instanceof Error ? err.message : 'Failed to fetch rules';
+        mapRules.value = null;
+        activeRulesId.value = null;
     } finally {
         rulesLoading.value = false;
         clearCaches();
@@ -87,6 +142,20 @@ export async function loadMap(id: string): Promise<void> {
         mapError.value = err instanceof Error ? err.message : 'Failed to load map';
     } finally {
         mapLoading.value = false;
+    }
+}
+
+export async function loadRules(id: string): Promise<void> {
+    try {
+        rulesLoading.value = true;
+        rulesError.value = null;
+        await setActiveRules(id);
+        await fetchMapRules();
+    } catch (err: unknown) {
+        console.error('Failed to load rules:', err);
+        rulesError.value = err instanceof Error ? err.message : 'Failed to load rules';
+    } finally {
+        rulesLoading.value = false;
     }
 }
 
