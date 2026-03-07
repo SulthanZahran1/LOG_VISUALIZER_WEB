@@ -351,6 +351,14 @@ func (ds *DuckStore) Finalize() error {
 		}
 	}
 
+	// Checkpoint the WAL so all data is written to the main DB file.
+	// Without this, a subsequent read-only open may see an empty/stale database
+	// because read-only mode cannot replay the WAL.
+	_, err = ds.db.Exec("CHECKPOINT")
+	if err != nil {
+		fmt.Printf("[DuckStore] Warning: CHECKPOINT failed: %v\n", err)
+	}
+
 	ds.finalized = true
 	fmt.Printf("[DuckStore] Finalization complete in %v\n", time.Since(start))
 	return nil
