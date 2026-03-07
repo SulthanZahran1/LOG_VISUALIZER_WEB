@@ -17,6 +17,8 @@ func NewRegistry() *Registry {
 	return &Registry{
 		parsers: []Parser{
 			NewBinaryFormatParser(), // Check binary format first (most specific)
+			NewSTKTransferParser(),  // xlsx: STK transfer log (before STKPLCParser to distinguish)
+			NewSTKPLCParser(),       // xlsx: STK PLC observable log
 			NewPLCDebugParser(),
 			NewPLCTabParser(),
 			NewMCSLogParser(),
