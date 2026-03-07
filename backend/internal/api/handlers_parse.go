@@ -218,10 +218,7 @@ func (h *ParseHandlerImpl) HandleParseStream(c echo.Context) error {
 			progress = (processedCount * 100) / total
 		}
 
-		// Check if we're done
-		isDone := len(entries) == 0 || processedCount >= total
-
-		if isDone {
+		if len(entries) == 0 {
 			// Send completion signal
 			h.sendSSEData(c, map[string]interface{}{
 				"done":  true,
@@ -238,6 +235,15 @@ func (h *ParseHandlerImpl) HandleParseStream(c echo.Context) error {
 			"progress": progress,
 		})
 		c.Response().Flush()
+
+		if processedCount >= total {
+			h.sendSSEData(c, map[string]interface{}{
+				"done":  true,
+				"total": total,
+			})
+			c.Response().Flush()
+			return nil
+		}
 
 		page++
 	}

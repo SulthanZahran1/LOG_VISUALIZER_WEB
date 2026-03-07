@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,9 @@ type MockSessionManager struct {
 	sessions         map[string]*models.ParseSession
 	chunkOK          bool
 	boundaryValuesOK bool
+	entriesPages     map[int][]models.LogEntry
+	entriesTotal     int
+	entriesOK        bool
 }
 
 func NewMockSessionManager() *MockSessionManager {
@@ -29,6 +33,8 @@ func NewMockSessionManager() *MockSessionManager {
 		sessions:         make(map[string]*models.ParseSession),
 		chunkOK:          true,
 		boundaryValuesOK: true,
+		entriesPages:     make(map[int][]models.LogEntry),
+		entriesOK:        true,
 	}
 }
 
@@ -57,7 +63,10 @@ func (m *MockSessionManager) DeleteParsedFile(fileID string) error {
 }
 
 func (m *MockSessionManager) GetEntries(ctx context.Context, id string, page, pageSize int) ([]models.LogEntry, int, bool) {
-	return nil, 0, false
+	if !m.entriesOK {
+		return nil, 0, false
+	}
+	return m.entriesPages[page], m.entriesTotal, true
 }
 
 func (m *MockSessionManager) QueryEntries(ctx context.Context, id string, params parser.QueryParams, page, pageSize int) ([]models.LogEntry, int, bool) {
@@ -490,6 +499,56 @@ func TestParseHandler_HandleParseChunk_ReturnsAcceptedWhileSessionParsing(t *tes
 	}
 	if len(response) != 0 {
 		t.Fatalf("expected empty response, got %d entries", len(response))
+	}
+}
+
+func TestParseHandler_HandleParseStream_SendsSmallFinalPageBeforeDone(t *testing.T) {
+	store := testutil.NewMockStorage()
+	sessionMgr := NewMockSessionManager()
+	sessionMgr.sessions["test-session-1"] = &models.ParseSession{
+		ID:     "test-session-1",
+		Status: models.SessionStatusComplete,
+	}
+	sessionMgr.entriesPages[1] = []models.LogEntry{
+		{
+			DeviceID:   "carrier-1",
+			SignalName: "Transfer",
+			Timestamp:  time.UnixMilli(1000),
+			Value:      "735|COMPLETED|205701|J1ESTO21102-401|205701|TR_SUCCESS",
+			SignalType: models.SignalTypeString,
+		},
+	}
+	sessionMgr.entriesTotal = 1
+
+	handler := NewParseHandler(store, sessionMgr)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/parse/:sessionId/stream", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("sessionId")
+	c.SetParamValues("test-session-1")
+
+	err := handler.HandleParseStream(c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	body := rec.Body.String()
+	entriesIdx := strings.Index(body, `"entries":[`)
+	doneIdx := strings.Index(body, `"done":true`)
+
+	if entriesIdx == -1 {
+		t.Fatalf("expected streamed entries in response body, got %q", body)
+	}
+	if doneIdx == -1 {
+		t.Fatalf("expected done event in response body, got %q", body)
+	}
+	if entriesIdx > doneIdx {
+		t.Fatalf("expected entries event before done event, got %q", body)
+	}
+	if !strings.Contains(body, `"deviceId":"carrier-1"`) {
+		t.Fatalf("expected streamed entry payload in response body, got %q", body)
 	}
 }
 
