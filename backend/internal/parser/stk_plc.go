@@ -76,11 +76,19 @@ func (p *STKPLCParser) ParseWithProgress(filePath string, onProgress ProgressCal
 
 		deviceID := intern.Intern(strings.TrimSpace(row[stkPLCColSubSystemID]))
 		signalName := intern.Intern(strings.TrimSpace(row[stkPLCColObsID]))
-		valueStr := strings.TrimSpace(row[stkPLCColValue])
+		valueStr := stkPLCCleanValue(strings.TrimSpace(row[stkPLCColValue]))
 
 		stype := stkPLCMapValueType(row, stkPLCColValueType)
+		// Re-infer type from cleaned value: the xlsx ValueType column often
+		// says "String" for values that were prefixed with ": " and are
+		// actually integers (e.g. ": 735" -> "735").
+		if stype == "" || stype == models.SignalTypeString {
+			if inferred := InferType(valueStr); inferred != models.SignalTypeString {
+				stype = inferred
+			}
+		}
 		if stype == "" {
-			stype = InferType(valueStr)
+			stype = models.SignalTypeString
 		}
 
 		store.AddEntry(&models.LogEntry{
@@ -129,11 +137,16 @@ func (p *STKPLCParser) ParseToDuckStore(filePath string, store *DuckStore, onPro
 
 		deviceID := intern.Intern(strings.TrimSpace(row[stkPLCColSubSystemID]))
 		signalName := intern.Intern(strings.TrimSpace(row[stkPLCColObsID]))
-		valueStr := strings.TrimSpace(row[stkPLCColValue])
+		valueStr := stkPLCCleanValue(strings.TrimSpace(row[stkPLCColValue]))
 
 		stype := stkPLCMapValueType(row, stkPLCColValueType)
+		if stype == "" || stype == models.SignalTypeString {
+			if inferred := InferType(valueStr); inferred != models.SignalTypeString {
+				stype = inferred
+			}
+		}
 		if stype == "" {
-			stype = InferType(valueStr)
+			stype = models.SignalTypeString
 		}
 
 		store.AddEntry(&models.LogEntry{
@@ -154,6 +167,18 @@ func (p *STKPLCParser) ParseToDuckStore(filePath string, store *DuckStore, onPro
 	}
 
 	return errors, nil
+}
+
+// stkPLCCleanValue strips the leading ": " prefix that the STK export adds
+// to certain PLC observable values (e.g. ": 735" -> "735", ":" -> "").
+func stkPLCCleanValue(v string) string {
+	if len(v) == 0 {
+		return v
+	}
+	if v[0] != ':' {
+		return v
+	}
+	return strings.TrimSpace(v[1:])
 }
 
 // stkPLCMapValueType reads the ValueType column and returns the corresponding SignalType.

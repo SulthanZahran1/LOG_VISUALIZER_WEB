@@ -7,6 +7,7 @@
 import { streamParseEntries, getParseCategories, getParseSignals } from '../../api/client';
 import { deleteSession } from '../../utils/persistence';
 import type { LogEntry, ParseSession } from '../../models/types';
+import { isTransferParser } from '../../utils/trsLog';
 import type { ViewType, FetchFilters } from './types';
 // saveSession is used via dynamic import in finalizeSessionLoad
 import {
@@ -28,7 +29,7 @@ function isGenericLogSession(session: ParseSession | null | undefined): boolean 
 }
 
 function isTRSLogSession(session: ParseSession | null | undefined): boolean {
-    return (session as ParseSession & { parserName?: string } | null | undefined)?.parserName === 'trs_log';
+    return isTransferParser((session as ParseSession & { parserName?: string } | null | undefined)?.parserName);
 }
 
 // Track last initialized session for range reset (managed by effects)

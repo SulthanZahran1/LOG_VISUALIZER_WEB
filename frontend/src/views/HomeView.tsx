@@ -6,6 +6,7 @@ import { LoadedFileCard } from '../components/file/LoadedFileCard'
 import { NavButton } from '../components/layout/NavButton'
 import type { FileInfo } from '../models/types'
 import { currentSession, isLoadingLog, type ViewType } from '../stores/logStore'
+import { isTransferParser } from '../utils/trsLog'
 
 interface HomeViewProps {
     recentFiles: FileInfo[]
@@ -41,7 +42,7 @@ export function HomeView({
     const isMerging = useSignal(false);
 
     const isGenericLog = currentSession.value?.parserName === 'generic_log';
-    const isTRSLog = currentSession.value?.parserName === 'trs_log';
+    const isTRSLog = isTransferParser(currentSession.value?.parserName);
 
     const handleNavigation = (view: ViewType) => {
         onOpenView(view);

@@ -34,6 +34,7 @@ import { setPlaybackTime } from '../../stores/mapStore';
 import type { SortColumnKey } from '../../stores/log/types';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
 import type { ParseSession } from '../../models/types';
+import { isTransferParser } from '../../utils/trsLog';
 import { colorSettings } from '../../stores/colorCodingStore';
 import { SignalSidebar } from '../waveform/SignalSidebar';
 
@@ -88,7 +89,7 @@ function isGenericLogSession(session: ParseSession | null | undefined): boolean 
 }
 
 function isTRSLogSession(session: ParseSession | null | undefined): boolean {
-    return (session as any)?.parserName === 'trs_log';
+    return isTransferParser((session as any)?.parserName);
 }
 
 /** Compute scroll scale factor when virtual height exceeds browser max */

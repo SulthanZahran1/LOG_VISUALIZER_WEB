@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { getParseEntries } from '../../api/client';
 import type { LogEntry } from '../../models/types';
 import { currentSession, logEntries, useServerSide } from '../../stores/logStore';
-import { parseTRSValue } from '../../utils/trsLog';
+import { parseTRSValue, isTransferParser } from '../../utils/trsLog';
 import './TransferHeatmap.css';
 
 interface TransferHeatmapProps {
@@ -101,7 +101,7 @@ export function TransferHeatmap({ onCellClick, showControls = true }: TransferHe
     const isServerSide = useServerSide.value;
 
     useEffect(() => {
-        if (!session || session.parserName !== 'trs_log' || !isServerSide) {
+        if (!session || !isTransferParser(session.parserName) || !isServerSide) {
             setFullSessionEntries(null);
             setLoadedSessionId(null);
             setIsLoadingAllEntries(false);

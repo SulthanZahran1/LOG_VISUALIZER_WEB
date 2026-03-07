@@ -13,6 +13,14 @@ export interface TRSFields {
 
 const TRS_FIELD_ORDER: TRSFieldKey[] = ['cmdID', 'status', 'source', 'dest', 'currLoc', 'result'];
 
+/** Parser names that produce pipe-delimited transfer log entries. */
+const TRANSFER_PARSERS = new Set(['trs_log', 'stk_transfer']);
+
+/** Returns true if the parser name produces transfer-format (pipe-delimited) entries. */
+export function isTransferParser(parserName: string | undefined | null): boolean {
+    return !!parserName && TRANSFER_PARSERS.has(parserName);
+}
+
 export function isTRSFieldKey(value: string): value is TRSFieldKey {
     return TRS_FIELD_ORDER.includes(value as TRSFieldKey);
 }
