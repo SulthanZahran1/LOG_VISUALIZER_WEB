@@ -5,9 +5,26 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 )
+
+// isXLSXFile returns true if the file starts with the ZIP magic bytes (PK\x03\x04),
+// which is the signature for xlsx (and other OOXML) files.
+// This works even when the file has no extension (e.g. uploaded as a UUID).
+func isXLSXFile(filePath string) bool {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	var sig [4]byte
+	if _, err := io.ReadFull(f, sig[:]); err != nil {
+		return false
+	}
+	return sig[0] == 0x50 && sig[1] == 0x4B && sig[2] == 0x03 && sig[3] == 0x04
+}
 
 // xlsxRows reads all rows from an xlsx file as string slices.
 // Row 0 is the header row.

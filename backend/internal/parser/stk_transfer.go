@@ -22,7 +22,7 @@ func (p *STKTransferParser) Name() string {
 }
 
 func (p *STKTransferParser) CanParse(filePath string) (bool, error) {
-	if !strings.HasSuffix(strings.ToLower(filePath), ".xlsx") {
+	if !isXLSXFile(filePath) {
 		return false, nil
 	}
 	rows, err := xlsxRows(filePath)

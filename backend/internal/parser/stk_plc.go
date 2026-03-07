@@ -19,7 +19,7 @@ func (p *STKPLCParser) Name() string {
 }
 
 func (p *STKPLCParser) CanParse(filePath string) (bool, error) {
-	if !strings.HasSuffix(strings.ToLower(filePath), ".xlsx") {
+	if !isXLSXFile(filePath) {
 		return false, nil
 	}
 	rows, err := xlsxRows(filePath)
