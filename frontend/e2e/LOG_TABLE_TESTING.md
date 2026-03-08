@@ -1,12 +1,14 @@
 # Log Table E2E Focus
 
+Last updated: 2026-03-08
+
 Primary test file: `e2e/log-table-filtering.spec.ts`
 
 ## Purpose
 
-Covers log table filtering/sorting behavior in both:
-- client-side mode (smaller datasets)
-- server-side mode (large datasets)
+Covers log-table filtering and sorting behavior in:
+- client-side mode for smaller datasets
+- server-side mode for large datasets
 
 ## Run
 
@@ -23,6 +25,12 @@ npm run test:e2e -- log-table-filtering.spec.ts --grep "Server-side"
 
 ## Troubleshooting
 
-- If backend is unavailable, tests will timeout waiting for app data.
-- If large-file scenarios fail, verify required fixture file exists and is loadable.
-- Inspect backend logs for `/api/parse/:sessionId/entries` request behavior.
+- If backend is unavailable, tests will time out waiting for app data.
+- If large-file scenarios fail, verify the required fixture exists and is readable.
+- Inspect backend logs for `/api/parse/:sessionId/entries` behavior.
+
+## Related Docs
+
+- [./README.md](./README.md)
+- [./fixtures/README.md](./fixtures/README.md)
+- [../../API.md](../../API.md)

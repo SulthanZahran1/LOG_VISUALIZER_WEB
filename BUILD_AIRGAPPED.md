@@ -1,6 +1,8 @@
 # Air-Gapped Build Guide
 
-Build a single executable containing backend + embedded frontend for offline deployment.
+Last updated: 2026-03-08
+
+Build a single Windows executable containing the backend and embedded frontend for offline deployment.
 
 ## Requirements
 
@@ -8,6 +10,7 @@ Build machine:
 - Windows 10/11
 - Go 1.24+
 - Node.js 20+
+- GCC-compatible C compiler for CGO/DuckDB
 
 Target machine:
 - Windows 10/11
@@ -15,8 +18,9 @@ Target machine:
 
 ## Quick Build
 
+Run from the repository root:
+
 ```powershell
-cd web_version
 .\build-airgapped.ps1
 ```
 
@@ -31,44 +35,45 @@ Common options:
 ## Output
 
 Typical `dist/` artifacts:
-- standalone executable
-- deployment folder
-- optional zip bundle
+- a versioned Windows executable
+- a `plc-visualizer-airgapped-YYYYMMDD/` deployment folder
+- an optional zip bundle when `-Compress` is used
 
 ## Runtime Configuration
 
-Config file: `PLCLogVisualizer.exe.config`
+Primary config file: `PLCLogVisualizer.exe.config`, placed next to the built executable.
 
-Major sections:
+XML sections:
 - `Server`
 - `Storage`
 - `Processing`
 - `Security`
 - `Advanced`
 
-Optional env overrides:
-- `PORT`
-- `DATA_DIR`
+Current backend environment knobs read by code:
 - `DUCKDB_TEMP_DIR`
+- `PARSED_DB_DIR`
+
+`PORT` and `DATA_DIR` are not read by the current backend code; use the XML file for those settings.
 
 ## Deployment Steps
 
-1. Copy the generated folder to the target machine.
+1. Copy the generated deployment folder to the target machine.
 2. Edit `PLCLogVisualizer.exe.config` if needed.
-3. Start the app (`start.bat` or executable).
-4. Open browser at configured host/port (default `http://localhost:8089`).
+3. Start `plc-visualizer.exe`.
+4. Open the configured host/port, default `http://localhost:8089`.
 
-## Offline Build (No Internet on Build Host)
+## Offline Build
 
 1. On a connected machine:
    - run `npm ci` in `frontend/`
    - run `go mod vendor` in `backend/`
-   - transfer project to offline build host
-2. On offline host:
+   - transfer the repo to the offline build host
+2. On the offline host:
    - run `.\build-airgapped.ps1 -SkipDeps`
 
-## Implementation Pointers
+## Related Docs
 
-- Embedded frontend serving: `backend/internal/web`
-- Startup + config loading: `backend/cmd/server/main.go`
-- Build script: `build-airgapped.ps1`
+- [README.md](./README.md)
+- [backend/README.md](./backend/README.md)
+- [API.md](./API.md)

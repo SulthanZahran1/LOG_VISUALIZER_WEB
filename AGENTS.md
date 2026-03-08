@@ -1,17 +1,18 @@
 # CIM Visualizer — Developer + Agent Guide
 
-Last updated: 2026-02-27
+Last updated: 2026-03-08
 
 ## Project Summary
 
 CIM Visualizer is a Chrome-targeted web application for PLC/AMHS log analysis.
 
 Core capabilities:
-- Multi-format log parsing (PLC debug, MCS/AMHS, CSV, tab)
+- Multi-format log parsing (PLC debug, MCS/AMHS, CSV, tab, STK XLSX, TRS)
 - Large-file upload/parsing workflows (chunked upload, DuckDB path)
 - Log table with filtering/sorting/selection
 - Waveform/timing diagram rendering
 - Map view with rules + carrier tracking
+- Transition analysis + transfer heatmap views
 - Multi-file parse/merge workflow
 
 ## Source of Truth
@@ -70,6 +71,8 @@ go run cmd/server/main.go
 go test ./...
 ```
 
+For the backend XML config location caveat during `go run`, see [backend/README.md](./backend/README.md).
+
 ## Working Rules
 
 - Keep backend and frontend types/contracts in sync.
@@ -99,6 +102,7 @@ Active docs:
 - [backend/UPLOAD_HANDLING.md](./backend/UPLOAD_HANDLING.md)
 - [backend/STORAGE.md](./backend/STORAGE.md)
 - [frontend/FRONTEND.md](./frontend/FRONTEND.md)
+- [frontend/e2e/README.md](./frontend/e2e/README.md)
 - [BUILD_AIRGAPPED.md](./BUILD_AIRGAPPED.md)
 
-Legacy refactoring planning docs were removed.
+`TECHNICAL_DOCUMENTATION.md` is now only a redirect to the focused docs above.

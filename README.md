@@ -1,6 +1,8 @@
 # CIM Visualizer
 
-Web app for analyzing PLC/AMHS logs with a synchronized log table, waveform view, and map view.
+Last updated: 2026-03-08
+
+Web app for analyzing PLC/AMHS logs across synchronized log-table, waveform, map, transition, and transfer-heatmap views.
 
 ## Quick Start
 
@@ -18,15 +20,20 @@ make dev
 
 Run separately:
 ```bash
-cd backend && go run cmd/server/main.go
-cd frontend && npm run dev
+cd backend
+go run cmd/server/main.go
+
+cd frontend
+npm run dev
 ```
+
+Local backend dev uses `go run`, so XML config is created/read next to the temporary Go binary. See [backend/README.md](./backend/README.md) for the config-location caveat.
 
 ### Production Build
 ```bash
 make build
 # or
-docker-compose up --build
+docker compose up --build
 ```
 
 ## Testing
@@ -46,27 +53,28 @@ cd backend
 go test ./...
 ```
 
-## Architecture (Current)
+## Current Snapshot
 
-- Backend: Go + Echo + DuckDB-backed parsing/storage path for large PLC logs
+- Backend: Go + Echo + DuckDB-backed parsing/storage for large datasets
 - Frontend: Preact + `@preact/signals` + Vite
-- Support: Standard PLC logs (bracket-delimited), MCS carrier logs, and specialized Transfer logs (TRS).
-- Features: Synchronized Log Table, Waveform View, Map View, and Transfer Heatmap.
-- Upload paths: HTTP chunked upload and WebSocket upload (`/api/ws/uploads`)
-- Primary stores: modular `stores/log`, `stores/waveform`, `stores/map` with legacy re-export entrypoints preserved
+- Supported inputs: PLC debug, tab-separated PLC, CSV signal, observable, MCS/carrier, TRS, and STK XLSX exports
+- Main views: Log Table, Timing Diagram, Map Viewer, Transitions, Transfer Heatmap
+- Upload paths: HTTP upload/chunking plus WebSocket upload at `/api/ws/uploads`
+- State model: modular `stores/log`, `stores/waveform`, `stores/map` plus standalone auxiliary stores
 
 ## Documentation Map
 
-- [AGENTS.md](./AGENTS.md): developer/agent working guide
+- [AGENTS.md](./AGENTS.md): developer/agent guide and active doc list
 - [CONTEXT.md](./CONTEXT.md): short session bootstrap checklist
-- [API.md](./API.md): API surface and message contracts
-- [TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md): practical verification checklist
-- [backend/README.md](./backend/README.md): backend architecture and package responsibilities
+- [API.md](./API.md): route table and client coverage notes
+- [backend/README.md](./backend/README.md): backend architecture and runtime notes
 - [backend/UPLOAD_HANDLING.md](./backend/UPLOAD_HANDLING.md): upload pipeline details
-- [backend/STORAGE.md](./backend/STORAGE.md): storage behavior and conventions
-- [frontend/FRONTEND.md](./frontend/FRONTEND.md): frontend structure and store patterns
-- [BUILD_AIRGAPPED.md](./BUILD_AIRGAPPED.md): standalone/offline build flow
+- [backend/STORAGE.md](./backend/STORAGE.md): storage behavior and filesystem layout
+- [frontend/FRONTEND.md](./frontend/FRONTEND.md): frontend structure and store model
+- [frontend/e2e/README.md](./frontend/e2e/README.md): Playwright workflow and fixtures
+- [TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md): verification checklist
+- [BUILD_AIRGAPPED.md](./BUILD_AIRGAPPED.md): offline packaging flow
 
-## Source of Truth Policy
+## Source of Truth
 
-Documentation follows the current codebase. If docs disagree with code, code is authoritative and docs should be updated.
+Documentation follows the current codebase. If docs and code differ, trust the code and update the closest source-specific doc.

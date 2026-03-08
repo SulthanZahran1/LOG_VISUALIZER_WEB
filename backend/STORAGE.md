@@ -1,5 +1,7 @@
 # Storage Layer
 
+Last updated: 2026-03-08
+
 Implementation: `backend/internal/storage/manager.go`
 
 ## Purpose
@@ -7,16 +9,16 @@ Implementation: `backend/internal/storage/manager.go`
 Provides local filesystem storage for:
 - uploaded files
 - temporary chunk data
-- in-memory file metadata index
+- an in-memory file metadata index
 
 ## Store Capabilities
 
 Key operations exposed by `storage.Store`:
-- save (`Save`, `SaveBytes`)
-- read/list metadata (`Get`, `List`, `GetFilePath`)
-- update/delete (`Rename`, `Delete`)
-- chunk workflow (`SaveChunk`, `SaveChunkBytes`, `CompleteChunkedUpload`)
-- register existing file metadata (`RegisterFile`)
+- save: `Save`, `SaveBytes`
+- read/list metadata: `Get`, `List`, `GetFilePath`
+- update/delete: `Rename`, `Delete`
+- chunk workflow: `SaveChunk`, `SaveChunkBytes`, `CompleteChunkedUpload`
+- register existing file metadata: `RegisterFile`
 
 ## Filesystem Layout
 
@@ -33,11 +35,12 @@ data/uploads/
 ## Behavior Notes
 
 - File IDs are UUID-based.
-- Chunk directories are assembled then cleaned up during completion.
-- Metadata is indexed in memory with mutex protection for concurrent access.
+- Chunk directories are assembled and cleaned up during completion.
+- Metadata is indexed in memory with mutex protection.
 - `List` returns newest uploads first.
 
 ## Related Docs
 
-- [UPLOAD_HANDLING.md](./UPLOAD_HANDLING.md)
+- [./UPLOAD_HANDLING.md](./UPLOAD_HANDLING.md)
+- [./README.md](./README.md)
 - [../API.md](../API.md)

@@ -1,5 +1,7 @@
 # API Documentation
 
+Last updated: 2026-03-08
+
 Current source of truth:
 - Backend route registration: `backend/cmd/server/main.go`
 - Frontend usage: `frontend/src/api/client.ts`
@@ -41,43 +43,45 @@ Server message types:
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/files/upload` | Base64 JSON upload |
-| POST | `/files/upload/binary` | Binary upload path |
+| POST | `/files/upload/binary` | Multipart binary upload |
 | POST | `/files/upload/chunk` | Chunk upload |
-| POST | `/files/upload/complete` | Finalize chunked upload (returns job info) |
+| POST | `/files/upload/complete` | Finalize chunked upload and return job info |
 | GET | `/files/upload/:jobId/status` | SSE job status stream |
-| GET | `/files/recent` | Recent files |
+| GET | `/files/recent` | Recent log files |
 | GET | `/files/:id` | File metadata |
-| DELETE | `/files/:id` | Delete file (only if enabled by server config) |
+| DELETE | `/files/:id` | Delete file when enabled by server config |
 | PUT | `/files/:id` | Rename file |
 
 ## Parse Sessions
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/parse` | Start parse (single `fileId` or merged `fileIds`) |
-| GET | `/parse/:sessionId/status` | Parse status/progress summary (includes `parserName`) |
-| GET | `/parse/:sessionId/progress` | SSE parse progress stream (includes `parserName`) |
+| POST | `/parse` | Start parse with `fileId` or merged `fileIds` |
+| GET | `/parse/:sessionId/status` | Parse status/progress summary |
+| GET | `/parse/:sessionId/progress` | SSE parse progress stream |
 | GET | `/parse/:sessionId/entries` | Paginated entries |
-| GET | `/parse/:sessionId/entries/msgpack` | Msgpack-encoded entries |
+| GET | `/parse/:sessionId/entries/msgpack` | Msgpack endpoint |
 | GET | `/parse/:sessionId/stream` | SSE entry stream |
 | POST | `/parse/:sessionId/chunk` | Time window fetch (`start`, `end`) |
-| POST | `/parse/:sessionId/chunk-boundaries` | Boundary values for waveform continuity |
+| POST | `/parse/:sessionId/chunk-boundaries` | Waveform continuity values |
 | GET | `/parse/:sessionId/signals` | Signal list |
 | GET | `/parse/:sessionId/signal-types` | Signal types map |
 | GET | `/parse/:sessionId/categories` | Category list |
-| GET | `/parse/:sessionId/at-time` | Values at timestamp |
+| GET | `/parse/:sessionId/at-time` | Values at `timestamp` |
 | GET | `/parse/:sessionId/index-of-time` | Row index nearest timestamp |
-| GET | `/parse/:sessionId/time-tree` | Date/hour/minute index buckets |
+| GET | `/parse/:sessionId/time-tree` | Date/hour/minute buckets |
 | POST | `/parse/:sessionId/keepalive` | Keep session active |
+| POST | `/parse/:sessionId/transitions` | Transition/tact-time analysis for the full session |
 
 Common query params for filtered parse views (`entries`, `index-of-time`, `time-tree`):
 - `search`, `regex`, `caseSensitive`
-- `categories`/`category`
-- `signalNames`/`signalName`
-- `deviceIds`/`deviceId`
-- `signals`/`signal` (`deviceId::signalName`)
-- `signalType`/`type`
-- `sortColumn`/`sort`, `sortDirection`/`order`
+- `categories` or `category`
+- `signalNames` or `signalName`
+- `deviceIds` or `deviceId`
+- `signals` or `signal` (`deviceId::signalName`)
+- `signalType` or `type`
+- `sortColumn` or `sort`
+- `sortDirection` or `order`
 
 ## Map, Rules, Carrier
 
@@ -100,18 +104,29 @@ Common query params for filtered parse views (`entries`, `index-of-time`, `time-
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/config/validation-rules` | Read validation rules config |
-| PUT | `/config/validation-rules` | Update validation rules config |
+| GET | `/config/validation-rules` | Returns placeholder rules payload |
+| PUT | `/config/validation-rules` | Currently returns `501 Not Implemented` |
 
 ## Frontend Client Coverage
 
-`frontend/src/api/client.ts` currently includes typed wrappers for all commonly used endpoints above, including:
-- parsing with filters/pagination
-- chunk boundary retrieval
+`frontend/src/api/client.ts` includes typed wrappers for the active UI flows:
+- health, file CRUD, and parse-session lifecycle
+- filtered entries, waveform chunks, chunk boundaries, values-at-time, and time tree
+- transitions
 - map/rules/default map operations
 - carrier log flows
-- session keepalive
+
+Dedicated wrappers are not currently present for:
+- `/parse/:sessionId/entries/msgpack`
+- `/config/validation-rules`
 
 For upload optimization and WebSocket helpers, see:
 - `frontend/src/api/upload.ts`
 - `frontend/src/api/websocketUpload.ts`
+
+## Related Docs
+
+- [README.md](./README.md)
+- [backend/README.md](./backend/README.md)
+- [frontend/FRONTEND.md](./frontend/FRONTEND.md)
+- [TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md)

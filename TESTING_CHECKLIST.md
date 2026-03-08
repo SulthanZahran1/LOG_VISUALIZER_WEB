@@ -1,5 +1,7 @@
 # Testing Checklist
 
+Last updated: 2026-03-08
+
 Use this for functional verification after code changes.
 
 ## 1) Required Automated Checks
@@ -12,7 +14,7 @@ npm run lint
 npm run test
 ```
 
-Run E2E for UI/interaction changes:
+Run E2E for UI or interaction changes:
 ```bash
 cd frontend
 npm run test:e2e
@@ -24,14 +26,15 @@ cd backend
 go test ./...
 ```
 
-## 2) Smoke Test (Manual)
+## 2) Smoke Test
 
-1. Start app (`make dev`)
-2. Upload a sample log (PLC or CSV)
-3. Parse completes and session becomes usable
-4. Log table shows rows; sorting/search works
-5. Waveform opens and renders selected signals
-6. Map opens (if map/rules configured) without runtime errors
+1. Start the app with `make dev`.
+2. Upload a sample log.
+3. Confirm parse completion and usable session state.
+4. Check log-table rows, search, and sorting.
+5. Open waveform and verify selected signals render.
+6. Open map view and verify layout/rules load cleanly.
+7. Open transitions or heatmap when the session type supports them.
 
 ## 3) Feature Area Checklist
 
@@ -42,29 +45,35 @@ go test ./...
 
 ### Parse + Log Table
 - Parse status/progress updates
-- Filtering/sorting works
-- Pagination/virtualization behaves correctly
+- Filtering and sorting work
+- Pagination or virtualization behaves correctly
 
 ### Waveform
-- Zoom/pan interaction works
-- Data refresh respects time range
-- Boundary continuity is visually correct at viewport edges
+- Zoom and pan work
+- Data refresh respects the requested time range
+- Boundary continuity is correct at viewport edges
 
 ### Map + Carrier
 - Map layout loads
 - Rules load and affect coloring
 - Carrier log loads and entries render
 
+### Transitions + Heatmap
+- Transition query completes for the active session
+- Transition results render with expected status buckets
+- Transfer heatmap loads TRS-style data without client errors
+
 ### Multi-file Flow
 - Multi-file parse/merge starts and completes
-- Results are viewable in log/waveform
+- Results remain viewable in the log table and waveform
 
 ## 4) Regression Focus
 
 Prioritize these when related code changed:
-- API contract changes (`API.md` + `frontend/src/api/client.ts`)
-- Store state transitions (`stores/log`, `stores/waveform`, `stores/map`)
+- API contracts (`API.md` and `frontend/src/api/client.ts`)
+- Core stores (`stores/log`, `stores/waveform`, `stores/map`) and `transitionStore.ts`
 - Upload protocol behavior (`/api/files/*` and `/api/ws/uploads`)
+- Playwright coverage under `frontend/e2e/*`
 
 ## 5) Useful Commands
 
@@ -75,3 +84,10 @@ cd frontend && npm run test:all
 # targeted e2e
 cd frontend && npm run test:e2e -- log-table-filtering.spec.ts
 ```
+
+## Related Docs
+
+- [README.md](./README.md)
+- [frontend/FRONTEND.md](./frontend/FRONTEND.md)
+- [frontend/e2e/README.md](./frontend/e2e/README.md)
+- [frontend/e2e/LOG_TABLE_TESTING.md](./frontend/e2e/LOG_TABLE_TESTING.md)

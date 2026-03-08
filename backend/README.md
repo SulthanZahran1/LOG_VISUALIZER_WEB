@@ -1,6 +1,9 @@
 # Backend Documentation
 
+Last updated: 2026-03-08
+
 ## Stack
+
 - Go 1.24
 - Echo v4
 - DuckDB (`go-duckdb`) for large parsed datasets
@@ -9,8 +12,8 @@ Entry point: `cmd/server/main.go`
 
 ## Responsibilities
 
-- Serve REST + SSE + WebSocket APIs
-- Persist uploads/chunks on local filesystem
+- Serve REST, SSE, and WebSocket APIs
+- Persist uploads/chunks on the local filesystem
 - Manage parse sessions and cleanup
 - Parse multiple industrial log formats
 - Serve embedded frontend assets in embedded mode
@@ -19,15 +22,15 @@ Entry point: `cmd/server/main.go`
 
 | Package | Purpose |
 |---|---|
-| `internal/api` | Modular HTTP handlers (`handlers_upload.go`, `handlers_parse.go`, `handlers_map.go`, `handlers_carrier.go`, `handlers_health.go`) + websocket upload handler |
-| `internal/upload` | Async upload jobs, chunk assembly/decompression orchestration |
+| `internal/api` | Modular HTTP handlers plus the WebSocket upload handler |
+| `internal/upload` | Async upload jobs, chunk assembly, and decompression |
 | `internal/storage` | Local file/chunk storage and metadata index |
-| `internal/session` | Parse session lifecycle and session-scoped access |
-| `internal/parser` | Parser registry, format parsers, DuckStore, map/rules parsers |
-| `internal/config` | XML config parsing (`PLCLogVisualizer.exe.config`) |
+| `internal/session` | Parse session lifecycle and session-scoped query access |
+| `internal/parser` | Parser registry, format parsers, DuckStore, and map/rules parsers |
+| `internal/config` | XML config parsing for `PLCLogVisualizer.exe.config` |
 | `internal/web` | Embedded static frontend serving |
 
-## Active API Route Groups
+## Active API Groups
 
 Configured in `cmd/server/main.go`:
 - `/api/health`
@@ -37,7 +40,7 @@ Configured in `cmd/server/main.go`:
 - `/api/map/*`
 - `/api/config/validation-rules`
 
-See [../API.md](../API.md) for route details.
+See [../API.md](../API.md) for the full route table.
 
 ## Local Run
 
@@ -45,6 +48,8 @@ See [../API.md](../API.md) for route details.
 cd backend
 go run cmd/server/main.go
 ```
+
+`go run` resolves `PLCLogVisualizer.exe.config` relative to the temporary executable returned by `os.Executable()`, not the checked-in `backend/config/PLCLogVisualizer.exe.config`. Use a built binary with the XML placed beside it when you need a stable config file location.
 
 ## Tests
 
@@ -55,29 +60,22 @@ go test ./...
 
 ## Notes
 
-- Session cleanup runs periodically in a background goroutine.
-- Large PLC parses use DuckDB-backed storage path for memory efficiency.
-- File deletion endpoint is config-gated (`AllowFileDeletion`).
+- Session cleanup runs in a background goroutine.
+- Large parse sessions use DuckDB-backed storage for memory-efficient querying.
+- File deletion is config-gated through `AllowFileDeletion`.
 
-## XLSX Parsing Strategy (Machine/DateTime/Contents)
+## Current XLSX Support
 
-When adding `.xlsx` support for spreadsheet logs with columns:
-- `Machine`
-- `DateTime`
-- `Contents`
+The parser registry already includes live XLSX parsers for:
+- STK PLC observable exports (`stk_plc`)
+- STK Transfer exports (`stk_transfer`)
 
-Use this mapping/flow:
-- `Machine` -> `LogEntry.DeviceID`
-- `DateTime` -> `LogEntry.Timestamp`
-- `Contents` -> delegated to a flexible content parser chain
+Other spreadsheet layouts still need explicit parser work.
 
-Recommended parser design:
-- Add an `XLSXMachineContentParser` in `internal/parser`.
-- Introduce pluggable `ContentParser` handlers with:
-  - `Match(contents string) bool`
-  - `Parse(deviceID string, timestamp time.Time, contents string) ([]models.LogEntry, *models.ParseError)`
-- Run handlers in order; first match parses the row.
-- Include a fallback handler that preserves unknown formats as raw content (for example `_RawContent`) instead of failing the entire file.
-- Treat malformed rows as non-fatal parse errors, consistent with existing parser behavior.
+## Related Docs
 
-This enables mixed `Contents` formats in one workbook while keeping parse sessions resilient.
+- [../README.md](../README.md)
+- [../API.md](../API.md)
+- [./UPLOAD_HANDLING.md](./UPLOAD_HANDLING.md)
+- [./STORAGE.md](./STORAGE.md)
+- [../BUILD_AIRGAPPED.md](../BUILD_AIRGAPPED.md)

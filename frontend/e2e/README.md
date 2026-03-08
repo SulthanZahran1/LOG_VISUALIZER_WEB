@@ -1,10 +1,12 @@
 # Frontend E2E Tests
 
+Last updated: 2026-03-08
+
 Playwright tests live in `frontend/e2e/`.
 
 ## Run
 
-Assuming backend is already running:
+Assuming backend and frontend are already running:
 ```bash
 cd frontend
 npm run test:e2e
@@ -22,7 +24,7 @@ cd frontend
 npm run test:e2e:docker
 ```
 
-Manual docker control:
+Manual Docker control:
 ```bash
 cd frontend
 npm run test:e2e:docker:up
@@ -38,6 +40,9 @@ npm run test:e2e:docker:down
 - `e2e/test-helpers.ts`
 - `e2e/*.spec.ts`
 
-## Fixtures
+## Related Docs
 
-See [fixtures/README.md](./fixtures/README.md).
+- [../FRONTEND.md](../FRONTEND.md)
+- [../../TESTING_CHECKLIST.md](../../TESTING_CHECKLIST.md)
+- [./LOG_TABLE_TESTING.md](./LOG_TABLE_TESTING.md)
+- [./fixtures/README.md](./fixtures/README.md)

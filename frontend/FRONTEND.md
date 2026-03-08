@@ -1,6 +1,9 @@
 # Frontend Documentation
 
+Last updated: 2026-03-08
+
 ## Stack
+
 - Preact 10
 - TypeScript
 - `@preact/signals`
@@ -27,9 +30,13 @@ frontend/src/
 │   ├── log/
 │   ├── waveform/
 │   ├── map/
-│   ├── logStore.ts      # legacy re-export entrypoint
-│   ├── waveformStore.ts # legacy re-export entrypoint
-│   └── mapStore.ts      # legacy re-export entrypoint
+│   ├── transitionStore.ts
+│   ├── selectionStore.ts
+│   ├── bookmarkStore.ts
+│   ├── colorCodingStore.ts
+│   ├── logStore.ts
+│   ├── waveformStore.ts
+│   └── mapStore.ts
 ├── views/
 ├── models/
 ├── utils/
@@ -38,27 +45,37 @@ frontend/src/
 
 ## API Layer
 
-Primary client wrappers live in `src/api/client.ts`.
+Primary typed wrappers live in `src/api/client.ts`.
 
 Related files:
-- `src/api/upload.ts`: HTTP upload optimization/chunking
-- `src/api/websocketUpload.ts`: WS upload client and protocol helpers
+- `src/api/upload.ts`: HTTP upload optimization and chunking
+- `src/api/websocketUpload.ts`: WebSocket upload client and protocol helpers
 
 ## Store Model
 
-Current store architecture is modular:
+Core store architecture is modular for:
 - `stores/log/*`
 - `stores/waveform/*`
 - `stores/map/*`
 
-Each module follows the split:
-- `state.ts` signals/computed
-- `actions.ts` behavior
-- `effects.ts` side effects
-- `types.ts` contracts
-- `index.ts` public exports
+Each core module follows the split:
+- `state.ts`
+- `actions.ts`
+- `effects.ts`
+- `types.ts`
+- `index.ts`
 
-Legacy top-level files (`logStore.ts`, `waveformStore.ts`, `mapStore.ts`) remain for backward compatibility.
+Standalone stores remain for transitions, selection, bookmarks, and color coding. Legacy top-level files (`logStore.ts`, `waveformStore.ts`, `mapStore.ts`) still preserve older import paths.
+
+## View Surface
+
+The app composes these user-facing views:
+- Home
+- Log Table
+- Timing Diagram
+- Map Viewer
+- Transitions
+- Transfer Heatmap
 
 ## Testing
 
@@ -70,12 +87,10 @@ npm run test
 npm run test:e2e
 ```
 
-E2E docs:
-- [e2e/README.md](./e2e/README.md)
-- [e2e/fixtures/README.md](./e2e/fixtures/README.md)
+## Related Docs
 
-## Implementation Notes
-
-- Large parse sessions use server-side pagination/filtering paths.
-- Waveform view uses chunk + boundary fetch endpoints for continuity.
-- Map view integrates map layout, rules, signal-derived state, and carrier log playback.
+- [../README.md](../README.md)
+- [../API.md](../API.md)
+- [../TESTING_CHECKLIST.md](../TESTING_CHECKLIST.md)
+- [./e2e/README.md](./e2e/README.md)
+- [./e2e/fixtures/README.md](./e2e/fixtures/README.md)
