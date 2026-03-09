@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,6 +47,25 @@ type DuckStore struct {
 	// Set for parsed files stored in the persistent cache.
 	persistent bool
 	finalized  bool
+}
+
+func duckDBArtifactPaths(dbPath string) []string {
+	return []string{
+		dbPath,
+		dbPath + ".wal",
+		dbPath + ".tmp",
+	}
+}
+
+// RemoveDuckDBArtifacts removes a DuckDB database file and known sidecar files.
+func RemoveDuckDBArtifacts(dbPath string) error {
+	var errs []error
+	for _, path := range duckDBArtifactPaths(dbPath) {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			errs = append(errs, fmt.Errorf("remove %s: %w", path, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // NewDuckStore creates a new DuckDB-backed store in the given temp directory.
@@ -331,23 +351,23 @@ func (ds *DuckStore) Finalize() error {
 	}
 
 	// Create index on timestamp for efficient chunk queries
-	_, err = ds.db.Exec("CREATE INDEX idx_ts ON entries(timestamp)")
+	_, err = ds.db.Exec("CREATE INDEX IF NOT EXISTS idx_ts ON entries(timestamp)")
 	if err != nil {
 		return fmt.Errorf("idx_ts creation failed: %w", err)
 	}
 
 	// Create indexes for filtering if there are many entries
 	if ds.entryCount > 100000 {
-		_, err = ds.db.Exec("CREATE INDEX idx_device ON entries(device_id)")
+		_, err = ds.db.Exec("CREATE INDEX IF NOT EXISTS idx_device ON entries(device_id)")
 		if err != nil {
 			fmt.Printf("[DuckStore] Warning: idx_device creation failed: %v\n", err)
 		}
-		_, err = ds.db.Exec("CREATE INDEX idx_signal ON entries(signal)")
+		_, err = ds.db.Exec("CREATE INDEX IF NOT EXISTS idx_signal ON entries(signal)")
 		if err != nil {
 			fmt.Printf("[DuckStore] Warning: idx_signal creation failed: %v\n", err)
 		}
 		// Composite index for efficient boundary queries (last value before / first value after)
-		_, err = ds.db.Exec("CREATE INDEX idx_signal_ts ON entries(device_id, signal, timestamp)")
+		_, err = ds.db.Exec("CREATE INDEX IF NOT EXISTS idx_signal_ts ON entries(device_id, signal, timestamp)")
 		if err != nil {
 			fmt.Printf("[DuckStore] Warning: idx_signal_ts creation failed: %v\n", err)
 		}
@@ -1291,7 +1311,7 @@ func (ds *DuckStore) Close() error {
 		ds.db.Close()
 	}
 	if ds.dbPath != "" && !ds.persistent {
-		os.Remove(ds.dbPath)
+		return RemoveDuckDBArtifacts(ds.dbPath)
 	}
 	return nil
 }

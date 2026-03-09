@@ -142,8 +142,11 @@ func (pps *PersistentParsedStore) Open(fileID string) (*parser.DuckStore, error)
 func (pps *PersistentParsedStore) CreateForFile(fileID string) (*parser.DuckStore, error) {
 	dbPath := pps.GetDBPath(fileID)
 
-	// Remove any existing file (in case of re-parse)
-	os.Remove(dbPath)
+	// Remove any existing database artifacts before a re-parse so stale WAL state
+	// cannot leak old schema objects into the new database.
+	if err := parser.RemoveDuckDBArtifacts(dbPath); err != nil {
+		return nil, fmt.Errorf("failed to clear existing parsed DB: %w", err)
+	}
 
 	fmt.Printf("[ParsedStore] Creating new parsed DB for file %s\n", shortID(fileID))
 
@@ -171,7 +174,7 @@ func (pps *PersistentParsedStore) Delete(fileID string) error {
 	pps.mu.Unlock()
 
 	dbPath := pps.GetDBPath(fileID)
-	if err := os.Remove(dbPath); err != nil && !os.IsNotExist(err) {
+	if err := parser.RemoveDuckDBArtifacts(dbPath); err != nil {
 		return fmt.Errorf("failed to delete parsed DB: %w", err)
 	}
 

@@ -878,6 +878,52 @@ func TestDuckStore_LastError(t *testing.T) {
 	})
 }
 
+func TestDuckStore_FinalizeHandlesExistingIndex(t *testing.T) {
+	t.Run("reuses existing timestamp index", func(t *testing.T) {
+		store, cleanup := createTestStore(t)
+		defer cleanup()
+
+		store.AddEntry(createTestEntry("PLC-01", "Signal1", time.Now(), true, ""))
+
+		if _, err := store.db.Exec("CREATE INDEX idx_ts ON entries(timestamp)"); err != nil {
+			t.Fatalf("Failed to create existing idx_ts: %v", err)
+		}
+
+		if err := store.Finalize(); err != nil {
+			t.Fatalf("Expected finalize to succeed with pre-existing idx_ts, got %v", err)
+		}
+	})
+}
+
+func TestDuckStore_CloseRemovesArtifacts(t *testing.T) {
+	t.Run("removes database sidecar files", func(t *testing.T) {
+		tempDir := t.TempDir()
+		store, err := NewDuckStore(tempDir, "close_cleanup")
+		if err != nil {
+			t.Fatalf("Failed to create store: %v", err)
+		}
+
+		walPath := store.dbPath + ".wal"
+		tmpPath := store.dbPath + ".tmp"
+		if err := os.WriteFile(walPath, []byte("wal"), 0644); err != nil {
+			t.Fatalf("Failed to create wal file: %v", err)
+		}
+		if err := os.WriteFile(tmpPath, []byte("tmp"), 0644); err != nil {
+			t.Fatalf("Failed to create tmp file: %v", err)
+		}
+
+		if err := store.Close(); err != nil {
+			t.Fatalf("Failed to close store: %v", err)
+		}
+
+		for _, path := range []string{store.dbPath, walPath, tmpPath} {
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				t.Errorf("Expected %s to be removed, stat err=%v", path, err)
+			}
+		}
+	})
+}
+
 func TestDuckStore_Persistent(t *testing.T) {
 	t.Run("marks store as persistent", func(t *testing.T) {
 		store, cleanup := createTestStore(t)
