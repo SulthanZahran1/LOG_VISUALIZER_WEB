@@ -1,6 +1,6 @@
 # API Documentation
 
-Last updated: 2026-03-08
+Last updated: 2026-03-27
 
 Current source of truth:
 - Backend route registration: `backend/cmd/server/main.go`
@@ -82,6 +82,9 @@ Common query params for filtered parse views (`entries`, `index-of-time`, `time-
 - `signalType` or `type`
 - `sortColumn` or `sort`
 - `sortDirection` or `order`
+
+UI workflow note:
+- Home view multi-file mode no longer imposes a client-side file-count cap before sending merged `fileIds`; practical limits are browser and server resources.
 
 ## Map, Rules, Carrier
 

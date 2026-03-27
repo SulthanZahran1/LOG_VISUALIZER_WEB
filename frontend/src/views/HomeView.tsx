@@ -147,7 +147,6 @@ export function HomeView({
                                     onUploadSuccess={handleUploadSuccess}
                                     onMultiUploadSuccess={handleMultiUploadSuccess}
                                     multiple={uploadMode.value === 'multi'}
-                                    maxFiles={10}
                                 />
                             </div>
                         </div>

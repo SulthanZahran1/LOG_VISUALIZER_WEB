@@ -1,6 +1,6 @@
 # Testing Checklist
 
-Last updated: 2026-03-08
+Last updated: 2026-03-27
 
 Use this for functional verification after code changes.
 
@@ -64,7 +64,7 @@ go test ./...
 - Transfer heatmap loads TRS-style data without client errors
 
 ### Multi-file Flow
-- Multi-file parse/merge starts and completes
+- Multi-file parse/merge starts and completes, including batches above 10 files when practical
 - Results remain viewable in the log table and waveform
 
 ## 4) Regression Focus

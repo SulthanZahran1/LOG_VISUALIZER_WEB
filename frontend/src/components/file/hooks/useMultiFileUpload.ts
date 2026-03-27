@@ -39,7 +39,7 @@ function createQueueItem(file: File, index: number): UploadQueueItem {
  * Hook for multi-file upload with queue management
  */
 export function useMultiFileUpload(
-    maxFiles: number = 10,
+    maxFiles: number | undefined,
     onAllComplete?: (files: FileInfo[]) => void
 ): {
     state: MultiFileUploadState;
@@ -63,7 +63,7 @@ export function useMultiFileUpload(
     ): Promise<FileInfo[]> => {
         const fileArray = Array.from(files);
 
-        if (fileArray.length > maxFiles) {
+        if (typeof maxFiles === 'number' && maxFiles > 0 && fileArray.length > maxFiles) {
             error.value = `Too many files. Maximum ${maxFiles} files allowed.`;
             return [];
         }

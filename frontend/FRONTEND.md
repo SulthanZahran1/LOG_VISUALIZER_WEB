@@ -1,6 +1,6 @@
 # Frontend Documentation
 
-Last updated: 2026-03-08
+Last updated: 2026-03-27
 
 ## Stack
 
@@ -76,6 +76,10 @@ The app composes these user-facing views:
 - Map Viewer
 - Transitions
 - Transfer Heatmap
+
+Home view upload behavior:
+- Single-file upload remains the default mode.
+- Multi-file mode auto-uploads and merges the selected files without a built-in file-count cap in the client.
 
 ## Testing
 

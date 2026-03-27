@@ -47,7 +47,7 @@ export function FileUpload({
     accept,
     maxSize = 2 * 1024 * 1024 * 1024, // 2GB default
     multiple = false,
-    maxFiles = 10
+    maxFiles
 }: FileUploadProps) {
     // Use hooks for state management
     const fileUpload = useFileUpload(onUploadSuccess, uploadFn);

@@ -1,6 +1,6 @@
 # CIM Visualizer
 
-Last updated: 2026-03-08
+Last updated: 2026-03-27
 
 Web app for analyzing PLC/AMHS logs across synchronized log-table, waveform, map, transition, and transfer-heatmap views.
 
@@ -60,6 +60,7 @@ go test ./...
 - Supported inputs: PLC debug, tab-separated PLC, CSV signal, observable, MCS/carrier, TRS, and STK XLSX exports
 - Main views: Log Table, Timing Diagram, Map Viewer, Transitions, Transfer Heatmap
 - Upload paths: HTTP upload/chunking plus WebSocket upload at `/api/ws/uploads`
+- Home view supports single-file upload and uncapped multi-file upload with auto-merge
 - State model: modular `stores/log`, `stores/waveform`, `stores/map` plus standalone auxiliary stores
 
 ## Documentation Map
