@@ -20,7 +20,7 @@ type PLCDebugParser struct {
 
 func NewPLCDebugParser() *PLCDebugParser {
 	return &PLCDebugParser{
-		lineRegex: regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^:\]]+):([^\]]+)\]\s+\(([^)]+)\)\s*:\s*(.*)\s*$`),
+		lineRegex: regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+\[([^\]]+)\]\s+\[([^\]]*)\]\s+\[([^:\]]+):([^\]]+)\]\s+\(([^)]+)\)\s*:\s*(.*)\s*$`),
 	}
 }
 
@@ -353,7 +353,10 @@ func (p *PLCDebugParser) parseLine(line string, lineNum int, intern *StringInter
 
 	deviceID := ExtractDeviceID(path)
 	if deviceID == "" {
-		return nil, &models.ParseError{Line: lineNum, Content: line, Reason: "device ID not found in path"}
+		deviceID = strings.TrimSpace(category)
+		if deviceID == "" {
+			return nil, &models.ParseError{Line: lineNum, Content: line, Reason: "device ID not found in path"}
+		}
 	}
 
 	// Intern device ID and signal name to reduce memory usage
@@ -449,7 +452,10 @@ func (p *PLCDebugParser) fastParseLine(line string, intern *StringIntern) *model
 
 	deviceID := ExtractDeviceID(path)
 	if deviceID == "" {
-		return nil
+		deviceID = strings.TrimSpace(category)
+		if deviceID == "" {
+			return nil
+		}
 	}
 
 	// Intern strings to reduce memory usage
