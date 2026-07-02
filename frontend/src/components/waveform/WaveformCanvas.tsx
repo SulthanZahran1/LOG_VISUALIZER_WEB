@@ -1189,7 +1189,7 @@ function drawSignalLabels(
 /**
  * SECS-specific waveform rendering with 2-lane display (SEND / RECV).
  * 
- * - Two lanes: SECS_SEND (top) and SECS_RECV (bottom)
+ * - Single signal 'SECS' with two lanes: SEND (top) and RECV (bottom)
  * - ▲ markers at message timestamps with stream/function labels
  * - No connector lines between SEND and RECV markers
  */
@@ -1233,13 +1233,7 @@ function drawSECSSignal(
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Lane labels
-    ctx.font = '9px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = SECS_COLORS.muted;
-    ctx.fillText('SEND', 6, lanePadding + 2);
-    ctx.fillText('RECV', 6, laneMid + lanePadding + 2);
+    // Lane labels removed — lane position identifies SEND (top) vs RECV (bottom)
 
     // Collect marker positions per entry
     type SECSMarker = {
