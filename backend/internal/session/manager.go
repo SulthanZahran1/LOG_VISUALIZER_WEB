@@ -756,6 +756,9 @@ func (m *Manager) runMultiParse(sessionID string, fileIDs, filePaths []string) {
 
 		if parserName == "" {
 			parserName = p.Name()
+		} else if parserName != p.Name() {
+			// Mixed parser types — indicate merged
+			parserName = "merged"
 		}
 
 		result, parseErrors, err := p.Parse(filePath)

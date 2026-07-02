@@ -25,6 +25,10 @@ import {
 } from './state';
 import { selectedSignals } from '../selectionStore';
 
+function isMergedSession(session: ParseSession | null | undefined): boolean {
+    return !!(session as ParseSession & { fileIds?: string[] } | null | undefined)?.fileIds?.length;
+}
+
 function isGenericLogSession(session: ParseSession | null | undefined): boolean {
     return (session as ParseSession & { parserName?: string } | null | undefined)?.parserName === 'generic_log';
 }
@@ -239,8 +243,8 @@ async function handleSessionComplete(session: ParseSession): Promise<void> {
                 streamProgress.value = 100;
                 totalEntries.value = total;
                 finalizeSessionLoad(session);
-                // Auto-open log table for generic, TRS, and SECS logs
-                if (isGenericLogSession(session) || isTRSLogSession(session) || isSECSLogSession(session)) {
+                // Auto-open log table for generic, TRS, SECS, or merged sessions
+                if (isGenericLogSession(session) || isTRSLogSession(session) || isSECSLogSession(session) || isMergedSession(session)) {
                     openView('log-table');
                 }
             },
@@ -254,14 +258,15 @@ async function handleSessionComplete(session: ParseSession): Promise<void> {
 
     finalizeSessionLoad(session);
 
-    // Auto-open log table for generic, TRS, and SECS logs
-    if (isGenericLogSession(session) || isTRSLogSession(session) || isSECSLogSession(session)) {
+    // Auto-open log table for generic, TRS, SECS, or merged sessions
+    if (isGenericLogSession(session) || isTRSLogSession(session) || isSECSLogSession(session) || isMergedSession(session)) {
         openView('log-table');
     }
 }
 
 async function finalizeSessionLoad(session: ParseSession): Promise<void> {
-    if (isGenericLogSession(session) || isTRSLogSession(session) || isSECSLogSession(session)) {
+    // For merged sessions (multiple file types), always do map linking — PLC data needs it
+    if (!isMergedSession(session) && (isGenericLogSession(session) || isTRSLogSession(session) || isSECSLogSession(session))) {
         return;
     }
 
