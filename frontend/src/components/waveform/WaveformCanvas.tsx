@@ -1226,23 +1226,14 @@ function drawSignalLabels(
 
 /**
  * SECS-specific waveform rendering with 2-lane display (SEND / RECV).
- * 
- * - Single signal 'SECS' with two lanes: SEND (top) and RECV (bottom)
- * - ▲ markers at message timestamps with stream/function labels
- * - No connector lines between SEND and RECV markers
  */
-const SECS_COLORS = {
-    marker: '#d29922',
-    markerFill: 'rgba(210, 153, 34, 0.25)',
-    bracket: 'rgba(163, 113, 247, 0.6)',
-    bracketFill: 'rgba(163, 113, 247, 0.15)',
-    label: '#e6edf3',
-    muted: '#8b949e',
-    bg: 'rgba(13, 17, 23, 0.4)',
-};
-
 const SECS_LANE_PADDING = 4;
 const SECS_MARKER_SIZE = 8;
+
+const SECS_LANE_COLORS = {
+    send: { marker: '#3fb950', fill: 'rgba(63, 185, 80, 0.2)' },
+    recv: { marker: '#58a6ff', fill: 'rgba(88, 166, 255, 0.2)' },
+} as const;
 
 function normalizeSECSDirection(direction: string): 'SEND' | 'RECV' | '' {
     const normalized = direction.toUpperCase();
@@ -1281,9 +1272,10 @@ function drawSECSSignal(
     const laneMid = height / 2;
     const lanePadding = SECS_LANE_PADDING;
 
-    // Both lanes use the same subtle background
-    ctx.fillStyle = SECS_COLORS.markerFill;
+    // Lane backgrounds — green tint for SEND lane, blue tint for RECV lane
+    ctx.fillStyle = SECS_LANE_COLORS.send.fill;
     ctx.fillRect(0, lanePadding, width, laneMid - lanePadding * 2);
+    ctx.fillStyle = SECS_LANE_COLORS.recv.fill;
     ctx.fillRect(0, laneMid + lanePadding, width, laneMid - lanePadding * 2);
 
     // Lane divider
@@ -1326,7 +1318,8 @@ function drawSECSSignal(
         const direction = normalizeSECSDirection(m.category);
         const isSend = direction === 'SEND';
         const markerY = direction ? getSECSMarkerY(direction, height) : getSECSMarkerY('RECV', height);
-        const markerColor = SECS_COLORS.marker;
+        const laneColor = isSend ? SECS_LANE_COLORS.send : SECS_LANE_COLORS.recv;
+        const markerColor = laneColor.marker;
         const markerSize = SECS_MARKER_SIZE;
 
         // Draw ▲ marker
@@ -1349,7 +1342,7 @@ function drawSECSSignal(
         ctx.stroke();
 
         // S/F code label: SEND above marker, RECV below marker to avoid collisions
-        ctx.fillStyle = isSend ? '#3fb950' : '#58a6ff';
+        ctx.fillStyle = laneColor.marker;
         ctx.font = 'bold 9px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.textAlign = 'center';
         if (isSend) {
