@@ -138,9 +138,9 @@ func (p *SECSLogParser) ParseWithProgress(filePath string, onProgress ProgressCa
 		}
 
 		// Build LogEntry from SECSMessage
-		// Single signal name "SECS" — one lane for both SEND and RECV.
-		// Direction is preserved in the Category field and JSON value.
-		signalName := intern.Intern("SECS")
+		// Use direction-based signal name so 2 waveform lanes appear (SECS_SEND / SECS_RECV)
+		// instead of one lane per S/F code
+		signalName := intern.Intern("SECS_" + msg.Direction)
 		deviceID := intern.Intern("SECS")
 		intern.Intern(deviceID)
 
@@ -205,7 +205,7 @@ func (p *SECSLogParser) ParseToDuckStore(filePath string, store *DuckStore, onPr
 			continue
 		}
 
-		signalName := intern.Intern("SECS")
+		signalName := intern.Intern("SECS_" + msg.Direction)
 		deviceID := intern.Intern("SECS")
 
 		valBytes, _ := json.Marshal(msg)

@@ -1187,12 +1187,11 @@ function drawSignalLabels(
 }
 
 /**
- * SECS-specific waveform rendering with single-lane display.
+ * SECS-specific waveform rendering with 2-lane display (SEND / RECV).
  * 
- * - One lane containing all SECS messages
- * - ▲ markers for SEND, ▼ markers for RECV (direction from category field)
- * - Bracket connectors between paired SEND→RECV messages (matched by systemByte)
- * - Transaction time labels on the brackets
+ * - Two lanes: SECS_SEND (top) and SECS_RECV (bottom)
+ * - ▲ markers at message timestamps with stream/function labels
+ * - No connector lines between SEND and RECV markers
  */
 const SECS_COLORS = {
     marker: '#d29922',
@@ -1215,19 +1214,32 @@ function drawSECSSignal(
 ) {
     if (entries.length === 0) return;
 
-    // Single lane — all SECS messages in one row
+    // Two lanes: SEND (top half), RECV (bottom half) — no connector lines between them
+    const laneMid = height / 2;
     const lanePadding = 4;
 
-    // Lane background
+    // Both lanes use the same subtle background
     ctx.fillStyle = SECS_COLORS.markerFill;
-    ctx.fillRect(0, lanePadding, width, height - lanePadding * 2);
+    ctx.fillRect(0, lanePadding, width, laneMid - lanePadding * 2);
+    ctx.fillRect(0, laneMid + lanePadding, width, laneMid - lanePadding * 2);
 
-    // Lane label
+    // Lane divider
+    ctx.strokeStyle = 'rgba(139, 148, 158, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, laneMid);
+    ctx.lineTo(width, laneMid);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Lane labels
     ctx.font = '9px -apple-system, BlinkMacSystemFont, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillStyle = SECS_COLORS.muted;
-    ctx.fillText('SECS', 6, lanePadding + 2);
+    ctx.fillText('SEND', 6, lanePadding + 2);
+    ctx.fillText('RECV', 6, laneMid + lanePadding + 2);
 
     // Collect marker positions per entry
     type SECSMarker = {
@@ -1254,81 +1266,19 @@ function drawSECSSignal(
         });
     }
 
-    // Draw bracket connectors between matched SEND→RECV pairs by systemByte
-    const pairs = new Map<number, { send: SECSMarker | null; recv: SECSMarker | null }>();
-    for (const m of markers) {
-        const cat = m.category.toUpperCase();
-        if (cat === 'SEND') {
-            if (!pairs.has(m.systemByte)) pairs.set(m.systemByte, { send: null, recv: null });
-            pairs.get(m.systemByte)!.send = m;
-        } else if (cat === 'RECV') {
-            if (!pairs.has(m.systemByte)) pairs.set(m.systemByte, { send: null, recv: null });
-            pairs.get(m.systemByte)!.recv = m;
-        }
-    }
-
-    for (const [, pair] of pairs) {
-        if (!pair.send || !pair.recv) continue;
-        const sendX = pair.send.x;
-        const recvX = pair.recv.x;
-
-        // Only draw bracket if messages are close enough (within 80% of viewport)
-        const maxBracketWidth = width * 0.8;
-        if (Math.abs(recvX - sendX) > maxBracketWidth) continue;
-
-        // Bracket arc above the markers
-        const bracketY = lanePadding + 2;
-        const arcHeight = 10;
-        const midX = (sendX + recvX) / 2;
-
-        ctx.strokeStyle = SECS_COLORS.bracket;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        // Arc from send marker up and over to recv marker
-        ctx.moveTo(sendX, bracketY);
-        ctx.quadraticCurveTo(midX, bracketY - arcHeight, recvX, bracketY);
-        ctx.stroke();
-
-        // Transaction time label above the arc
-        const durationMs = Math.abs(getTimestampMs(pair.recv.entry) - getTimestampMs(pair.send.entry));
-        const label = `${durationMs.toFixed(1)}ms`;
-        ctx.font = '9px var(--font-mono, monospace)';
-        const labelWidth = ctx.measureText(label).width + 6;
-        const labelX = midX - labelWidth / 2;
-        const labelY = bracketY - arcHeight - 12;
-
-        ctx.fillStyle = 'rgba(13, 17, 23, 0.85)';
-        ctx.beginPath();
-        ctx.roundRect(labelX - 2, labelY, labelWidth + 4, 14, 3);
-        ctx.fill();
-
-        ctx.fillStyle = SECS_COLORS.muted;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(label, labelX + labelWidth / 2, labelY + 7);
-    }
-
-    // Draw markers — ▲ for SEND, ▼ for RECV, all in one lane
+    // Draw markers — no connector lines between SEND/RECV
     for (const m of markers) {
         const isSend = m.category.toUpperCase() === 'SEND';
-        const markerY = lanePadding + 10;
+        const markerY = isSend ? lanePadding + 6 : laneMid + lanePadding + 6;
         const markerColor = SECS_COLORS.marker;
         const markerSize = 8;
 
-        // Draw ▲ (SEND) or ▼ (RECV) marker
+        // Draw ▲ marker
         ctx.fillStyle = markerColor;
         ctx.beginPath();
-        if (isSend) {
-            // ▲ pointing up
-            ctx.moveTo(m.x, markerY);
-            ctx.lineTo(m.x - markerSize / 2, markerY + markerSize);
-            ctx.lineTo(m.x + markerSize / 2, markerY + markerSize);
-        } else {
-            // ▼ pointing down
-            ctx.moveTo(m.x, markerY + markerSize);
-            ctx.lineTo(m.x - markerSize / 2, markerY);
-            ctx.lineTo(m.x + markerSize / 2, markerY);
-        }
+        ctx.moveTo(m.x, markerY);
+        ctx.lineTo(m.x - markerSize / 2, markerY + markerSize);
+        ctx.lineTo(m.x + markerSize / 2, markerY + markerSize);
         ctx.closePath();
         ctx.fill();
 
@@ -1336,19 +1286,13 @@ function drawSECSSignal(
         ctx.strokeStyle = 'rgba(13, 17, 23, 0.7)';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        if (isSend) {
-            ctx.moveTo(m.x, markerY);
-            ctx.lineTo(m.x - markerSize / 2, markerY + markerSize);
-            ctx.lineTo(m.x + markerSize / 2, markerY + markerSize);
-        } else {
-            ctx.moveTo(m.x, markerY + markerSize);
-            ctx.lineTo(m.x - markerSize / 2, markerY);
-            ctx.lineTo(m.x + markerSize / 2, markerY);
-        }
+        ctx.moveTo(m.x, markerY);
+        ctx.lineTo(m.x - markerSize / 2, markerY + markerSize);
+        ctx.lineTo(m.x + markerSize / 2, markerY + markerSize);
         ctx.closePath();
         ctx.stroke();
 
-        // Direction label (▲ SEND / ▼ RECV) + S/F code
+        // S/F code label above marker — green for SEND, blue for RECV
         ctx.fillStyle = isSend ? '#3fb950' : '#58a6ff';
         ctx.font = 'bold 9px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.textAlign = 'center';
