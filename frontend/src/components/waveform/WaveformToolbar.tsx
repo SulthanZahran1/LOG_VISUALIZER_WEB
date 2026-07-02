@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'preact/hooks';
+import { useState, useMemo, useEffect, useRef } from 'preact/hooks';
 import { hoverTime, zoomLevel, viewRange, viewportWidth, scrollOffset, jumpToTime, selectionRange, clearSelection, zoomToSelection } from '../../stores/waveformStore';
 import { currentSession, useServerSide } from '../../stores/logStore';
 import { formatTimestamp } from '../../utils/TimeAxisUtils';
@@ -47,6 +47,36 @@ export function WaveformToolbar() {
     const [selectedHour, setSelectedHour] = useState('');
     const [selectedMinute, setSelectedMinute] = useState('');
     const [selectedSecond, setSelectedSecond] = useState('');
+
+    // Refs for auto-advance between HH → MM → SS
+    const hourRef = useRef<HTMLInputElement>(null);
+    const minuteRef = useRef<HTMLInputElement>(null);
+    const secondRef = useRef<HTMLInputElement>(null);
+
+    // Auto-advance: when a time input reaches 2 digits, focus the next field
+    const handleTimeInput = (
+        value: string,
+        setter: (v: string) => void,
+        maxVal: number,
+        nextRef: { current: HTMLInputElement | null } | undefined,
+    ) => {
+        // Strip non-digits
+        let digits = value.replace(/\D/g, '');
+        if (digits.length > 2) digits = digits.slice(0, 2);
+        const num = parseInt(digits, 10);
+        if (isNaN(num)) {
+            setter('');
+            return;
+        }
+        // Clamp to valid range
+        if (num > maxVal) digits = String(maxVal).padStart(2, '0');
+        setter(digits);
+        // Auto-advance when 2 digits typed
+        if (digits.length === 2 && nextRef?.current) {
+            nextRef.current.focus();
+            nextRef.current.select();
+        }
+    };
 
     // Reset children when parent changes
     useEffect(() => { setSelectedHour(''); setSelectedMinute(''); setSelectedSecond(''); }, [selectedDate]);
@@ -391,36 +421,77 @@ export function WaveformToolbar() {
                     <option value="" disabled>Date</option>
                     {dates.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
-                <select
-                    class="jump-select jump-select-time"
+                {/* HH — typeable input with dropdown suggestions */}
+                <input
+                    ref={hourRef}
+                    class="jump-input jump-input-time"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="HH"
+                    maxLength={2}
                     value={selectedHour}
                     disabled={!hasData || !selectedDate}
-                    onChange={(e) => setSelectedHour((e.target as HTMLSelectElement).value)}
+                    onInput={(e) => handleTimeInput(
+                        (e.target as HTMLInputElement).value,
+                        setSelectedHour,
+                        23,
+                        minuteRef,
+                    )}
+                    onFocus={(e) => (e.target as HTMLInputElement).select()}
                     title="Hour"
-                >
-                    <option value="" disabled>HH</option>
-                    {hours.map(h => <option key={h} value={String(h)}>{String(h).padStart(2, '0')}</option>)}
-                </select>
-                <select
-                    class="jump-select jump-select-time"
+                    list="jump-hours"
+                />
+                <datalist id="jump-hours">
+                    {hours.map(h => <option key={h} value={String(h).padStart(2, '0')} />)}
+                </datalist>
+
+                {/* MM — typeable input with dropdown suggestions */}
+                <input
+                    ref={minuteRef}
+                    class="jump-input jump-input-time"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="MM"
+                    maxLength={2}
                     value={selectedMinute}
                     disabled={!hasData || selectedHour === ''}
-                    onChange={(e) => setSelectedMinute((e.target as HTMLSelectElement).value)}
+                    onInput={(e) => handleTimeInput(
+                        (e.target as HTMLInputElement).value,
+                        setSelectedMinute,
+                        59,
+                        secondRef,
+                    )}
+                    onFocus={(e) => (e.target as HTMLInputElement).select()}
                     title="Minute"
-                >
-                    <option value="" disabled>MM</option>
-                    {minutes.map(m => <option key={m} value={String(m)}>{String(m).padStart(2, '0')}</option>)}
-                </select>
-                <select
-                    class="jump-select jump-select-time"
+                    list="jump-minutes"
+                />
+                <datalist id="jump-minutes">
+                    {minutes.map(m => <option key={m} value={String(m).padStart(2, '0')} />)}
+                </datalist>
+
+                {/* SS — typeable input with dropdown suggestions */}
+                <input
+                    ref={secondRef}
+                    class="jump-input jump-input-time"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="SS"
+                    maxLength={2}
                     value={selectedSecond}
                     disabled={!hasData || selectedMinute === ''}
-                    onChange={(e) => setSelectedSecond((e.target as HTMLSelectElement).value)}
+                    onInput={(e) => handleTimeInput(
+                        (e.target as HTMLInputElement).value,
+                        setSelectedSecond,
+                        59,
+                        undefined,
+                    )}
+                    onFocus={(e) => (e.target as HTMLInputElement).select()}
                     title="Second"
-                >
-                    <option value="" disabled>SS</option>
-                    {seconds.map(s => <option key={s} value={String(s)}>{String(s).padStart(2, '0')}</option>)}
-                </select>
+                    list="jump-seconds"
+                />
+                <datalist id="jump-seconds">
+                    {seconds.map(s => <option key={s} value={String(s).padStart(2, '0')} />)}
+                </datalist>
                 <button
                     class="jump-btn"
                     onClick={handleJumpToTime}
@@ -671,6 +742,40 @@ export function WaveformToolbar() {
                     width: 56px;
                 }
 
+                /* Typeable time inputs (HH/MM/SS) */
+                .jump-input {
+                    padding: 4px 6px;
+                    font-family: var(--font-mono);
+                    font-size: 12px;
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--border-radius);
+                    color: var(--text-primary);
+                    outline: none;
+                    transition: all var(--transition-fast);
+                    cursor: text;
+                }
+
+                .jump-input:focus {
+                    border-color: var(--primary-accent);
+                    box-shadow: 0 0 0 2px rgba(77, 182, 226, 0.2);
+                }
+
+                .jump-input:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+
+                .jump-input::placeholder {
+                    color: var(--text-muted);
+                    opacity: 0.6;
+                }
+
+                .jump-input-time {
+                    width: 40px;
+                    text-align: center;
+                }
+
                 .jump-btn {
                     padding: 4px 10px;
                     font-size: 11px;
@@ -738,8 +843,7 @@ export function WaveformToolbar() {
 
 /**
  * Build time tree from API response (server-side path).
- * The API returns date/hour/minute/ts — we add second level by extracting
- * the seconds component from the returned timestamp.
+ * The API returns date/hour/minute/second/ts.
  */
 function buildTimeTreeWithSecondsFromApi(entries: TimeTreeEntry[]): TimeTreeWithSeconds {
     const tree: TimeTreeWithSeconds = new Map();
@@ -750,10 +854,7 @@ function buildTimeTreeWithSecondsFromApi(entries: TimeTreeEntry[]): TimeTreeWith
         const minutes = hours.get(e.hour)!;
         if (!minutes.has(e.minute)) minutes.set(e.minute, new Map());
         const seconds = minutes.get(e.minute)!;
-        // Extract seconds from the timestamp
-        const d = new Date(e.ts);
-        const sec = d.getUTCSeconds();
-        if (!seconds.has(sec)) seconds.set(sec, e.ts);
+        if (!seconds.has(e.second)) seconds.set(e.second, e.ts);
     }
     return tree;
 }

@@ -765,9 +765,9 @@ func TestDuckStore_GetTimeTree(t *testing.T) {
 			t.Fatalf("Failed to get time tree: %v", err)
 		}
 
-		// Should have entries for minute 0 and minute 2
-		if len(tree) < 2 {
-			t.Errorf("Expected at least 2 time tree entries, got %d", len(tree))
+		// Should have entries for each distinct second: 0s, 30s, 60s, 90s, 120s = 5
+		if len(tree) != 5 {
+			t.Errorf("Expected 5 time tree entries (one per second), got %d", len(tree))
 		}
 
 		// All entries should be for the same date

@@ -1227,15 +1227,16 @@ func (ds *DuckStore) GetIndexByTime(ctx context.Context, params QueryParams, ts 
 	return index, nil
 }
 
-// TimeTreeEntry represents a distinct date/hour/minute combination with its earliest timestamp.
+// TimeTreeEntry represents a distinct date/hour/minute/second combination with its earliest timestamp.
 type TimeTreeEntry struct {
 	Date   string `json:"date"`
 	Hour   int    `json:"hour"`
 	Minute int    `json:"minute"`
+	Second int    `json:"second"`
 	Ts     int64  `json:"ts"`
 }
 
-// GetTimeTree returns all distinct date/hour/minute combinations from the full dataset (respecting filters).
+// GetTimeTree returns all distinct date/hour/minute/second combinations from the full dataset (respecting filters).
 func (ds *DuckStore) GetTimeTree(ctx context.Context, params QueryParams) ([]TimeTreeEntry, error) {
 	select {
 	case ds.querySem <- struct{}{}:
@@ -1255,11 +1256,12 @@ func (ds *DuckStore) GetTimeTree(ctx context.Context, params QueryParams) ([]Tim
 			strftime(to_timestamp(timestamp / 1000)::TIMESTAMP, '%%Y-%%m-%%d') AS date,
 			EXTRACT(HOUR FROM to_timestamp(timestamp / 1000)::TIMESTAMP) AS hour,
 			EXTRACT(MINUTE FROM to_timestamp(timestamp / 1000)::TIMESTAMP) AS minute,
+			EXTRACT(SECOND FROM to_timestamp(timestamp / 1000)::TIMESTAMP) AS second,
 			MIN(timestamp) AS ts
 		FROM entries
 		%s
-		GROUP BY date, hour, minute
-		ORDER BY date, hour, minute
+		GROUP BY date, hour, minute, second
+		ORDER BY date, hour, minute, second
 	`, whereClause)
 
 	rows, err := ds.db.QueryContext(ctx, query, args...)
@@ -1271,7 +1273,7 @@ func (ds *DuckStore) GetTimeTree(ctx context.Context, params QueryParams) ([]Tim
 	var result []TimeTreeEntry
 	for rows.Next() {
 		var e TimeTreeEntry
-		if err := rows.Scan(&e.Date, &e.Hour, &e.Minute, &e.Ts); err != nil {
+		if err := rows.Scan(&e.Date, &e.Hour, &e.Minute, &e.Second, &e.Ts); err != nil {
 			return nil, err
 		}
 		result = append(result, e)

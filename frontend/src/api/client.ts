@@ -262,6 +262,7 @@ export interface TimeTreeEntry {
     date: string;
     hour: number;
     minute: number;
+    second: number;
     ts: number;
 }
 
