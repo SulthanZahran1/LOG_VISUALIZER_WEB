@@ -205,8 +205,8 @@ func TestSECSLogParser_Parse(t *testing.T) {
 		if e.DeviceID != "SECS" {
 			t.Errorf("expected DeviceID='SECS', got '%s'", e.DeviceID)
 		}
-		if e.SignalName != "S6F11" {
-			t.Errorf("expected SignalName='S6F11', got '%s'", e.SignalName)
+		if e.SignalName != "SECS_SEND" {
+			t.Errorf("expected SignalName='SECS_SEND', got '%s'", e.SignalName)
 		}
 		if e.Category != "SEND" {
 			t.Errorf("expected Category='SEND', got '%s'", e.Category)
@@ -222,16 +222,16 @@ func TestSECSLogParser_Parse(t *testing.T) {
 	// Check first RECV entry
 	if len(parsed.Entries) > 1 {
 		e := parsed.Entries[1]
-		if e.SignalName != "S6F12" {
-			t.Errorf("expected SignalName='S6F12', got '%s'", e.SignalName)
+		if e.SignalName != "SECS_RECV" {
+			t.Errorf("expected SignalName='SECS_RECV', got '%s'", e.SignalName)
 		}
 		if e.Category != "RECV" {
 			t.Errorf("expected Category='RECV', got '%s'", e.Category)
 		}
 	}
 
-	// Check that signals map has SECS::S6F11 and SECS::S6F12 etc.
-	expectedSignals := []string{"SECS::S6F11", "SECS::S6F12", "SECS::S2F50"}
+	// Check that signals map has SECS::SECS_SEND and SECS::SECS_RECV
+	expectedSignals := []string{"SECS::SECS_SEND", "SECS::SECS_RECV"}
 	for _, s := range expectedSignals {
 		if _, ok := parsed.Signals[s]; !ok {
 			t.Errorf("expected signal '%s' in parsed.Signals", s)
@@ -266,8 +266,8 @@ func TestSECSLogParser_ParseS2Message(t *testing.T) {
 	}
 
 	e := parsed.Entries[0]
-	if e.SignalName != "S2F49" {
-		t.Errorf("expected SignalName='S2F49', got '%s'", e.SignalName)
+	if e.SignalName != "SECS_RECV" {
+		t.Errorf("expected SignalName='SECS_RECV', got '%s'", e.SignalName)
 	}
 	if e.Category != "RECV" {
 		t.Errorf("expected Category='RECV', got '%s'", e.Category)

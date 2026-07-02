@@ -297,19 +297,22 @@ export function WaveformCanvas() {
         // Draw signal labels in left gutter so each row is identifiable in-canvas
         drawSignalLabels(ctx, selectedSignals.value, drawStart, drawEnd, gutterWidth);
 
-        // Draw hover tooltip
+        // Draw hover tooltip (skip for MCS rows — values are too long and ruin the UI)
         const hoverRowValue = hoverRow.value;
         if (currentHoverX !== null && hoverRowValue !== null && hoverRowValue >= 0 && hoverRowValue < selectedSignals.value.length) {
             const signalKey = selectedSignals.value[hoverRowValue];
-            const entries = waveformEntries.value[signalKey] || [];
-            const hTime = hoverTime.value;
-            if (hTime !== null && entries.length > 0) {
-                let valueAtTime: boolean | string | number = entries[0].value;
-                for (const e of entries) {
-                    if (getTimestampMs(e) <= hTime) valueAtTime = e.value;
-                    else break;
+            // Skip tooltip for MCS signals (action/command values are too long)
+            if (!signalKey.startsWith('MCS') && !signalKey.startsWith('mcs')) {
+                const entries = waveformEntries.value[signalKey] || [];
+                const hTime = hoverTime.value;
+                if (hTime !== null && entries.length > 0) {
+                    let valueAtTime: boolean | string | number = entries[0].value;
+                    for (const e of entries) {
+                        if (getTimestampMs(e) <= hTime) valueAtTime = e.value;
+                        else break;
+                    }
+                    drawTooltip(ctx, currentHoverX, AXIS_HEIGHT + hoverRowValue * ROW_HEIGHT, signalKey, valueAtTime, width);
                 }
-                drawTooltip(ctx, currentHoverX, AXIS_HEIGHT + hoverRowValue * ROW_HEIGHT, signalKey, valueAtTime, width);
             }
         }
         // Dependencies: all the signals that should trigger a re-render
@@ -1073,7 +1076,12 @@ function drawBookmarks(
 
 function drawTooltip(ctx: CanvasRenderingContext2D, x: number, rowY: number, signalKey: string, value: boolean | string | number, width: number) {
     const [device, signal] = signalKey.split('::');
-    const valStr = String(value);
+    let valStr = String(value);
+    // Truncate long values to prevent tooltip from covering the screen
+    const MAX_VAL_LEN = 60;
+    if (valStr.length > MAX_VAL_LEN) {
+        valStr = valStr.slice(0, MAX_VAL_LEN) + '...';
+    }
     const displayText = `${signal}: ${valStr}`;
 
     ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, sans-serif';
