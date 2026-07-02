@@ -157,6 +157,9 @@ export function App() {
       return;
     }
 
+    // Add all files to recent files list (per-file callback is suppressed in multi mode)
+    recentFiles.value = [...files, ...recentFiles.value];
+
     try {
       const fileIds = files.map(f => f.id);
       const session = await startParseMerge(fileIds);

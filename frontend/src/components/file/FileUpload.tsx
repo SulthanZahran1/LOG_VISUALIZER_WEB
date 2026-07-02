@@ -83,7 +83,11 @@ export function FileUpload({
             return;
         }
 
-        multiFileUpload.actions.uploadMultiple(files, onUploadSuccess);
+        // In multi mode with 2+ files, don't fire onUploadSuccess per-file —
+        // it starts competing individual parse sessions that race with the merge session.
+        // Only onMultiUploadSuccess should fire after all uploads complete.
+        const perFileCb = (multiple && files.length > 1) ? undefined : onUploadSuccess;
+        multiFileUpload.actions.uploadMultiple(files, perFileCb);
     };
 
     // Event handlers
