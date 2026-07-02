@@ -171,7 +171,7 @@ export function SignalSidebar() {
         }
     };
 
-    const handleLaneDragLeave = (e: DragEvent, index: number) => {
+    const handleLaneDragLeave = (index: number) => {
         if (dragOverIndex === index) {
             setDragOverIndex(null);
         }
