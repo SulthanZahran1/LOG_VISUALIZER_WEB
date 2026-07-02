@@ -467,13 +467,26 @@ export function WaveformCanvas() {
             if (signalKey) {
                 const entries = waveformEntries.value[signalKey] || [];
 
-                // Find nearest signal change within snap threshold (in pixels, ~20px)
+                // Find nearest signal change within snap threshold (in pixels, ~20px).
+                // SECS is rendered as two lanes inside one signal row, so only snap to
+                // entries in the lane currently under the cursor.
                 const snapThresholdPx = 20;
                 const snapThresholdMs = snapThresholdPx / pixelsPerMs;
+                const rowY = AXIS_HEIGHT + (rowIndex * ROW_HEIGHT);
+                const yPadding = 8;
+                const plotHeight = ROW_HEIGHT - (yPadding * 2);
+                const localPlotY = y - rowY - yPadding;
+                const secsLaneDirection = signalKey.startsWith('SECS::')
+                    ? getSECSLaneDirection(localPlotY, plotHeight)
+                    : null;
 
                 let closestDiff = snapThresholdMs;
 
                 for (const entry of entries) {
+                    if (secsLaneDirection && getSECSEntryDirection(entry) !== secsLaneDirection) {
+                        continue;
+                    }
+
                     const entryTime = getTimestampMs(entry);
                     const diff = Math.abs(entryTime - rawTime);
 
@@ -555,19 +568,44 @@ export function WaveformCanvas() {
             const signalKey = selectedSignals.value[rowIndex];
             if (signalKey && signalKey.startsWith('SECS::')) {
                 const range = viewRange.value;
-                if (!range) return;
+                if (!range || x < plotStartX || x > plotStartX + plotWidth) return;
+
                 const rangeDuration = Math.max(1, range.end - range.start);
                 const plotX = x - plotStartX;
-                const clickTime = range.start + ((plotX / plotWidth) * rangeDuration);
+                const pixelsPerMs = plotWidth / rangeDuration;
                 const entries = waveformEntries.value[signalKey] || [];
 
-                // Find the nearest SECS entry
+                // SECS is a single signal row with SEND/RECV lanes. Hit-test both X
+                // and Y so close request/response markers open the marker the user
+                // actually clicked, not just the nearest timestamp in the whole row.
+                const rowY = AXIS_HEIGHT + (rowIndex * ROW_HEIGHT);
+                const yPadding = 8;
+                const plotHeight = ROW_HEIGHT - (yPadding * 2);
+                const localPlotY = y - rowY - yPadding;
+                if (localPlotY < 0 || localPlotY > plotHeight) return;
+
+                const clickedDirection = getSECSLaneDirection(localPlotY, plotHeight);
+                const markerY = getSECSMarkerY(clickedDirection, plotHeight);
+                const xThresholdPx = 18;
+                const yThresholdPx = 20;
+
                 let nearestEntry: LogEntry | null = null;
-                let nearestDiff = 50; // ms threshold
+                let nearestScore = Number.POSITIVE_INFINITY;
                 for (const entry of entries) {
-                    const diff = Math.abs(getTimestampMs(entry) - clickTime);
-                    if (diff < nearestDiff) {
-                        nearestDiff = diff;
+                    if (getSECSEntryDirection(entry) !== clickedDirection) {
+                        continue;
+                    }
+
+                    const entryX = (getTimestampMs(entry) - range.start) * pixelsPerMs;
+                    const dx = Math.abs(entryX - plotX);
+                    const dy = Math.abs(markerY - localPlotY);
+                    if (dx > xThresholdPx || dy > yThresholdPx) {
+                        continue;
+                    }
+
+                    const score = dx + (dy * 0.5);
+                    if (score < nearestScore) {
+                        nearestScore = score;
                         nearestEntry = entry;
                     }
                 }
@@ -1203,6 +1241,31 @@ const SECS_COLORS = {
     bg: 'rgba(13, 17, 23, 0.4)',
 };
 
+const SECS_LANE_PADDING = 4;
+const SECS_MARKER_SIZE = 8;
+
+function normalizeSECSDirection(direction: string): 'SEND' | 'RECV' | '' {
+    const normalized = direction.toUpperCase();
+    if (normalized === 'SEND' || normalized === 'RECV') return normalized;
+    return '';
+}
+
+function getSECSEntryDirection(entry: LogEntry): 'SEND' | 'RECV' | '' {
+    const msg = parseSECSValue(entry.value);
+    return normalizeSECSDirection(msg.direction || entry.category || '');
+}
+
+function getSECSLaneDirection(localPlotY: number, height: number): 'SEND' | 'RECV' {
+    return localPlotY < height / 2 ? 'SEND' : 'RECV';
+}
+
+function getSECSMarkerY(direction: 'SEND' | 'RECV', height: number): number {
+    const laneMid = height / 2;
+    return direction === 'SEND'
+        ? SECS_LANE_PADDING + 6
+        : laneMid + SECS_LANE_PADDING + 6;
+}
+
 function drawSECSSignal(
     ctx: CanvasRenderingContext2D,
     entries: LogEntry[],
@@ -1216,7 +1279,7 @@ function drawSECSSignal(
 
     // Two lanes: SEND (top half), RECV (bottom half) — no connector lines between them
     const laneMid = height / 2;
-    const lanePadding = 4;
+    const lanePadding = SECS_LANE_PADDING;
 
     // Both lanes use the same subtle background
     ctx.fillStyle = SECS_COLORS.markerFill;
@@ -1262,10 +1325,11 @@ function drawSECSSignal(
 
     // Draw markers — no connector lines between SEND/RECV
     for (const m of markers) {
-        const isSend = m.category.toUpperCase() === 'SEND';
-        const markerY = isSend ? lanePadding + 6 : laneMid + lanePadding + 6;
+        const direction = normalizeSECSDirection(m.category);
+        const isSend = direction === 'SEND';
+        const markerY = direction ? getSECSMarkerY(direction, height) : getSECSMarkerY('RECV', height);
         const markerColor = SECS_COLORS.marker;
-        const markerSize = 8;
+        const markerSize = SECS_MARKER_SIZE;
 
         // Draw ▲ marker
         ctx.fillStyle = markerColor;

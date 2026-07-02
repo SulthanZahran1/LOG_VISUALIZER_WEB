@@ -98,7 +98,7 @@ SECS-II (SEMI E5) is a semiconductor equipment communication protocol. The parse
 - **Storage**: JSON blob in `LogEntry.value` with full message tree
 - **Parser**: `secs_log` (position 8 in registry, before `generic_log`)
 - **Frontend**: `SECS_COLUMNS` in `LogTable.tsx`, custom `drawSECSSignal()` in waveform
-- **Waveform**: Two lanes — SECS_SEND (▲ blue markers) and SECS_RECV (▼ green markers), bracket connectors for SystemByte-matched transactions, click→dialog for SML body
+- **Waveform**: Single SECS signal row with two internal lanes — SEND (top) and RECV (bottom), uniform amber markers, lane-aware click→dialog for SML body
 
 See [API.md](./API.md) for the current endpoint table.
 

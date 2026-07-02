@@ -47,7 +47,7 @@ Numeric identifier for a specific equipment event that triggered a report. Found
 A matched SEND→RECV pair linked by shared SystemByte value. The time delta between the pair (response latency) is a key metric for the waveform view.
 
 ### SECS Waveform
-Two-lane waveform view: **SECS_SEND** (blue ▲ markers) and **SECS_RECV** (green ▼ markers). Bracket connectors span paired transactions. Clicking a marker opens the SECS Message Detail dialog with the full SML body tree.
+Two-lane waveform view: one **SECS** signal row with internal **SEND** (top) and **RECV** (bottom) lanes. Both lanes use uniform amber markers; marker clicks are lane-aware and open the SECS Message Detail dialog with the full SML body tree.
 
 ## Test Order
 
