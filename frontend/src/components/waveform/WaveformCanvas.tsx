@@ -1195,10 +1195,8 @@ function drawSignalLabels(
  * - Transaction time labels on the brackets
  */
 const SECS_COLORS = {
-    send: '#3fb950',
-    sendFill: 'rgba(63, 185, 80, 0.3)',
-    recv: '#58a6ff',
-    recvFill: 'rgba(88, 166, 255, 0.3)',
+    marker: '#d29922',
+    markerFill: 'rgba(210, 153, 34, 0.25)',
     bracket: 'rgba(163, 113, 247, 0.6)',
     bracketFill: 'rgba(163, 113, 247, 0.15)',
     label: '#e6edf3',
@@ -1217,16 +1215,13 @@ function drawSECSSignal(
 ) {
     if (entries.length === 0) return;
 
-    // Draw lane backgrounds
+    // Draw lane backgrounds (single neutral color — lane position distinguishes SEND/RECV)
     const laneMid = height / 2;
     const lanePadding = 4;
 
-    // SEND lane (top half)
-    ctx.fillStyle = SECS_COLORS.sendFill;
+    // Both lanes use the same subtle background
+    ctx.fillStyle = SECS_COLORS.markerFill;
     ctx.fillRect(0, lanePadding, width, laneMid - lanePadding * 2);
-
-    // RECV lane (bottom half)
-    ctx.fillStyle = SECS_COLORS.recvFill;
     ctx.fillRect(0, laneMid + lanePadding, width, laneMid - lanePadding * 2);
 
     // Lane divider
@@ -1337,7 +1332,7 @@ function drawSECSSignal(
     for (const m of markers) {
         const isSend = m.category.toUpperCase() === 'SEND';
         const markerY = isSend ? lanePadding + 6 : laneMid + lanePadding + 6;
-        const markerColor = isSend ? SECS_COLORS.send : SECS_COLORS.recv;
+        const markerColor = SECS_COLORS.marker;
 
         // Draw ▲ marker
         ctx.fillStyle = markerColor;
