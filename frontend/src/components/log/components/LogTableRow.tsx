@@ -8,6 +8,7 @@ import { formatDateTime } from '../../../utils/TimeAxisUtils';
 import type { LogEntry } from '../../../models/types';
 import type { ColorCodingSettings } from '../../../stores/colorCodingStore';
 import { getTRSFieldValue } from '../../../utils/trsLog';
+import { getSECSFieldValue } from '../../../utils/secsLog';
 import { HighlightText } from './HighlightText';
 import type { ColumnKey } from '../hooks/useColumnManagement';
 import { computeRowColorCoding } from '../utils/colorCoding';
@@ -37,6 +38,8 @@ export interface LogTableRowProps {
     onMouseDown?: (index: number, e: MouseEvent) => void;
     /** Context menu handler */
     onContextMenu?: (e: MouseEvent) => void;
+    /** SECS message click handler */
+    onSECSClick?: (entry: LogEntry) => void;
 }
 
 // Column ID mapping
@@ -52,7 +55,11 @@ const COL_ID_MAP: Record<string, string> = {
     source: 'src',
     dest: 'dst',
     currLoc: 'loc',
-    result: 'res'
+    result: 'res',
+    direction: 'dir',
+    streamFunction: 'sf',
+    systemByte: 'sb',
+    messageBody: 'mb'
 };
 
 /**
@@ -79,6 +86,10 @@ function entryMatchesHighlight(
         getTRSFieldValue(entry, 'dest'),
         getTRSFieldValue(entry, 'currLoc'),
         getTRSFieldValue(entry, 'result'),
+        getSECSFieldValue(entry, 'direction'),
+        getSECSFieldValue(entry, 'streamFunction'),
+        getSECSFieldValue(entry, 'systemByte'),
+        getSECSFieldValue(entry, 'messageBody'),
     ];
 
     if (useRegex) {
@@ -114,10 +125,17 @@ export const LogTableRow = memo(function LogTableRow({
     rowHeight = 28,
     colorSettings,
     onMouseDown,
-    onContextMenu
+    onContextMenu,
+    onSECSClick
 }: LogTableRowProps) {
     const handleMouseDown = (e: MouseEvent) => {
         onMouseDown?.(index, e);
+    };
+
+    const handleRowClick = () => {
+        if (entry.deviceId === 'SECS' && onSECSClick) {
+            onSECSClick(entry);
+        }
     };
 
     // Compute color coding
@@ -151,6 +169,7 @@ export const LogTableRow = memo(function LogTableRow({
             className={classNames.join(' ')}
             style={styles}
             onMouseDown={handleMouseDown}
+            onClick={handleRowClick}
             onContextMenu={onContextMenu}
             data-index={index}
             data-testid={`log-row-${index}`}
@@ -231,6 +250,22 @@ export const LogTableRow = memo(function LogTableRow({
                     case 'currLoc':
                     case 'result': {
                         const value = getTRSFieldValue(entry, colKey);
+                        return (
+                            <div key={colKey} className="log-col" style={{ width }}>
+                                <HighlightText
+                                    text={value}
+                                    query={highlightQuery}
+                                    useRegex={searchRegex}
+                                    caseSensitive={searchCaseSensitive}
+                                />
+                            </div>
+                        );
+                    }
+                    case 'direction':
+                    case 'streamFunction':
+                    case 'systemByte':
+                    case 'messageBody': {
+                        const value = getSECSFieldValue(entry, colKey);
                         return (
                             <div key={colKey} className="log-col" style={{ width }}>
                                 <HighlightText

@@ -1,0 +1,298 @@
+/**
+ * SECS Message Dialog Styles
+ *
+ * Dark-theme dialog for viewing parsed SECS-II message details.
+ */
+.secs-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1100;
+}
+
+.secs-dialog {
+    background: var(--surface-1, #161b22);
+    border: 1px solid var(--border-color, #30363d);
+    border-radius: 10px;
+    min-width: 520px;
+    max-width: 780px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.secs-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border-color, #30363d);
+    background: var(--surface-2, #0d1117);
+    flex-shrink: 0;
+}
+
+.secs-dialog-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary, #e6edf3);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.secs-direction-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.secs-direction-send {
+    background: rgba(63, 185, 80, 0.2);
+    color: #3fb950;
+    border: 1px solid rgba(63, 185, 80, 0.4);
+}
+
+.secs-direction-recv {
+    background: rgba(88, 166, 255, 0.2);
+    color: #58a6ff;
+    border: 1px solid rgba(88, 166, 255, 0.4);
+}
+
+.secs-dialog-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted, #8b949e);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background 0.15s;
+}
+
+.secs-dialog-close:hover {
+    color: var(--text-primary, #e6edf3);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.secs-dialog-body {
+    padding: 16px 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* Field Grid */
+.secs-field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.secs-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px 10px;
+    background: rgba(33, 38, 45, 0.6);
+    border-radius: 6px;
+    border: 1px solid rgba(48, 54, 61, 0.5);
+}
+
+.secs-field-full {
+    grid-column: 1 / -1;
+}
+
+.secs-field-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted, #8b949e);
+}
+
+.secs-field-value {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary, #e6edf3);
+    font-family: var(--font-mono, 'SF Mono', 'Fira Code', monospace);
+    word-break: break-all;
+}
+
+/* Body Section */
+.secs-body-section {
+    border-top: 1px solid var(--border-color, #30363d);
+    padding-top: 14px;
+}
+
+.secs-body-title {
+    margin: 0 0 10px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary, #c9d1d9);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* SML Tree Container */
+.secs-tree-container {
+    background: rgba(13, 17, 23, 0.6);
+    border: 1px solid rgba(48, 54, 61, 0.5);
+    border-radius: 6px;
+    padding: 10px 8px;
+    max-height: 400px;
+    overflow-y: auto;
+    font-family: var(--font-mono, 'SF Mono', 'Fira Code', monospace);
+    font-size: 12px;
+}
+
+.secs-tree-item {
+    margin-bottom: 2px;
+}
+
+.secs-tree-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: background 0.1s;
+}
+
+.secs-tree-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.secs-type-badge {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    min-width: 28px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.secs-type-l {
+    background: rgba(163, 113, 247, 0.25);
+    color: #a371f7;
+    border: 1px solid rgba(163, 113, 247, 0.35);
+}
+
+.secs-type-u1 {
+    background: rgba(88, 166, 255, 0.2);
+    color: #58a6ff;
+    border: 1px solid rgba(88, 166, 255, 0.3);
+}
+
+.secs-type-u2 {
+    background: rgba(88, 166, 255, 0.2);
+    color: #58a6ff;
+    border: 1px solid rgba(88, 166, 255, 0.3);
+}
+
+.secs-type-u4 {
+    background: rgba(88, 166, 255, 0.2);
+    color: #58a6ff;
+    border: 1px solid rgba(88, 166, 255, 0.3);
+}
+
+.secs-type-i1 {
+    background: rgba(210, 168, 34, 0.2);
+    color: #d2a822;
+    border: 1px solid rgba(210, 168, 34, 0.3);
+}
+
+.secs-type-i2 {
+    background: rgba(210, 168, 34, 0.2);
+    color: #d2a822;
+    border: 1px solid rgba(210, 168, 34, 0.3);
+}
+
+.secs-type-i4 {
+    background: rgba(210, 168, 34, 0.2);
+    color: #d2a822;
+    border: 1px solid rgba(210, 168, 34, 0.3);
+}
+
+.secs-type-f4 {
+    background: rgba(240, 136, 62, 0.2);
+    color: #f0883e;
+    border: 1px solid rgba(240, 136, 62, 0.3);
+}
+
+.secs-type-f8 {
+    background: rgba(240, 136, 62, 0.2);
+    color: #f0883e;
+    border: 1px solid rgba(240, 136, 62, 0.3);
+}
+
+.secs-type-a {
+    background: rgba(63, 185, 80, 0.2);
+    color: #3fb950;
+    border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.secs-type-boolean {
+    background: rgba(77, 182, 226, 0.2);
+    color: #4db6e2;
+    border: 1px solid rgba(77, 182, 226, 0.3);
+}
+
+.secs-tree-name {
+    color: #c9d1d9;
+    font-weight: 500;
+}
+
+.secs-tree-count {
+    color: #8b949e;
+    font-size: 10px;
+}
+
+.secs-tree-value {
+    color: #58a6ff;
+    font-weight: 500;
+    margin-left: 4px;
+}
+
+.secs-tree-value::before {
+    content: '';
+}
+
+.secs-tree-children {
+    margin-top: 1px;
+}
+
+/* Scrollbar styling */
+.secs-tree-container::-webkit-scrollbar,
+.secs-dialog-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.secs-tree-container::-webkit-scrollbar-track,
+.secs-dialog-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.secs-tree-container::-webkit-scrollbar-thumb,
+.secs-dialog-body::-webkit-scrollbar-thumb {
+    background: rgba(139, 148, 158, 0.3);
+    border-radius: 3px;
+}
+
+.secs-tree-container::-webkit-scrollbar-thumb:hover,
+.secs-dialog-body::-webkit-scrollbar-thumb:hover {
+    background: rgba(139, 148, 158, 0.5);
+}

@@ -1,13 +1,13 @@
 # CIM Visualizer — Developer + Agent Guide
 
-Last updated: 2026-03-08
+Last updated: 2026-07-02
 
 ## Project Summary
 
 CIM Visualizer is a Chrome-targeted web application for PLC/AMHS log analysis.
 
 Core capabilities:
-- Multi-format log parsing (PLC debug, MCS/AMHS, CSV, tab, STK XLSX, TRS)
+- Multi-format log parsing (PLC debug, MCS/AMHS, CSV, tab, STK XLSX, TRS, SECS-II)
 - Large-file upload/parsing workflows (chunked upload, DuckDB path)
 - Log table with filtering/sorting/selection
 - Waveform/timing diagram rendering
@@ -88,6 +88,17 @@ For the backend XML config location caveat during `go run`, see [backend/README.
 - Parse sessions: `/api/parse/:sessionId/*`
 - Map/rules: `/api/map/*`
 - Validation config: `/api/config/validation-rules`
+
+## SECS-II Log Format
+
+SECS-II (SEMI E5) is a semiconductor equipment communication protocol. The parsed log format uses:
+- **Header**: `@timestamp^level^SECS_II^SEND` or `^RECV`
+- **Transaction**: `TransactionTime : ... SxFy [W] ... [SystemByte = N]`
+- **Body**: SML variant with comma-separated counts (`<L,3>`) and `[Label]` annotations
+- **Storage**: JSON blob in `LogEntry.value` with full message tree
+- **Parser**: `secs_log` (position 8 in registry, before `generic_log`)
+- **Frontend**: `SECS_COLUMNS` in `LogTable.tsx`, custom `drawSECSSignal()` in waveform
+- **Waveform**: Two lanes — SECS_SEND (▲ blue markers) and SECS_RECV (▼ green markers), bracket connectors for SystemByte-matched transactions, click→dialog for SML body
 
 See [API.md](./API.md) for the current endpoint table.
 

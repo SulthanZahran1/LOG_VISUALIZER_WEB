@@ -22,6 +22,8 @@ import {
 import { sortedBookmarks, type Bookmark } from '../../stores/bookmarkStore';
 import type { LogEntry } from '../../models/types';
 import { formatTimestamp, getTickIntervals, findFirstIndexAtTime } from '../../utils/TimeAxisUtils';
+import { parseSECSValue } from '../../utils/secsLog';
+import { SECSMessageDialog } from '../secs/SECSMessageDialog';
 
 const ROW_HEIGHT = 60;
 const SIGNAL_LABEL_GUTTER_WIDTH = 170;
@@ -120,6 +122,9 @@ export function WaveformCanvas() {
     // Scroll position for virtualization
     const scrollTopRef = useRef(0);
     const containerHeightRef = useRef(0);
+
+    // SECS message dialog state
+    const [secsDialogEntry, setSecsDialogEntry] = useState<LogEntry | null>(null);
 
     // Resize Observer to update viewportWidth
     useEffect(() => {
@@ -247,7 +252,9 @@ export function WaveformCanvas() {
 
             if (visibleEntries.length > 0) {
                 const firstEntry = visibleEntries[0];
-                if (firstEntry.signalType === 'boolean' || typeof firstEntry.value === 'boolean') {
+                if (key.startsWith('SECS::')) {
+                    drawSECSSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, plotWidth, beforeBoundary);
+                } else if (firstEntry.signalType === 'boolean' || typeof firstEntry.value === 'boolean') {
                     drawBooleanSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, plotWidth, beforeBoundary);
                 } else {
                     drawStateSignal(ctx, visibleEntries, range.start, pixelsPerMs, plotHeight, plotWidth, rowIndex, beforeBoundary);
@@ -536,6 +543,35 @@ export function WaveformCanvas() {
                 const clickTime = range.start + ((plotX / plotWidth) * rangeDuration);
                 jumpToTime(clickTime);
             }
+            return;
+        }
+
+        // Check for SECS marker click
+        if (y >= AXIS_HEIGHT) {
+            const rowIndex = Math.floor((y - AXIS_HEIGHT) / ROW_HEIGHT);
+            const signalKey = selectedSignals.value[rowIndex];
+            if (signalKey && signalKey.startsWith('SECS::')) {
+                const range = viewRange.value;
+                if (!range) return;
+                const rangeDuration = Math.max(1, range.end - range.start);
+                const plotX = x - plotStartX;
+                const clickTime = range.start + ((plotX / plotWidth) * rangeDuration);
+                const entries = waveformEntries.value[signalKey] || [];
+
+                // Find the nearest SECS entry
+                let nearestEntry: LogEntry | null = null;
+                let nearestDiff = 50; // ms threshold
+                for (const entry of entries) {
+                    const diff = Math.abs(getTimestampMs(entry) - clickTime);
+                    if (diff < nearestDiff) {
+                        nearestDiff = diff;
+                        nearestEntry = entry;
+                    }
+                }
+                if (nearestEntry) {
+                    setSecsDialogEntry(nearestEntry);
+                }
+            }
         }
     };
 
@@ -691,6 +727,14 @@ export function WaveformCanvas() {
                     to { transform: rotate(360deg); }
                 }
             `}</style>
+            {/* SECS Message Dialog */}
+            {secsDialogEntry && (
+                <SECSMessageDialog
+                    isOpen={secsDialogEntry !== null}
+                    onClose={() => setSecsDialogEntry(null)}
+                    entry={secsDialogEntry}
+                />
+            )}
         </div>
     );
 }
@@ -1132,4 +1176,194 @@ function drawSignalLabels(
     ctx.moveTo(gutterWidth + 0.5, 0);
     ctx.lineTo(gutterWidth + 0.5, AXIS_HEIGHT + signals.length * ROW_HEIGHT);
     ctx.stroke();
+}
+
+/**
+ * SECS-specific waveform rendering with 2-lane display (SEND / RECV).
+ * 
+ * - Two virtual lanes: SECS_SEND (top half) and SECS_RECV (bottom half)
+ * - Colored ▲ markers at message timestamps with stream/function labels
+ * - Bracket connectors between paired SEND→RECV messages (matched by systemByte)
+ * - Transaction time labels on the brackets
+ */
+const SECS_COLORS = {
+    send: '#3fb950',
+    sendFill: 'rgba(63, 185, 80, 0.3)',
+    recv: '#58a6ff',
+    recvFill: 'rgba(88, 166, 255, 0.3)',
+    bracket: 'rgba(163, 113, 247, 0.6)',
+    bracketFill: 'rgba(163, 113, 247, 0.15)',
+    label: '#e6edf3',
+    muted: '#8b949e',
+    bg: 'rgba(13, 17, 23, 0.4)',
+};
+
+function drawSECSSignal(
+    ctx: CanvasRenderingContext2D,
+    entries: LogEntry[],
+    startTime: number,
+    pixelsPerMs: number,
+    height: number,
+    width: number,
+    _beforeBoundary?: LogEntry
+) {
+    if (entries.length === 0) return;
+
+    // Draw lane backgrounds
+    const laneMid = height / 2;
+    const lanePadding = 4;
+
+    // SEND lane (top half)
+    ctx.fillStyle = SECS_COLORS.sendFill;
+    ctx.fillRect(0, lanePadding, width, laneMid - lanePadding * 2);
+
+    // RECV lane (bottom half)
+    ctx.fillStyle = SECS_COLORS.recvFill;
+    ctx.fillRect(0, laneMid + lanePadding, width, laneMid - lanePadding * 2);
+
+    // Lane divider
+    ctx.strokeStyle = 'rgba(139, 148, 158, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, laneMid);
+    ctx.lineTo(width, laneMid);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Lane labels
+    ctx.font = '9px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    ctx.fillStyle = SECS_COLORS.muted;
+    ctx.fillText('SEND', 6, lanePadding + 2);
+    ctx.fillText('RECV', 6, laneMid + lanePadding + 2);
+
+    // Collect marker positions per entry
+    type SECSMarker = {
+        entry: LogEntry;
+        x: number;
+        sfCode: string;
+        category: string;
+        systemByte: number;
+    };
+    const markers: SECSMarker[] = [];
+
+    for (const entry of entries) {
+        const ts = getTimestampMs(entry);
+        const x = (ts - startTime) * pixelsPerMs;
+        if (x < -20 || x > width + 20) continue;
+
+        const msg = parseSECSValue(entry.value);
+        markers.push({
+            entry,
+            x,
+            sfCode: msg.streamFunction || entry.signalName,
+            category: msg.direction || entry.category || '',
+            systemByte: msg.systemByte || 0,
+        });
+    }
+
+    // Draw bracket connectors between matched SEND→RECV pairs by systemByte
+    const pairs = new Map<number, { send: SECSMarker | null; recv: SECSMarker | null }>();
+    for (const m of markers) {
+        const cat = m.category.toUpperCase();
+        if (cat === 'SEND') {
+            if (!pairs.has(m.systemByte)) pairs.set(m.systemByte, { send: null, recv: null });
+            pairs.get(m.systemByte)!.send = m;
+        } else if (cat === 'RECV') {
+            if (!pairs.has(m.systemByte)) pairs.set(m.systemByte, { send: null, recv: null });
+            pairs.get(m.systemByte)!.recv = m;
+        }
+    }
+
+    for (const [, pair] of pairs) {
+        if (!pair.send || !pair.recv) continue;
+        const sendX = pair.send.x;
+        const recvX = pair.recv.x;
+
+        // Only draw bracket if messages are close enough (within 80% of viewport)
+        const maxBracketWidth = width * 0.8;
+        if (Math.abs(recvX - sendX) > maxBracketWidth) continue;
+
+        const bracketY1 = lanePadding + 2;
+        const bracketY2 = laneMid + lanePadding + 2;
+        const bracketMidY = (bracketY1 + bracketY2) / 2;
+
+        ctx.strokeStyle = SECS_COLORS.bracket;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sendX, bracketY1);
+        ctx.lineTo(sendX, bracketMidY);
+        ctx.lineTo(recvX, bracketMidY);
+        ctx.lineTo(recvX, bracketY1);
+        ctx.stroke();
+
+        // Draw bracket fill
+        ctx.fillStyle = SECS_COLORS.bracketFill;
+        const leftX = Math.min(sendX, recvX);
+        const rightX = Math.max(sendX, recvX);
+        ctx.fillRect(leftX, bracketMidY - 1, rightX - leftX, 2);
+
+        // Transaction time label
+        const durationMs = Math.abs(getTimestampMs(pair.recv.entry) - getTimestampMs(pair.send.entry));
+        const label = `${durationMs.toFixed(1)}ms`;
+        ctx.font = '9px var(--font-mono, monospace)';
+        const labelWidth = ctx.measureText(label).width + 6;
+        const labelX = (sendX + recvX) / 2 - labelWidth / 2;
+        const labelY = bracketMidY - 10;
+
+        ctx.fillStyle = 'rgba(13, 17, 23, 0.85)';
+        ctx.beginPath();
+        ctx.roundRect(labelX - 2, labelY, labelWidth + 4, 14, 3);
+        ctx.fill();
+
+        ctx.fillStyle = SECS_COLORS.muted;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, labelX + labelWidth / 2, labelY + 7);
+    }
+
+    // Draw markers
+    for (const m of markers) {
+        const isSend = m.category.toUpperCase() === 'SEND';
+        const markerY = isSend ? lanePadding + 6 : laneMid + lanePadding + 6;
+        const markerColor = isSend ? SECS_COLORS.send : SECS_COLORS.recv;
+
+        // Draw ▲ marker
+        ctx.fillStyle = markerColor;
+        ctx.beginPath();
+        const markerSize = 8;
+        ctx.moveTo(m.x, markerY);
+        ctx.lineTo(m.x - markerSize / 2, markerY + markerSize);
+        ctx.lineTo(m.x + markerSize / 2, markerY + markerSize);
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw marker outline
+        ctx.strokeStyle = 'rgba(13, 17, 23, 0.7)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(m.x, markerY);
+        ctx.lineTo(m.x - markerSize / 2, markerY + markerSize);
+        ctx.lineTo(m.x + markerSize / 2, markerY + markerSize);
+        ctx.closePath();
+        ctx.stroke();
+
+        // Stream/Function label above marker
+        ctx.fillStyle = SECS_COLORS.label;
+        ctx.font = 'bold 9px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(m.sfCode, m.x, markerY - 2);
+
+        // System byte label below marker
+        ctx.fillStyle = SECS_COLORS.muted;
+        ctx.font = '8px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textBaseline = 'top';
+        if (m.systemByte > 0) {
+            ctx.fillText(`#${m.systemByte}`, m.x, markerY + markerSize + 2);
+        }
+    }
 }

@@ -60,6 +60,8 @@ export interface LogTableViewportProps {
     onRowContextMenu?: (index: number, e: MouseEvent) => void;
     /** Handler for scroll */
     onScroll?: (e: Event) => void;
+    /** Handler for SECS message click */
+    onSECSClick?: (entry: LogEntry) => void;
 }
 
 const DEFAULT_ROW_HEIGHT = 28;
@@ -91,7 +93,8 @@ export const LogTableViewport = forwardRef<HTMLDivElement, LogTableViewportProps
         colorSettings,
         onRowMouseDown,
         onRowContextMenu,
-        onScroll
+        onScroll,
+        onSECSClick
     }, ref) {
         const handleScroll = useCallback((e: Event) => {
             onScroll?.(e);
@@ -163,6 +166,7 @@ export const LogTableViewport = forwardRef<HTMLDivElement, LogTableViewportProps
                                     colorSettings={colorSettings}
                                     onMouseDown={onRowMouseDown}
                                     onContextMenu={onRowContextMenu ? (e) => onRowContextMenu(actualIndex, e) : undefined}
+                                    onSECSClick={onSECSClick}
                                 />
                             );
                         })}

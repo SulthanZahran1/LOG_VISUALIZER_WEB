@@ -8,6 +8,7 @@ import { streamParseEntries, getParseCategories, getParseSignals } from '../../a
 import { deleteSession } from '../../utils/persistence';
 import type { LogEntry, ParseSession } from '../../models/types';
 import { isTransferParser } from '../../utils/trsLog';
+import { isSECSParser } from '../../utils/secsLog';
 import type { ViewType, FetchFilters } from './types';
 // saveSession is used via dynamic import in finalizeSessionLoad
 import {
@@ -30,6 +31,10 @@ function isGenericLogSession(session: ParseSession | null | undefined): boolean 
 
 function isTRSLogSession(session: ParseSession | null | undefined): boolean {
     return isTransferParser((session as ParseSession & { parserName?: string } | null | undefined)?.parserName);
+}
+
+function isSECSLogSession(session: ParseSession | null | undefined): boolean {
+    return isSECSParser((session as ParseSession & { parserName?: string } | null | undefined)?.parserName);
 }
 
 // Track last initialized session for range reset (managed by effects)
@@ -234,8 +239,8 @@ async function handleSessionComplete(session: ParseSession): Promise<void> {
                 streamProgress.value = 100;
                 totalEntries.value = total;
                 finalizeSessionLoad(session);
-                // Auto-open log table for generic and TRS logs
-                if (isGenericLogSession(session) || isTRSLogSession(session)) {
+                // Auto-open log table for generic, TRS, and SECS logs
+                if (isGenericLogSession(session) || isTRSLogSession(session) || isSECSLogSession(session)) {
                     openView('log-table');
                 }
             },
@@ -249,14 +254,14 @@ async function handleSessionComplete(session: ParseSession): Promise<void> {
 
     finalizeSessionLoad(session);
 
-    // Auto-open log table for generic and TRS logs
-    if (isGenericLogSession(session) || isTRSLogSession(session)) {
+    // Auto-open log table for generic, TRS, and SECS logs
+    if (isGenericLogSession(session) || isTRSLogSession(session) || isSECSLogSession(session)) {
         openView('log-table');
     }
 }
 
 async function finalizeSessionLoad(session: ParseSession): Promise<void> {
-    if (isGenericLogSession(session) || isTRSLogSession(session)) {
+    if (isGenericLogSession(session) || isTRSLogSession(session) || isSECSLogSession(session)) {
         return;
     }
 

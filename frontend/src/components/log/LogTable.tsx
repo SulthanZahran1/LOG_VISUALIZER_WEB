@@ -35,8 +35,10 @@ import type { SortColumnKey } from '../../stores/log/types';
 import { formatDateTime } from '../../utils/TimeAxisUtils';
 import type { ParseSession } from '../../models/types';
 import { isTransferParser } from '../../utils/trsLog';
+import { isSECSParser, parseSECSValue } from '../../utils/secsLog';
 import { colorSettings } from '../../stores/colorCodingStore';
 import { SignalSidebar } from '../waveform/SignalSidebar';
+import { SECSMessageDialog } from '../secs/SECSMessageDialog';
 
 // Components
 import { LogTableToolbar } from './components/LogTableToolbar';
@@ -84,12 +86,26 @@ const TRS_COLUMNS: ColumnDef[] = [
 
 const TRS_COLUMN_ORDER: ColumnKey[] = ['timestamp', 'deviceId', 'cmdID' as ColumnKey, 'status' as ColumnKey, 'source' as ColumnKey, 'dest' as ColumnKey, 'currLoc' as ColumnKey, 'result' as ColumnKey];
 
+const SECS_COLUMNS: ColumnDef[] = [
+    { key: 'timestamp', id: 'ts', label: 'TIMESTAMP', sortable: true, resizable: true },
+    { key: 'direction' as ColumnKey, id: 'dir', label: 'DIRECTION', sortable: true, resizable: true },
+    { key: 'streamFunction' as ColumnKey, id: 'sf', label: 'S/F', sortable: true, resizable: true },
+    { key: 'systemByte' as ColumnKey, id: 'sb', label: 'SYSTEM BYTE', sortable: true, resizable: true },
+    { key: 'value', id: 'val', label: 'MESSAGE', sortable: false, resizable: true },
+];
+
+const SECS_COLUMN_ORDER: ColumnKey[] = ['timestamp', 'direction' as ColumnKey, 'streamFunction' as ColumnKey, 'systemByte' as ColumnKey, 'value'];
+
 function isGenericLogSession(session: ParseSession | null | undefined): boolean {
     return (session as any)?.parserName === 'generic_log';
 }
 
 function isTRSLogSession(session: ParseSession | null | undefined): boolean {
     return isTransferParser((session as any)?.parserName);
+}
+
+function isSECS2LogSession(session: ParseSession | null | undefined): boolean {
+    return isSECSParser((session as any)?.parserName);
 }
 
 /** Compute scroll scale factor when virtual height exceeds browser max */
@@ -410,17 +426,21 @@ export function LogTable() {
 
     const isGenericLog = isGenericLogSession(currentSession.value);
     const isTRSLog = isTRSLogSession(currentSession.value);
+    const isSECSLog = isSECS2LogSession(currentSession.value);
+    const [selectedSECSEntry, setSelectedSECSEntry] = useState<LogEntry | null>(null);
 
     // ===== HOOKS =====
 
     // Column management
     const { state: columnState, actions: columnActions } = useColumnManagement(
-        isGenericLog ? GENERIC_COLUMN_ORDER : isTRSLog ? TRS_COLUMN_ORDER : DEFAULT_COLUMN_ORDER,
+        isGenericLog ? GENERIC_COLUMN_ORDER : isTRSLog ? TRS_COLUMN_ORDER : isSECSLog ? SECS_COLUMN_ORDER : DEFAULT_COLUMN_ORDER,
         isGenericLog 
             ? { ts: 220, dev: 120, sig: 100, val: 500 } 
             : isTRSLog 
                 ? { ts: 180, dev: 120, cmd: 100, status: 120, src: 150, dst: 150, loc: 150, res: 100 }
-                : { ts: 220, dev: 180, sig: 250, cat: 120, val: 150, type: 100 }
+                : isSECSLog
+                    ? { ts: 200, dir: 100, sf: 100, sb: 130, val: 500 }
+                    : { ts: 220, dev: 180, sig: 250, cat: 120, val: 150, type: 100 }
     );
 
     // Row selection
@@ -731,7 +751,7 @@ export function LogTable() {
                 selectionCount={selectionState.selectionCount}
                 jumpToTimeOpen={jumpToTimeOpen.value}
                 onToggleJumpToTime={() => jumpToTimeOpen.value = !jumpToTimeOpen.value}
-                onOpenWaveform={isGenericLog || isTRSLog ? undefined : () => openView('waveform')}
+                onOpenWaveform={isGenericLog || isTRSLog || isSECSLog ? undefined : () => openView('waveform')}
                 onCopy={handleCopy}
                 onReload={handleReload}
             />
@@ -743,7 +763,7 @@ export function LogTable() {
                     {/* Header */}
                     <div className="log-table-header">
                         {columnState.columnOrder.map((colKey) => {
-                            const columns = isGenericLog ? GENERIC_COLUMNS : isTRSLog ? TRS_COLUMNS : DEFAULT_COLUMNS;
+                            const columns = isGenericLog ? GENERIC_COLUMNS : isTRSLog ? TRS_COLUMNS : isSECSLog ? SECS_COLUMNS : DEFAULT_COLUMNS;
                             const colDef = columns.find(c => c.key === colKey)!;
                             const isDragOver = columnActions.isDragOver(colKey);
                             const isDraggingCol = columnActions.isDragging(colKey);
@@ -844,6 +864,7 @@ export function LogTable() {
                         colorSettings={colorSettings.value}
                         onRowMouseDown={handleRowMouseDown}
                         onRowContextMenu={handleRowContextMenu}
+                        onSECSClick={(entry) => setSelectedSECSEntry(entry)}
                         onScroll={handleScroll}
                     />
 
@@ -858,8 +879,15 @@ export function LogTable() {
                     {/* Context menu */}
                     {contextMenu.value.visible && (
                         <div className="context-menu" style={{ top: contextMenu.value.y, left: contextMenu.value.x }}>
-                            {!isGenericLog && <div className="menu-item" onClick={handleAddToWaveform}>Add to Waveform</div>}
-                            {!isGenericLog && <div className="menu-item" onClick={handleOpenWaveformAtTime}>Open Waveform at This Time</div>}
+                            {!isGenericLog && !isSECSLog && <div className="menu-item" onClick={handleAddToWaveform}>Add to Waveform</div>}
+                            {!isGenericLog && !isSECSLog && <div className="menu-item" onClick={handleOpenWaveformAtTime}>Open Waveform at This Time</div>}
+                            {isSECSLog && (
+                                <div className="menu-item" onClick={() => {
+                                    const entry = getEntryForRowIndex(contextMenu.value.rowIndex);
+                                    if (entry) setSelectedSECSEntry(entry);
+                                    contextMenu.value = { ...contextMenu.value, visible: false, rowIndex: null };
+                                }}>View SECS Message</div>
+                            )}
                             <div className="menu-item" onClick={handleOpenMapAtTime}>Open Map at This Time</div>
                             <div className="menu-item" onClick={handleCopy}>Copy Selected Rows</div>
                             <div className="menu-item" onClick={() => { selectionActions.clearSelection(); contextMenu.value = { ...contextMenu.value, visible: false, rowIndex: null }; }}>Clear Selection</div>
@@ -867,6 +895,14 @@ export function LogTable() {
                     )}
                 </div>
             </div>
+            {/* SECS Message Dialog */}
+            {isSECSLog && (
+                <SECSMessageDialog
+                    isOpen={selectedSECSEntry !== null}
+                    onClose={() => setSelectedSECSEntry(null)}
+                    entry={selectedSECSEntry}
+                />
+            )}
         </div>
     );
 }

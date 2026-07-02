@@ -24,6 +24,7 @@ func NewRegistry() *Registry {
 			NewMCSLogParser(),
 			NewObservableLogParser(),
 			NewCSVSignalParser(),
+			NewSECSLogParser(),
 			NewGenericLogParser(),
 			NewTRSLogParser(),
 		},

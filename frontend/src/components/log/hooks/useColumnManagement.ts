@@ -6,7 +6,7 @@
 import { useSignal } from '@preact/signals';
 import { useCallback } from 'preact/hooks';
 
-export type ColumnKey = 'timestamp' | 'deviceId' | 'signalName' | 'category' | 'value' | 'type' | 'cmdID' | 'status' | 'source' | 'dest' | 'currLoc' | 'result';
+export type ColumnKey = 'timestamp' | 'deviceId' | 'signalName' | 'category' | 'value' | 'type' | 'cmdID' | 'status' | 'source' | 'dest' | 'currLoc' | 'result' | 'direction' | 'streamFunction' | 'systemByte' | 'messageBody';
 
 export interface ColumnDef {
     key: ColumnKey;

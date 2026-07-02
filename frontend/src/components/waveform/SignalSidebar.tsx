@@ -32,6 +32,10 @@ export function SignalSidebar() {
         signalKey: null
     });
 
+    // Drag-and-drop lane reordering state
+    const [dragIndex, setDragIndex] = useState<number | null>(null);
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
     // Signal types from the backend (covers all signals, not just the current page)
     const signalTypes = allSignalTypes.value;
 
@@ -138,6 +142,53 @@ export function SignalSidebar() {
 
     const handleSignalCheckbox = (device: string, signal: string) => {
         toggleSignal(device, signal);
+    };
+
+    // ======================
+    // Drag-and-drop lane reordering
+    // ======================
+
+    function reorderSelectedSignals(fromIndex: number, toIndex: number): void {
+        const arr = [...selectedSignals.value];
+        const [moved] = arr.splice(fromIndex, 1);
+        arr.splice(toIndex, 0, moved);
+        selectedSignals.value = arr;
+    }
+
+    const handleLaneDragStart = (e: DragEvent, index: number) => {
+        setDragIndex(index);
+        e.dataTransfer!.effectAllowed = 'move';
+        e.dataTransfer!.setData('text/plain', String(index));
+        // Add a slight delay for the dragging class to show
+        (e.target as HTMLElement)?.classList.add('dragging');
+    };
+
+    const handleLaneDragOver = (e: DragEvent, index: number) => {
+        e.preventDefault();
+        e.dataTransfer!.dropEffect = 'move';
+        if (dragIndex !== null && dragIndex !== index) {
+            setDragOverIndex(index);
+        }
+    };
+
+    const handleLaneDragLeave = (e: DragEvent, index: number) => {
+        if (dragOverIndex === index) {
+            setDragOverIndex(null);
+        }
+    };
+
+    const handleLaneDrop = (e: DragEvent, index: number) => {
+        e.preventDefault();
+        if (dragIndex !== null && dragIndex !== index) {
+            reorderSelectedSignals(dragIndex, index);
+        }
+        setDragIndex(null);
+        setDragOverIndex(null);
+    };
+
+    const handleLaneDragEnd = () => {
+        setDragIndex(null);
+        setDragOverIndex(null);
     };
 
     const handleContextMenu = (e: MouseEvent, signalKey: string) => {
@@ -270,6 +321,46 @@ export function SignalSidebar() {
                     </label>
                 </div>
             </div>
+            {selectedSignals.value.length > 0 && (
+                <div class="selected-lanes-section">
+                    <div class="lanes-header">
+                        <span>Signal Lanes</span>
+                        <span class="lane-count">{selectedSignals.value.length}</span>
+                    </div>
+                    <div class="lanes-list">
+                        {selectedSignals.value.map((key, index) => {
+                            const [device, signal] = key.split('::');
+                            const isDragSrc = dragIndex === index;
+                            const isDragTgt = dragOverIndex === index;
+                            return (
+                                <div
+                                    class={`lane-item${isDragSrc ? ' dragging' : ''}${isDragTgt ? ' drag-over' : ''}`}
+                                    key={key}
+                                    draggable
+                                    onDragStart={(e) => handleLaneDragStart(e, index)}
+                                    onDragOver={(e) => handleLaneDragOver(e, index)}
+                                    onDragLeave={() => handleLaneDragLeave(index)}
+                                    onDrop={(e) => handleLaneDrop(e, index)}
+                                    onDragEnd={handleLaneDragEnd}
+                                >
+                                    <span class="drag-handle">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                            <circle cx="9" cy="5" r="1.5" />
+                                            <circle cx="15" cy="5" r="1.5" />
+                                            <circle cx="9" cy="12" r="1.5" />
+                                            <circle cx="15" cy="12" r="1.5" />
+                                            <circle cx="9" cy="19" r="1.5" />
+                                            <circle cx="15" cy="19" r="1.5" />
+                                        </svg>
+                                    </span>
+                                    <span class="lane-device" style={{ color: deviceColors.value.get(device) }}>{device}</span>
+                                    <span class="lane-signal-name">{signal}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
             <div class="signal-list">
                 {filteredDevices.length === 0 ? (
                     <div class="empty-state">
@@ -729,6 +820,90 @@ export function SignalSidebar() {
                     height: 1px;
                     background: var(--border-color);
                     margin: 4px 0;
+                }
+
+                /* Drag-and-drop lane reordering */
+                .selected-lanes-section {
+                    border-bottom: 1px solid var(--border-color);
+                    background: var(--bg-tertiary);
+                    flex-shrink: 0;
+                }
+
+                .lanes-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 8px 12px;
+                    font-size: 11px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    color: var(--text-muted);
+                    font-weight: 600;
+                    border-bottom: 1px solid var(--border-color);
+                }
+
+                .lane-count {
+                    background: var(--bg-primary);
+                    padding: 1px 6px;
+                    border-radius: 8px;
+                    font-size: 10px;
+                    color: var(--text-secondary);
+                }
+
+                .lanes-list {
+                    max-height: 180px;
+                    overflow-y: auto;
+                }
+
+                .lane-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 5px 12px;
+                    font-size: 12px;
+                    cursor: grab;
+                    user-select: none;
+                    transition: background var(--transition-fast);
+                    border-bottom: 1px solid transparent;
+                }
+
+                .lane-item:hover {
+                    background: var(--bg-hover);
+                }
+
+                .lane-item.dragging {
+                    opacity: 0.4;
+                }
+
+                .lane-item.drag-over {
+                    border-bottom-color: var(--primary-accent);
+                    background: rgba(77, 182, 226, 0.08);
+                }
+
+                .drag-handle {
+                    color: var(--text-muted);
+                    flex-shrink: 0;
+                    display: flex;
+                    align-items: center;
+                    opacity: 0.5;
+                    cursor: grab;
+                }
+
+                .lane-item:hover .drag-handle {
+                    opacity: 1;
+                }
+
+                .lane-device {
+                    font-weight: 500;
+                    flex-shrink: 0;
+                    font-size: 11px;
+                }
+
+                .lane-signal-name {
+                    color: var(--text-primary);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 }
             `}</style>
         </div>
