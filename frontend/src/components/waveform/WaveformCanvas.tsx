@@ -1304,7 +1304,6 @@ function drawSECSSignal(
         x: number;
         sfCode: string;
         category: string;
-        systemByte: number;
     };
     const markers: SECSMarker[] = [];
 
@@ -1319,7 +1318,6 @@ function drawSECSSignal(
             x,
             sfCode: msg.streamFunction || entry.signalName,
             category: msg.direction || entry.category || '',
-            systemByte: msg.systemByte || 0,
         });
     }
 
@@ -1350,19 +1348,16 @@ function drawSECSSignal(
         ctx.closePath();
         ctx.stroke();
 
-        // S/F code label above marker — green for SEND, blue for RECV
+        // S/F code label: SEND above marker, RECV below marker to avoid collisions
         ctx.fillStyle = isSend ? '#3fb950' : '#58a6ff';
         ctx.font = 'bold 9px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(m.sfCode, m.x, markerY - 2);
-
-        // System byte label below marker
-        ctx.fillStyle = SECS_COLORS.muted;
-        ctx.font = '8px -apple-system, BlinkMacSystemFont, sans-serif';
-        ctx.textBaseline = 'top';
-        if (m.systemByte > 0) {
-            ctx.fillText(`#${m.systemByte}`, m.x, markerY + markerSize + 2);
+        if (isSend) {
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(m.sfCode, m.x, markerY - 2);
+        } else {
+            ctx.textBaseline = 'top';
+            ctx.fillText(m.sfCode, m.x, markerY + markerSize + 2);
         }
     }
 }
