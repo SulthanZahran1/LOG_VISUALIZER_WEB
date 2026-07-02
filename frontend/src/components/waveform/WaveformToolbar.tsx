@@ -1,7 +1,9 @@
-import { useState } from 'preact/hooks';
+import { useState, useMemo, useEffect } from 'preact/hooks';
 import { hoverTime, zoomLevel, viewRange, viewportWidth, scrollOffset, jumpToTime, selectionRange, clearSelection, zoomToSelection } from '../../stores/waveformStore';
-import { currentSession } from '../../stores/logStore';
+import { currentSession, useServerSide } from '../../stores/logStore';
 import { formatTimestamp } from '../../utils/TimeAxisUtils';
+import { getTimeTree } from '../../api/client';
+import type { TimeTreeEntry } from '../../api/client';
 
 const ZOOM_PRESETS = [
     { label: '1s', duration: 1000 },
@@ -11,57 +13,88 @@ const ZOOM_PRESETS = [
     { label: '1hr', duration: 3600000 },
 ];
 
+type TimeTreeWithSeconds = Map<string, Map<number, Map<number, Map<number, number>>>>;
+
 export function WaveformToolbar() {
     const range = viewRange.value;
     const cursorTime = hoverTime.value;
     const session = currentSession.value;
     const hasData = session && session.status === 'complete' && session.startTime !== undefined;
 
-    // Jump to Time state
-    const [jumpInput, setJumpInput] = useState('');
-    const [jumpError, setJumpError] = useState(false);
+    // Jump to Time — cascading dropdowns (date → hour → minute → second)
+    const [serverTree, setServerTree] = useState<TimeTreeWithSeconds | null>(null);
+    const isServer = useServerSide.value;
 
-    /**
-     * Parse time string in format HH:MM:SS or HH:MM:SS.mmm to milliseconds
-     * Returns null if invalid
-     */
-    const parseTimeInput = (input: string): number | null => {
-        if (!session || session.startTime === undefined) return null;
+    // Build time tree with seconds granularity from API (server-side) or entries (client-side)
+    useEffect(() => {
+        if (!isServer || !session) return;
+        getTimeTree(session.id, {}).then(data => {
+            setServerTree(buildTimeTreeWithSecondsFromApi(data));
+        }).catch(err => console.error('Failed to fetch time tree:', err));
+    }, [isServer, session?.id]);
 
-        // Match HH:MM:SS or HH:MM:SS.mmm
-        const match = input.match(/^(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/);
-        if (!match) return null;
+    // For client-side, we don't have all entries in the toolbar, so use session start/end
+    // to build a minimal tree with all hours/minutes/seconds in range
+    const clientTree = useMemo<TimeTreeWithSeconds>(() => {
+        if (!session || session.startTime === undefined || session.endTime === undefined) return new Map();
+        return buildFullTimeTree(session.startTime, session.endTime);
+    }, [session?.startTime, session?.endTime]);
 
-        const hours = parseInt(match[1], 10);
-        const minutes = parseInt(match[2], 10);
-        const seconds = parseInt(match[3], 10);
-        const millis = match[4] ? parseInt(match[4].padEnd(3, '0'), 10) : 0;
+    const timeTree: TimeTreeWithSeconds = isServer ? (serverTree ?? new Map<string, Map<number, Map<number, Map<number, number>>>>()) : clientTree;
+    const dates = useMemo((): string[] => Array.from(timeTree.keys()).sort(), [timeTree]);
 
-        if (hours > 23 || minutes > 59 || seconds > 59) return null;
+    const [selectedDate, setSelectedDate] = useState('');
+    const [selectedHour, setSelectedHour] = useState('');
+    const [selectedMinute, setSelectedMinute] = useState('');
+    const [selectedSecond, setSelectedSecond] = useState('');
 
-        // Get the date from session startTime and construct target time
-        const baseDate = new Date(session.startTime);
-        const targetDate = new Date(baseDate);
-        targetDate.setUTCHours(hours, minutes, seconds, millis);
+    // Reset children when parent changes
+    useEffect(() => { setSelectedHour(''); setSelectedMinute(''); setSelectedSecond(''); }, [selectedDate]);
+    useEffect(() => { setSelectedMinute(''); setSelectedSecond(''); }, [selectedHour]);
+    useEffect(() => { setSelectedSecond(''); }, [selectedMinute]);
 
-        return targetDate.getTime();
-    };
+    const hours = useMemo((): number[] => {
+        if (!selectedDate || !timeTree.has(selectedDate)) return [];
+        return (Array.from(timeTree.get(selectedDate)!.keys()) as number[]).sort((a, b) => a - b);
+    }, [selectedDate, timeTree]);
+
+    const minutes = useMemo((): number[] => {
+        if (!selectedDate || selectedHour === '' || !timeTree.has(selectedDate)) return [];
+        const h = Number(selectedHour);
+        const hourMap = timeTree.get(selectedDate)!;
+        if (!hourMap.has(h)) return [];
+        return (Array.from(hourMap.get(h)!.keys()) as number[]).sort((a, b) => a - b);
+    }, [selectedDate, selectedHour, timeTree]);
+
+    const seconds = useMemo((): number[] => {
+        if (!selectedDate || selectedHour === '' || selectedMinute === '' || !timeTree.has(selectedDate)) return [];
+        const h = Number(selectedHour);
+        const m = Number(selectedMinute);
+        const hourMap = timeTree.get(selectedDate)!;
+        if (!hourMap.has(h)) return [];
+        const minuteMap = hourMap.get(h)!;
+        if (!minuteMap.has(m)) return [];
+        return (Array.from(minuteMap.get(m)!.keys()) as number[]).sort((a, b) => a - b);
+    }, [selectedDate, selectedHour, selectedMinute, timeTree]);
 
     const handleJumpToTime = () => {
-        const time = parseTimeInput(jumpInput);
-        if (time !== null) {
-            jumpToTime(time);
-            setJumpError(false);
-            setJumpInput('');
+        if (!selectedDate || selectedHour === '' || selectedMinute === '') return;
+        const h = Number(selectedHour);
+        const m = Number(selectedMinute);
+        const s = selectedSecond !== '' ? Number(selectedSecond) : 0;
+        const hourMap = timeTree.get(selectedDate);
+        if (!hourMap) return;
+        const minuteMap = hourMap.get(h);
+        if (!minuteMap) return;
+        const secondMap = minuteMap.get(m);
+        if (!secondMap) return;
+        const ts = secondMap.get(s);
+        if (ts !== undefined) {
+            jumpToTime(ts);
         } else {
-            setJumpError(true);
-        }
-    };
-
-    const handleJumpInputKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            handleJumpToTime();
+            // No exact second match — use the first second in this minute
+            const firstTs = secondMap.values().next().value;
+            if (firstTs !== undefined) jumpToTime(firstTs);
         }
     };
 
@@ -346,24 +379,52 @@ export function WaveformToolbar() {
             {/* Spacer */}
             <div class="toolbar-spacer" />
 
-            {/* Jump to Time Input */}
+            {/* Jump to Time — cascading dropdowns */}
             <div class="jump-to-time">
-                <input
-                    type="text"
-                    class={`jump-input ${jumpError ? 'error' : ''}`}
-                    placeholder="HH:MM:SS"
-                    value={jumpInput}
-                    onInput={(e) => {
-                        setJumpInput((e.target as HTMLInputElement).value);
-                        setJumpError(false);
-                    }}
-                    onKeyDown={handleJumpInputKeyDown}
+                <select
+                    class="jump-select"
+                    value={selectedDate}
                     disabled={!hasData}
-                />
+                    onChange={(e) => setSelectedDate((e.target as HTMLSelectElement).value)}
+                    title="Date"
+                >
+                    <option value="" disabled>Date</option>
+                    {dates.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <select
+                    class="jump-select jump-select-time"
+                    value={selectedHour}
+                    disabled={!hasData || !selectedDate}
+                    onChange={(e) => setSelectedHour((e.target as HTMLSelectElement).value)}
+                    title="Hour"
+                >
+                    <option value="" disabled>HH</option>
+                    {hours.map(h => <option key={h} value={String(h)}>{String(h).padStart(2, '0')}</option>)}
+                </select>
+                <select
+                    class="jump-select jump-select-time"
+                    value={selectedMinute}
+                    disabled={!hasData || selectedHour === ''}
+                    onChange={(e) => setSelectedMinute((e.target as HTMLSelectElement).value)}
+                    title="Minute"
+                >
+                    <option value="" disabled>MM</option>
+                    {minutes.map(m => <option key={m} value={String(m)}>{String(m).padStart(2, '0')}</option>)}
+                </select>
+                <select
+                    class="jump-select jump-select-time"
+                    value={selectedSecond}
+                    disabled={!hasData || selectedMinute === ''}
+                    onChange={(e) => setSelectedSecond((e.target as HTMLSelectElement).value)}
+                    title="Second"
+                >
+                    <option value="" disabled>SS</option>
+                    {seconds.map(s => <option key={s} value={String(s)}>{String(s).padStart(2, '0')}</option>)}
+                </select>
                 <button
                     class="jump-btn"
                     onClick={handleJumpToTime}
-                    disabled={!hasData || !jumpInput}
+                    disabled={!hasData || !selectedDate || selectedHour === '' || selectedMinute === ''}
                     title="Jump to Time"
                 >
                     Go
@@ -583,9 +644,8 @@ export function WaveformToolbar() {
                     border-color: var(--accent-error);
                 }
 
-                .jump-input {
-                    width: 90px;
-                    padding: 4px 8px;
+                .jump-select {
+                    padding: 4px 6px;
                     font-family: var(--font-mono);
                     font-size: 12px;
                     background: var(--bg-secondary);
@@ -594,25 +654,21 @@ export function WaveformToolbar() {
                     color: var(--text-primary);
                     outline: none;
                     transition: all var(--transition-fast);
+                    cursor: pointer;
                 }
 
-                .jump-input:focus {
+                .jump-select:focus {
                     border-color: var(--primary-accent);
                     box-shadow: 0 0 0 2px rgba(77, 182, 226, 0.2);
                 }
 
-                .jump-input.error {
-                    border-color: var(--accent-error);
-                    box-shadow: 0 0 0 2px rgba(248, 81, 73, 0.2);
-                }
-
-                .jump-input::placeholder {
-                    color: var(--text-muted);
-                }
-
-                .jump-input:disabled {
+                .jump-select:disabled {
                     opacity: 0.5;
                     cursor: not-allowed;
+                }
+
+                .jump-select-time {
+                    width: 56px;
                 }
 
                 .jump-btn {
@@ -674,4 +730,95 @@ export function WaveformToolbar() {
             `}</style>
         </div>
     );
+}
+
+// ──────────────────────────────────────────────────────────────
+// Time tree builders with seconds granularity
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * Build time tree from API response (server-side path).
+ * The API returns date/hour/minute/ts — we add second level by extracting
+ * the seconds component from the returned timestamp.
+ */
+function buildTimeTreeWithSecondsFromApi(entries: TimeTreeEntry[]): TimeTreeWithSeconds {
+    const tree: TimeTreeWithSeconds = new Map();
+    for (const e of entries) {
+        if (!tree.has(e.date)) tree.set(e.date, new Map());
+        const hours = tree.get(e.date)!;
+        if (!hours.has(e.hour)) hours.set(e.hour, new Map());
+        const minutes = hours.get(e.hour)!;
+        if (!minutes.has(e.minute)) minutes.set(e.minute, new Map());
+        const seconds = minutes.get(e.minute)!;
+        // Extract seconds from the timestamp
+        const d = new Date(e.ts);
+        const sec = d.getUTCSeconds();
+        if (!seconds.has(sec)) seconds.set(sec, e.ts);
+    }
+    return tree;
+}
+
+/**
+ * Build a full time tree from session start/end time.
+ * Generates all hours, minutes, and seconds in the range so the user
+ * can pick any time, not just times with entries (for client-side mode
+ * where we don't have all entries loaded).
+ */
+function buildFullTimeTree(startMs: number, endMs: number): TimeTreeWithSeconds {
+    const tree: TimeTreeWithSeconds = new Map();
+    const start = new Date(startMs);
+    const end = new Date(endMs);
+
+    // Walk through each second from start to end (capped to prevent huge trees)
+    const totalSeconds = Math.floor((endMs - startMs) / 1000);
+    const MAX_SECONDS = 86400 * 7; // Cap at 7 days worth of seconds
+
+    if (totalSeconds > MAX_SECONDS) {
+        // For very large ranges, only build hour/minute granularity (no seconds)
+        const startD = new Date(startMs);
+        const endD = new Date(endMs);
+        let current = new Date(startD);
+        current.setUTCSeconds(0, 0);
+
+        while (current <= endD) {
+            const dateStr = `${current.getUTCFullYear()}-${String(current.getUTCMonth() + 1).padStart(2, '0')}-${String(current.getUTCDate()).padStart(2, '0')}`;
+            const hour = current.getUTCHours();
+            const minute = current.getUTCMinutes();
+            const sec = 0; // Default second
+            const ts = current.getTime();
+
+            if (!tree.has(dateStr)) tree.set(dateStr, new Map());
+            const hours = tree.get(dateStr)!;
+            if (!hours.has(hour)) hours.set(hour, new Map());
+            const minutes = hours.get(hour)!;
+            if (!minutes.has(minute)) minutes.set(minute, new Map());
+            const seconds = minutes.get(minute)!;
+            if (!seconds.has(sec)) seconds.set(sec, ts);
+
+            current = new Date(current.getTime() + 60000); // +1 minute
+        }
+        return tree;
+    }
+
+    let current = new Date(start);
+    current.setUTCMilliseconds(0);
+
+    while (current <= end) {
+        const dateStr = `${current.getUTCFullYear()}-${String(current.getUTCMonth() + 1).padStart(2, '0')}-${String(current.getUTCDate()).padStart(2, '0')}`;
+        const hour = current.getUTCHours();
+        const minute = current.getUTCMinutes();
+        const sec = current.getUTCSeconds();
+        const ts = current.getTime();
+
+        if (!tree.has(dateStr)) tree.set(dateStr, new Map());
+        const hours = tree.get(dateStr)!;
+        if (!hours.has(hour)) hours.set(hour, new Map());
+        const minutes = hours.get(hour)!;
+        if (!minutes.has(minute)) minutes.set(minute, new Map());
+        const seconds = minutes.get(minute)!;
+        if (!seconds.has(sec)) seconds.set(sec, ts);
+
+        current = new Date(current.getTime() + 1000); // +1 second
+    }
+    return tree;
 }
