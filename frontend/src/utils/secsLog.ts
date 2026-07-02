@@ -86,7 +86,7 @@ export function getSECSFieldValue(entry: Pick<LogEntry, 'value'>, field: SECSFie
         case 'streamFunction':
             return msg.streamFunction || '';
         case 'systemByte':
-            return msg.systemByte ? String(msg.systemByte) : '';
+            return msg.systemByte !== undefined ? String(msg.systemByte) : '';
         case 'messageBody':
             return msg.messageDesc || '';
         default:

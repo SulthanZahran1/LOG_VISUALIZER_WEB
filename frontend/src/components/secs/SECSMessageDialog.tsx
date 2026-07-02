@@ -32,7 +32,7 @@ function SECSNodeTree({ node, depth }: { node: SECSNode; depth: number }) {
                 {node.name && <span className="secs-tree-name">{node.name}</span>}
                 <span className="secs-tree-count">[{node.count}]</span>
                 {node.value !== undefined && node.value !== '' && (
-                    <span className="secs-tree-value">= {node.value}</span>
+                    <span className="secs-tree-value" style={{ maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>= {node.value.length > 200 ? node.value.slice(0, 200) + '...' : node.value}</span>
                 )}
             </div>
             {node.items && node.items.length > 0 && (
@@ -104,7 +104,7 @@ export function SECSMessageDialog({ isOpen, onClose, entry }: SECSMessageDialogP
                         </div>
                         <div className="secs-field">
                             <span className="secs-field-label">System Byte</span>
-                            <span className="secs-field-value">{msgData.systemByte || 'N/A'}</span>
+                            <span className="secs-field-value">{msgData.systemByte !== undefined ? msgData.systemByte : 'N/A'}</span>
                         </div>
                         {msgData.waitBit !== undefined && (
                             <div className="secs-field">

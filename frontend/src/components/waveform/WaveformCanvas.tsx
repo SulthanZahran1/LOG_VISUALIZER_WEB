@@ -126,6 +126,11 @@ export function WaveformCanvas() {
     // SECS message dialog state
     const [secsDialogEntry, setSecsDialogEntry] = useState<LogEntry | null>(null);
 
+    const handleSecsDialogClose = () => {
+        setSecsDialogEntry(null);
+        containerRef.current?.focus();
+    };
+
     // Resize Observer to update viewportWidth
     useEffect(() => {
         const container = containerRef.current;
@@ -262,7 +267,10 @@ export function WaveformCanvas() {
             } else if (beforeBoundary) {
                 // No visible entries but we have a boundary - draw the continuous state
                 const firstEntry = beforeBoundary;
-                if (firstEntry.signalType === 'boolean' || typeof firstEntry.value === 'boolean') {
+                if (key.startsWith('SECS::')) {
+                    // Draw empty SECS lane backgrounds — no markers to show in this range
+                    drawSECSSignal(ctx, [], range.start, pixelsPerMs, plotHeight, plotWidth, beforeBoundary);
+                } else if (firstEntry.signalType === 'boolean' || typeof firstEntry.value === 'boolean') {
                     drawBooleanSignal(ctx, [beforeBoundary], range.start, pixelsPerMs, plotHeight, plotWidth, beforeBoundary);
                 } else {
                     drawStateSignal(ctx, [beforeBoundary], range.start, pixelsPerMs, plotHeight, plotWidth, rowIndex, beforeBoundary);
@@ -301,8 +309,8 @@ export function WaveformCanvas() {
         const hoverRowValue = hoverRow.value;
         if (currentHoverX !== null && hoverRowValue !== null && hoverRowValue >= 0 && hoverRowValue < selectedSignals.value.length) {
             const signalKey = selectedSignals.value[hoverRowValue];
-            // Skip tooltip for MCS signals (action/command values are too long)
-            if (!signalKey.startsWith('MCS') && !signalKey.startsWith('mcs')) {
+            // Skip tooltip for MCS and SECS signals (values are too long / JSON)
+            if (!signalKey.startsWith('MCS') && !signalKey.startsWith('mcs') && !signalKey.startsWith('SECS::')) {
                 const entries = waveformEntries.value[signalKey] || [];
                 const hTime = hoverTime.value;
                 if (hTime !== null && entries.length > 0) {
@@ -338,6 +346,16 @@ export function WaveformCanvas() {
             const plotX = x - plotStartX;
             const zoomAnchorX = (plotX * totalWidth) / plotWidth;
             zoomAt(e.deltaY, zoomAnchorX);
+
+            // Recalculate cursor time after zoom so the cursor timestamp stays accurate
+            if (hoverX.value !== null) {
+                const newRange = viewRange.value;
+                if (newRange) {
+                    const newRangeDuration = Math.max(1, newRange.end - newRange.start);
+                    const hx = Math.max(0, Math.min(plotWidth, hoverX.value - plotStartX));
+                    hoverTime.value = newRange.start + ((hx / plotWidth) * newRangeDuration);
+                }
+            }
         } else {
             if (e.deltaX !== 0) {
                 e.preventDefault();
@@ -345,6 +363,16 @@ export function WaveformCanvas() {
                 // Keep pan speed consistent with the effective plot width.
                 const scaledDeltaX = e.deltaX * (totalWidth / plotWidth);
                 pan(-scaledDeltaX);
+
+                // Recalculate cursor time after horizontal pan so the cursor timestamp stays accurate
+                if (hoverX.value !== null) {
+                    const newRange = viewRange.value;
+                    if (newRange) {
+                        const newRangeDuration = Math.max(1, newRange.end - newRange.start);
+                        const hx = Math.max(0, Math.min(plotWidth, hoverX.value - plotStartX));
+                        hoverTime.value = newRange.start + ((hx / plotWidth) * newRangeDuration);
+                    }
+                }
             }
         }
     };
@@ -772,7 +800,7 @@ export function WaveformCanvas() {
             {secsDialogEntry && (
                 <SECSMessageDialog
                     isOpen={secsDialogEntry !== null}
-                    onClose={() => setSecsDialogEntry(null)}
+                    onClose={handleSecsDialogClose}
                     entry={secsDialogEntry}
                 />
             )}
@@ -1207,7 +1235,7 @@ function drawSignalLabels(
         ctx.font = '600 12px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.fillText(signalText, SIGNAL_LABEL_PADDING_X, y + 24);
 
-        if (device && signal) {
+        if (device && signal && device !== signal) {
             const deviceText = fitLabelToWidth(ctx, device, textWidth);
             ctx.fillStyle = COLORS.signalLabelDeviceText;
             ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
@@ -1274,9 +1302,9 @@ function drawSECSSignal(
 
     // Lane backgrounds — green tint for SEND lane, blue tint for RECV lane
     ctx.fillStyle = SECS_LANE_COLORS.send.fill;
-    ctx.fillRect(0, lanePadding, width, laneMid - lanePadding * 2);
+    ctx.fillRect(0, lanePadding, width, laneMid - lanePadding);
     ctx.fillStyle = SECS_LANE_COLORS.recv.fill;
-    ctx.fillRect(0, laneMid + lanePadding, width, laneMid - lanePadding * 2);
+    ctx.fillRect(0, laneMid + lanePadding, width, height - laneMid - lanePadding);
 
     // Lane divider
     ctx.strokeStyle = 'rgba(139, 148, 158, 0.3)';
@@ -1316,8 +1344,9 @@ function drawSECSSignal(
     // Draw markers — no connector lines between SEND/RECV
     for (const m of markers) {
         const direction = normalizeSECSDirection(m.category);
+        if (!direction) continue;  // can't route to a lane — skip rendering
         const isSend = direction === 'SEND';
-        const markerY = direction ? getSECSMarkerY(direction, height) : getSECSMarkerY('RECV', height);
+        const markerY = getSECSMarkerY(direction, height);
         const laneColor = isSend ? SECS_LANE_COLORS.send : SECS_LANE_COLORS.recv;
         const markerColor = laneColor.marker;
         const markerSize = SECS_MARKER_SIZE;
@@ -1350,7 +1379,7 @@ function drawSECSSignal(
             ctx.fillText(m.sfCode, m.x, markerY - 2);
         } else {
             ctx.textBaseline = 'top';
-            ctx.fillText(m.sfCode, m.x, markerY + markerSize + 2);
+            ctx.fillText(m.sfCode, m.x, markerY + markerSize + 1);
         }
     }
 }

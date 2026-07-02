@@ -53,6 +53,9 @@ export function WaveformToolbar() {
     const minuteRef = useRef<HTMLInputElement>(null);
     const secondRef = useRef<HTMLInputElement>(null);
 
+    // Visual feedback for jump-to-time: 'success' pulses green, 'error' pulses red
+    const [jumpFeedback, setJumpFeedback] = useState<'success' | 'error' | null>(null);
+
     // Auto-advance: when a time input reaches 2 digits, focus the next field
     const handleTimeInput = (
         value: string,
@@ -108,24 +111,52 @@ export function WaveformToolbar() {
     }, [selectedDate, selectedHour, selectedMinute, timeTree]);
 
     const handleJumpToTime = () => {
-        if (!selectedDate || selectedHour === '' || selectedMinute === '') return;
+        // Clear any previous feedback
+        setJumpFeedback(null);
+
+        if (!selectedDate || selectedHour === '' || selectedMinute === '') {
+            setJumpFeedback('error');
+            setTimeout(() => setJumpFeedback(null), 500);
+            return;
+        }
         const h = Number(selectedHour);
         const m = Number(selectedMinute);
         const s = selectedSecond !== '' ? Number(selectedSecond) : 0;
         const hourMap = timeTree.get(selectedDate);
-        if (!hourMap) return;
+        if (!hourMap) {
+            setJumpFeedback('error');
+            setTimeout(() => setJumpFeedback(null), 500);
+            return;
+        }
         const minuteMap = hourMap.get(h);
-        if (!minuteMap) return;
+        if (!minuteMap) {
+            setJumpFeedback('error');
+            setTimeout(() => setJumpFeedback(null), 500);
+            return;
+        }
         const secondMap = minuteMap.get(m);
-        if (!secondMap) return;
+        if (!secondMap) {
+            setJumpFeedback('error');
+            setTimeout(() => setJumpFeedback(null), 500);
+            return;
+        }
         const ts = secondMap.get(s);
         if (ts !== undefined) {
             jumpToTime(ts);
         } else {
             // No exact second match — use the first second in this minute
             const firstTs = secondMap.values().next().value;
-            if (firstTs !== undefined) jumpToTime(firstTs);
+            if (firstTs !== undefined) {
+                jumpToTime(firstTs);
+            } else {
+                setJumpFeedback('error');
+                setTimeout(() => setJumpFeedback(null), 500);
+                return;
+            }
         }
+        // Success feedback
+        setJumpFeedback('success');
+        setTimeout(() => setJumpFeedback(null), 500);
     };
 
     const handleZoomIn = () => {
@@ -437,6 +468,7 @@ export function WaveformToolbar() {
                         23,
                         minuteRef,
                     )}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleJumpToTime(); }}
                     onFocus={(e) => (e.target as HTMLInputElement).select()}
                     title="Hour"
                     list="jump-hours"
@@ -461,6 +493,7 @@ export function WaveformToolbar() {
                         59,
                         secondRef,
                     )}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleJumpToTime(); }}
                     onFocus={(e) => (e.target as HTMLInputElement).select()}
                     title="Minute"
                     list="jump-minutes"
@@ -485,6 +518,7 @@ export function WaveformToolbar() {
                         59,
                         undefined,
                     )}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleJumpToTime(); }}
                     onFocus={(e) => (e.target as HTMLInputElement).select()}
                     title="Second"
                     list="jump-seconds"
@@ -493,7 +527,7 @@ export function WaveformToolbar() {
                     {seconds.map(s => <option key={s} value={String(s).padStart(2, '0')} />)}
                 </datalist>
                 <button
-                    class="jump-btn"
+                    class={`jump-btn${jumpFeedback === 'success' ? ' jump-btn-success' : ''}${jumpFeedback === 'error' ? ' jump-btn-error' : ''}`}
                     onClick={handleJumpToTime}
                     disabled={!hasData || !selectedDate || selectedHour === '' || selectedMinute === ''}
                     title="Jump to Time"
@@ -795,6 +829,14 @@ export function WaveformToolbar() {
                 .jump-btn:disabled {
                     opacity: 0.5;
                     cursor: not-allowed;
+                }
+
+                .jump-btn-success {
+                    background: #4caf50 !important;
+                }
+
+                .jump-btn-error {
+                    background: #f85149 !important;
                 }
 
                 .zoom-slider-group {
