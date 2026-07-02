@@ -1187,10 +1187,10 @@ function drawSignalLabels(
 }
 
 /**
- * SECS-specific waveform rendering with 2-lane display (SEND / RECV).
+ * SECS-specific waveform rendering with single-lane display.
  * 
- * - Two virtual lanes: SECS_SEND (top half) and SECS_RECV (bottom half)
- * - Colored ▲ markers at message timestamps with stream/function labels
+ * - One lane containing all SECS messages
+ * - ▲ markers for SEND, ▼ markers for RECV (direction from category field)
  * - Bracket connectors between paired SEND→RECV messages (matched by systemByte)
  * - Transaction time labels on the brackets
  */
@@ -1215,33 +1215,19 @@ function drawSECSSignal(
 ) {
     if (entries.length === 0) return;
 
-    // Draw lane backgrounds (single neutral color — lane position distinguishes SEND/RECV)
-    const laneMid = height / 2;
+    // Single lane — all SECS messages in one row
     const lanePadding = 4;
 
-    // Both lanes use the same subtle background
+    // Lane background
     ctx.fillStyle = SECS_COLORS.markerFill;
-    ctx.fillRect(0, lanePadding, width, laneMid - lanePadding * 2);
-    ctx.fillRect(0, laneMid + lanePadding, width, laneMid - lanePadding * 2);
+    ctx.fillRect(0, lanePadding, width, height - lanePadding * 2);
 
-    // Lane divider
-    ctx.strokeStyle = 'rgba(139, 148, 158, 0.3)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    ctx.moveTo(0, laneMid);
-    ctx.lineTo(width, laneMid);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Lane labels
+    // Lane label
     ctx.font = '9px -apple-system, BlinkMacSystemFont, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-
     ctx.fillStyle = SECS_COLORS.muted;
-    ctx.fillText('SEND', 6, lanePadding + 2);
-    ctx.fillText('RECV', 6, laneMid + lanePadding + 2);
+    ctx.fillText('SECS', 6, lanePadding + 2);
 
     // Collect marker positions per entry
     type SECSMarker = {
@@ -1290,32 +1276,26 @@ function drawSECSSignal(
         const maxBracketWidth = width * 0.8;
         if (Math.abs(recvX - sendX) > maxBracketWidth) continue;
 
-        const bracketY1 = lanePadding + 2;
-        const bracketY2 = laneMid + lanePadding + 2;
-        const bracketMidY = (bracketY1 + bracketY2) / 2;
+        // Bracket arc above the markers
+        const bracketY = lanePadding + 2;
+        const arcHeight = 10;
+        const midX = (sendX + recvX) / 2;
 
         ctx.strokeStyle = SECS_COLORS.bracket;
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(sendX, bracketY1);
-        ctx.lineTo(sendX, bracketMidY);
-        ctx.lineTo(recvX, bracketMidY);
-        ctx.lineTo(recvX, bracketY1);
+        // Arc from send marker up and over to recv marker
+        ctx.moveTo(sendX, bracketY);
+        ctx.quadraticCurveTo(midX, bracketY - arcHeight, recvX, bracketY);
         ctx.stroke();
 
-        // Draw bracket fill
-        ctx.fillStyle = SECS_COLORS.bracketFill;
-        const leftX = Math.min(sendX, recvX);
-        const rightX = Math.max(sendX, recvX);
-        ctx.fillRect(leftX, bracketMidY - 1, rightX - leftX, 2);
-
-        // Transaction time label
+        // Transaction time label above the arc
         const durationMs = Math.abs(getTimestampMs(pair.recv.entry) - getTimestampMs(pair.send.entry));
         const label = `${durationMs.toFixed(1)}ms`;
         ctx.font = '9px var(--font-mono, monospace)';
         const labelWidth = ctx.measureText(label).width + 6;
-        const labelX = (sendX + recvX) / 2 - labelWidth / 2;
-        const labelY = bracketMidY - 10;
+        const labelX = midX - labelWidth / 2;
+        const labelY = bracketY - arcHeight - 12;
 
         ctx.fillStyle = 'rgba(13, 17, 23, 0.85)';
         ctx.beginPath();
@@ -1328,19 +1308,27 @@ function drawSECSSignal(
         ctx.fillText(label, labelX + labelWidth / 2, labelY + 7);
     }
 
-    // Draw markers
+    // Draw markers — ▲ for SEND, ▼ for RECV, all in one lane
     for (const m of markers) {
         const isSend = m.category.toUpperCase() === 'SEND';
-        const markerY = isSend ? lanePadding + 6 : laneMid + lanePadding + 6;
+        const markerY = lanePadding + 10;
         const markerColor = SECS_COLORS.marker;
+        const markerSize = 8;
 
-        // Draw ▲ marker
+        // Draw ▲ (SEND) or ▼ (RECV) marker
         ctx.fillStyle = markerColor;
         ctx.beginPath();
-        const markerSize = 8;
-        ctx.moveTo(m.x, markerY);
-        ctx.lineTo(m.x - markerSize / 2, markerY + markerSize);
-        ctx.lineTo(m.x + markerSize / 2, markerY + markerSize);
+        if (isSend) {
+            // ▲ pointing up
+            ctx.moveTo(m.x, markerY);
+            ctx.lineTo(m.x - markerSize / 2, markerY + markerSize);
+            ctx.lineTo(m.x + markerSize / 2, markerY + markerSize);
+        } else {
+            // ▼ pointing down
+            ctx.moveTo(m.x, markerY + markerSize);
+            ctx.lineTo(m.x - markerSize / 2, markerY);
+            ctx.lineTo(m.x + markerSize / 2, markerY);
+        }
         ctx.closePath();
         ctx.fill();
 
@@ -1348,14 +1336,20 @@ function drawSECSSignal(
         ctx.strokeStyle = 'rgba(13, 17, 23, 0.7)';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(m.x, markerY);
-        ctx.lineTo(m.x - markerSize / 2, markerY + markerSize);
-        ctx.lineTo(m.x + markerSize / 2, markerY + markerSize);
+        if (isSend) {
+            ctx.moveTo(m.x, markerY);
+            ctx.lineTo(m.x - markerSize / 2, markerY + markerSize);
+            ctx.lineTo(m.x + markerSize / 2, markerY + markerSize);
+        } else {
+            ctx.moveTo(m.x, markerY + markerSize);
+            ctx.lineTo(m.x - markerSize / 2, markerY);
+            ctx.lineTo(m.x + markerSize / 2, markerY);
+        }
         ctx.closePath();
         ctx.stroke();
 
-        // Stream/Function label above marker
-        ctx.fillStyle = SECS_COLORS.label;
+        // Direction label (▲ SEND / ▼ RECV) + S/F code
+        ctx.fillStyle = isSend ? '#3fb950' : '#58a6ff';
         ctx.font = 'bold 9px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
